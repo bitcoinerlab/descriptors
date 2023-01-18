@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso
+// Distributed under the MIT software license
+
 //TODO: test invalid network / descriptor combination
 //TODO: test vectors: https://github.com/bitcoin/bitcoin/blob/master/src/test/descriptor_tests.cpp
 import { parse } from '../src/index';

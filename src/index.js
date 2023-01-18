@@ -1,35 +1,10 @@
-//TODO: tests for compressed/uncompressed pubkey
-//TODO: tests for xprv, wif
-//
-//TODO: also add ADDR expressions: https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
-//Verify the address:
-//export function checkAddress(address, network) {
-//  checkNetwork(network);
-//  try {
-//    bjsAddress.toOutputScript(address, network);
-//    return true;
-//  } catch (e) {
-//    throw new Error('Invalid address');
-//  }
-//}
-//TODO: check that we Do not suport yzpub...
-//TODO: use fromBase58 to validate xpub, xpriv
-//TODO: support checksums: Descriptors can optionally be suffixed with a checksum to protect against typos or copy-paste errors.
-//https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
-//https://github.com/bitcoin/bitcoin/blob/635f1900d048e41d18cc1df7e8305a5f397c87a3/test/functional/test_framework/descriptors.py
-//TODO: Document that it supports all SCRIPT expressions, including also all possible miniscript, but it does not support raw(), combo(), sortedmulti(), tr(), multi_ (taproot), sortedmulti_a (taproot), rawtr (taproot)
-//TODO: support wif, xpriv
-//TODO: check pubkeys validity: https://github.com/bitcoinjs/bitcoinjs-lib/pull/1573/commits/25b5806cf146ef5d5f5770c60f102a7b37bcf660
-//if (!ecc.isPoint(a.witness[1]))
-//TODO: wpkh and wsh allow only compressed pubkeys
-//see: https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
+// Copyright (c) 2023 Jose-Luis Landabaso
+// Distributed under the MIT software license
+
+/** @module descriptors */
+
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
-import {
-  address,
-  networks,
-  payments,
-  script
-} from 'bitcoinjs-lib';
+import { address, networks, payments, script } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -181,6 +156,36 @@ function keyExpression2PubKey({
   }
 }
 
+//obtain a bare desc without checksum and particularized for a certain
+//index (if desc was a rage descriptor)
+function isolate({ desc, checksumRequired, index }) {
+  const mChecksum = desc.match(String.raw`(${reChecksum})$`);
+  if (mChecksum === null && checksumRequired === true)
+    throw new Error(`Error: descriptor ${desc} has not checksum`);
+  //isolatedDesc: a bare desc without checksum and particularized for a certain
+  //index (if desc was a rage descriptor)
+  let isolatedDesc = desc;
+  if (mChecksum !== null) {
+    const checksum = mChecksum[0].substring(1); //remove the leading #
+    isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
+    if (checksum !== DescriptorChecksum(isolatedDesc)) {
+      throw new Error(`Error: invalid descriptor checksum for ${desc}`);
+    }
+  }
+  let mWildcard = isolatedDesc.match(/\*/g);
+  if (mWildcard && mWildcard.length > 1) {
+    throw new Error(
+      `Error: cannot extract an address when using multiple ranges`
+    );
+  }
+  if (mWildcard && mWildcard.length === 1) {
+    if (!Number.isInteger(index) || index < 0)
+      throw new Error(`Error: invalid index ${index}`);
+    isolatedDesc = isolatedDesc.replace('*', index);
+  }
+  return isolatedDesc;
+}
+
 function miniscript2Script({
   miniscript,
   isSegwit = true,
@@ -213,40 +218,28 @@ function miniscript2Script({
   return script.fromASM(asm.trim().replace(/\s+/g, ' ').replace(/[<>]/g, ''));
 }
 
-/** Returns the {address,output, ...} of a descriptor*/
+/**
+ * Parses a descriptor string and returns an object containing the descriptor's information, such as the address and output script. It also performs validation on the descriptor, including validation of the descriptor's checksum.
+ *
+ * @Function
+ *
+ * @param {Object} params
+ * @param {string} params.descriptor - The descriptor string to be parsed.
+ * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is expected to include a checksum.
+ * @returns {Object} An object containing the parsed descriptor's information, including a string with the addresss, and a Buffer with the output script.
+ * @throws {Error} Will throw an error if the descriptor is invalid or fails validation.
+ */
 export function parse({
   desc,
   index,
   checksumRequired = true,
   network = networks.bitcoin
 }) {
-  const mChecksum = desc.match(String.raw`(${reChecksum})$`);
-  if (mChecksum === null && checksumRequired === true)
-    throw new Error(`Error: descriptor ${desc} has not checksum`);
+  //verify and remove checksum (if exists) and
+  //particularize rante descriptor for index (if desc is range descriptor)
+  const isolatedDesc = isolate({ desc, index, checksumRequired });
 
-  //isolatedDesc is a desc without checksum and particularized for a certain
-  //index (if it was a rage descriptor)
-  let isolatedDesc = desc;
-  if (mChecksum !== null) {
-    const checksum = mChecksum[0].substring(1); //remove the leading #
-    isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
-    if (checksum !== DescriptorChecksum(isolatedDesc)) {
-      throw new Error(`Error: invalid descriptor checksum for ${desc}`);
-    }
-  }
-  let mWildcard = isolatedDesc.match(/\*/g);
-  if (mWildcard && mWildcard.length > 1) {
-    throw new Error(
-      `Error: cannot extract an address when using multiple ranges`
-    );
-  }
-  if (mWildcard && mWildcard.length === 1) {
-    if (!Number.isInteger(index) || index < 0)
-      throw new Error(`Error: invalid index ${index}`);
-    isolatedDesc = isolatedDesc.replace('*', index);
-  }
-
-  //addr
+  //addr(ADDR)
   if (isolatedDesc.match(reAddrOut)) {
     const matchedAddress = isolatedDesc.match(reAddrOut)[1]; //[1] -> whatever is inside addr(->HERE<-)
     try {
@@ -256,7 +249,7 @@ export function parse({
     }
     return { address: matchedAddress };
   }
-  //pk
+  //pk(KEY)
   else if (isolatedDesc.match(rePkOut)) {
     const keyExp = isolatedDesc.match(reKeyExp)[0];
     if (isolatedDesc !== `pk(${keyExp})`)
@@ -265,7 +258,7 @@ export function parse({
     //Note, this is the script, not the address
     return p2pk({ pubkey, network });
   }
-  //legacy
+  //pkh(KEY) - legacy
   else if (isolatedDesc.match(rePkhOut)) {
     const keyExp = isolatedDesc.match(reKeyExp)[0];
     if (isolatedDesc !== `pkh(${keyExp})`)
@@ -273,7 +266,7 @@ export function parse({
     const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
     return p2pkh({ pubkey, network });
   }
-  //nested segwit
+  //sh(wpkh(KEY)) - nested segwit
   else if (isolatedDesc.match(reShWpkhOut)) {
     const keyExp = isolatedDesc.match(reKeyExp)[0];
     if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
@@ -281,7 +274,7 @@ export function parse({
     const pubkey = keyExpression2PubKey({ keyExp, network });
     return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
   }
-  //native segwit
+  //wpkh(KEY) - native segwit
   else if (isolatedDesc.match(reWpkhOut)) {
     const keyExp = isolatedDesc.match(reKeyExp)[0];
     if (isolatedDesc !== `wpkh(${keyExp})`)
@@ -309,6 +302,7 @@ export function parse({
     const miniscript = isolatedDesc.match(reShMiniscriptOut)[1]; //[1]-> whatever is found sh(->HERE<-)
     const script = miniscript2Script({ miniscript, network });
     return p2wsh({ redeem: { output: script }, network });
+  } else {
+    throw new Error(`Error: Could not parse descriptor ${desc}`);
   }
-  throw new Error(`Error: Could not parse descriptor ${desc}`);
 }

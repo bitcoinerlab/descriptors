@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso
+// Distributed under the MIT software license
+
 //console.log(
 //  //Should be tjg09x5t
 //  //https://reviews.bitcoinabc.org/D6600
