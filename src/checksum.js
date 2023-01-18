@@ -2,7 +2,7 @@
 // Converted into Javascript by Jose-Luis Landabaso
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 //
-// Distributed under the MIT software license, see 
+// Distributed under the MIT software license, see
 // http://www.opensource.org/licenses/mit-license.php.
 const PolyMod = (c, val) => {
   let c0 = c >> 35n;
@@ -15,11 +15,10 @@ const PolyMod = (c, val) => {
   return c;
 };
 
+export const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 export const DescriptorChecksum = span => {
   const INPUT_CHARSET =
     '0123456789()[],\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\ ';
-
-  const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 
   let c = 1n;
   let cls = 0n;
