@@ -7,11 +7,8 @@ import { compileMiniscript } from '@bitcoinerlab/miniscript';
 import { address, networks, payments, script } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import BIP32Factory from 'bip32';
 import ECPairFactory from 'ecpair';
-const bip32 = BIP32Factory(ecc);
-const ecpair = ECPairFactory(ecc);
 
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
 
@@ -95,214 +92,227 @@ const reWshMiniscriptOut = anchorStartAndEnd(
   composeChecksum(makeReWsh(reMiniscript))
 );
 
-/** Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
- * binary format*/
-function keyExpression2PubKey({
-  keyExp,
-  network = networks.bitcoin,
-  isSegwit = true
-}) {
-  //Validate the keyExp:
-  const keyExps = keyExp.match(reKeyExp);
-  if (keyExps === null || keyExps[0] !== keyExp) {
-    throw new Error(`Error: expected a keyExp but got ${keyExp}`);
-  }
-  //Remove the origin (if it exists) and store result in actualKey
-  const actualKey = keyExp.replace(RegExp(String.raw`^(${reOrigin})?`), ''); //starts with ^origin
-  let mPubKey, mWIF, mXpubKey, mXprvKey;
-  //match pubkey:
-  if ((mPubKey = actualKey.match(anchorStartAndEnd(rePubKey))) !== null) {
-    const pubkey = Buffer.from(mPubKey[0], 'hex');
-    //Validate the pubkey (compressed or uncompressed)
-    if (
-      !ecc.isPoint(pubkey) ||
-      (isSegwit && pubkey.length !== 33) || //Inside wpkh and wsh, only compressed public keys are permitted.
-      !(pubkey.length === 33 || pubkey.length === 65)
+export function DescriptorsFactory(ecc) {
+  const bip32 = BIP32Factory(ecc);
+  const ecpair = ECPairFactory(ecc);
+
+  /** Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
+   * binary format*/
+  function keyExpression2PubKey({
+    keyExp,
+    network = networks.bitcoin,
+    isSegwit = true
+  }) {
+    //Validate the keyExp:
+    const keyExps = keyExp.match(reKeyExp);
+    if (keyExps === null || keyExps[0] !== keyExp) {
+      throw new Error(`Error: expected a keyExp but got ${keyExp}`);
+    }
+    //Remove the origin (if it exists) and store result in actualKey
+    const actualKey = keyExp.replace(RegExp(String.raw`^(${reOrigin})?`), ''); //starts with ^origin
+    let mPubKey, mWIF, mXpubKey, mXprvKey;
+    //match pubkey:
+    if ((mPubKey = actualKey.match(anchorStartAndEnd(rePubKey))) !== null) {
+      const pubkey = Buffer.from(mPubKey[0], 'hex');
+      //Validate the pubkey (compressed or uncompressed)
+      if (
+        !ecc.isPoint(pubkey) ||
+        (isSegwit && pubkey.length !== 33) || //Inside wpkh and wsh, only compressed public keys are permitted.
+        !(pubkey.length === 33 || pubkey.length === 65)
+      ) {
+        throw new Error(`Error: invalid pubkey`);
+      } else {
+        return pubkey;
+      }
+      //match WIF:
+    } else if ((mWIF = actualKey.match(anchorStartAndEnd(reWIF))) !== null) {
+      //fromWIF will throw if the wif is not valid
+      return ecpair.fromWIF(mWIF[0], network).publicKey;
+      //match xpub:
+    } else if (
+      (mXpubKey = actualKey.match(anchorStartAndEnd(reXpubKey))) !== null
     ) {
-      throw new Error(`Error: invalid pubkey`);
+      const xPubKey = mXpubKey[0];
+      const xPub = xPubKey.match(reXpub)[0];
+      const path = xPubKey.match(rePath)[0];
+      //fromBase58 and derivePath will throw if xPub or path are not valid
+      return bip32
+        .fromBase58(xPub, network)
+        .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
+        .publicKey;
+      //match xrv:
+    } else if (
+      (mXprvKey = actualKey.match(anchorStartAndEnd(reXprvKey))) !== null
+    ) {
+      const xPrvKey = mXprvKey[0];
+      const xPrv = xPrvKey.match(reXprv)[0];
+      const path = xPrvKey.match(rePath)[0];
+      //fromBase58 and derivePath will throw if xPrv or path are not valid
+      return bip32
+        .fromBase58(xPrv, network)
+        .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
+        .publicKey;
     } else {
-      return pubkey;
+      throw new Error(`Error: could not get pubkey for keyExp ${keyExp}`);
     }
-    //match WIF:
-  } else if ((mWIF = actualKey.match(anchorStartAndEnd(reWIF))) !== null) {
-    //fromWIF will throw if the wif is not valid
-    return ecpair.fromWIF(mWIF[0], network).publicKey;
-    //match xpub:
-  } else if (
-    (mXpubKey = actualKey.match(anchorStartAndEnd(reXpubKey))) !== null
-  ) {
-    const xPubKey = mXpubKey[0];
-    const xPub = xPubKey.match(reXpub)[0];
-    const path = xPubKey.match(rePath)[0];
-    //fromBase58 and derivePath will throw if xPub or path are not valid
-    return bip32
-      .fromBase58(xPub, network)
-      .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-      .publicKey;
-    //match xrv:
-  } else if (
-    (mXprvKey = actualKey.match(anchorStartAndEnd(reXprvKey))) !== null
-  ) {
-    const xPrvKey = mXprvKey[0];
-    const xPrv = xPrvKey.match(reXprv)[0];
-    const path = xPrvKey.match(rePath)[0];
-    //fromBase58 and derivePath will throw if xPrv or path are not valid
-    return bip32
-      .fromBase58(xPrv, network)
-      .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-      .publicKey;
-  } else {
-    throw new Error(`Error: could not get pubkey for keyExp ${keyExp}`);
   }
-}
 
-//obtain a bare desc without checksum and particularized for a certain
-//index (if desc was a rage descriptor)
-function isolate({ desc, checksumRequired, index }) {
-  const mChecksum = desc.match(String.raw`(${reChecksum})$`);
-  if (mChecksum === null && checksumRequired === true)
-    throw new Error(`Error: descriptor ${desc} has not checksum`);
-  //isolatedDesc: a bare desc without checksum and particularized for a certain
+  //obtain a bare desc without checksum and particularized for a certain
   //index (if desc was a rage descriptor)
-  let isolatedDesc = desc;
-  if (mChecksum !== null) {
-    const checksum = mChecksum[0].substring(1); //remove the leading #
-    isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
-    if (checksum !== DescriptorChecksum(isolatedDesc)) {
-      throw new Error(`Error: invalid descriptor checksum for ${desc}`);
+  function isolate({ desc, checksumRequired, index }) {
+    const mChecksum = desc.match(String.raw`(${reChecksum})$`);
+    if (mChecksum === null && checksumRequired === true)
+      throw new Error(`Error: descriptor ${desc} has not checksum`);
+    //isolatedDesc: a bare desc without checksum and particularized for a certain
+    //index (if desc was a rage descriptor)
+    let isolatedDesc = desc;
+    if (mChecksum !== null) {
+      const checksum = mChecksum[0].substring(1); //remove the leading #
+      isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
+      if (checksum !== DescriptorChecksum(isolatedDesc)) {
+        throw new Error(`Error: invalid descriptor checksum for ${desc}`);
+      }
     }
-  }
-  let mWildcard = isolatedDesc.match(/\*/g);
-  if (mWildcard && mWildcard.length > 1) {
-    throw new Error(
-      `Error: cannot extract an address when using multiple ranges`
-    );
-  }
-  if (mWildcard && mWildcard.length === 1) {
-    if (!Number.isInteger(index) || index < 0)
-      throw new Error(`Error: invalid index ${index}`);
-    isolatedDesc = isolatedDesc.replace('*', index);
-  }
-  return isolatedDesc;
-}
-
-function miniscript2Script({
-  miniscript,
-  isSegwit = true,
-  network = networks.bitcoin
-}) {
-  //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
-  //miniscript can be compiled with compileMiniscript
-  //Also compute pubKeys from descriptors to use them later.
-  const keyMap = {};
-  const bareM = miniscript.replace(RegExp(reKeyExp, 'g'), keyExp => {
-    const key = 'key_' + Object.keys(keyMap).length;
-    keyMap[key] = keyExpression2PubKey({ keyExp, network, isSegwit }).toString(
-      'hex'
-    );
-    return key;
-  });
-  const compiled = compileMiniscript(bareM);
-  if (compiled.issane !== true) {
-    throw new Error(`Error: Miniscript ${bareM} is not sane`);
-  }
-  //Replace back variables into the pubKeys previously computed.
-  const asm = compiled.asm.replace(
-    new RegExp(Object.keys(keyMap).join('|'), 'g'),
-    key => keyMap[key]
-  );
-  //Create binary code from the asm above. Prepare asm:
-  //Replace one or more consecutive whitespace characters (spaces, tabs, or line
-  //breaks) with a single space.
-  //Convert <hexcode> into hexcode (without <, >) as expected in fromASM.
-  return script.fromASM(asm.trim().replace(/\s+/g, ' ').replace(/[<>]/g, ''));
-}
-
-/**
- * Parses a descriptor string and returns an object containing the descriptor's information, such as the address and output script. It also performs validation on the descriptor, including validation of the descriptor's checksum.
- *
- * @Function
- *
- * @param {Object} params
- * @param {string} params.descriptor - The descriptor string to be parsed.
- * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is expected to include a checksum.
- * @returns {Object} An object containing the parsed descriptor's information, including a string with the addresss, and a Buffer with the output script.
- * @throws {Error} Will throw an error if the descriptor is invalid or fails validation.
- */
-export function parse({
-  desc,
-  index,
-  checksumRequired = true,
-  network = networks.bitcoin
-}) {
-  //verify and remove checksum (if exists) and
-  //particularize rante descriptor for index (if desc is range descriptor)
-  const isolatedDesc = isolate({ desc, index, checksumRequired });
-
-  //addr(ADDR)
-  if (isolatedDesc.match(reAddrOut)) {
-    const matchedAddress = isolatedDesc.match(reAddrOut)[1]; //[1] -> whatever is inside addr(->HERE<-)
-    try {
-      address.toOutputScript(matchedAddress, network);
-    } catch (e) {
-      throw new Error(`Error: invalid address ${matchedAddress}`);
+    let mWildcard = isolatedDesc.match(/\*/g);
+    if (mWildcard && mWildcard.length > 1) {
+      throw new Error(
+        `Error: cannot extract an address when using multiple ranges`
+      );
     }
-    return { address: matchedAddress };
+    if (mWildcard && mWildcard.length === 1) {
+      if (!Number.isInteger(index) || index < 0)
+        throw new Error(`Error: invalid index ${index}`);
+      isolatedDesc = isolatedDesc.replace('*', index);
+    }
+    return isolatedDesc;
   }
-  //pk(KEY)
-  else if (isolatedDesc.match(rePkOut)) {
-    const keyExp = isolatedDesc.match(reKeyExp)[0];
-    if (isolatedDesc !== `pk(${keyExp})`)
-      throw new Error(`Error: invalid desc ${desc}`);
-    const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
-    //Note, this is the script, not the address
-    return p2pk({ pubkey, network });
-  }
-  //pkh(KEY) - legacy
-  else if (isolatedDesc.match(rePkhOut)) {
-    const keyExp = isolatedDesc.match(reKeyExp)[0];
-    if (isolatedDesc !== `pkh(${keyExp})`)
-      throw new Error(`Error: invalid desc ${desc}`);
-    const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
-    return p2pkh({ pubkey, network });
-  }
-  //sh(wpkh(KEY)) - nested segwit
-  else if (isolatedDesc.match(reShWpkhOut)) {
-    const keyExp = isolatedDesc.match(reKeyExp)[0];
-    if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
-      throw new Error(`Error: invalid desc ${desc}`);
-    const pubkey = keyExpression2PubKey({ keyExp, network });
-    return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
-  }
-  //wpkh(KEY) - native segwit
-  else if (isolatedDesc.match(reWpkhOut)) {
-    const keyExp = isolatedDesc.match(reKeyExp)[0];
-    if (isolatedDesc !== `wpkh(${keyExp})`)
-      throw new Error(`Error: invalid desc ${desc}`);
-    const pubkey = keyExpression2PubKey({ keyExp, network });
-    return p2wpkh({ pubkey, network });
-  }
-  //sh(wsh(miniscript))
-  else if (isolatedDesc.match(reShWshMiniscriptOut)) {
-    const miniscript = isolatedDesc.match(reShWshMiniscriptOut)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
-    const script = miniscript2Script({ miniscript, network });
-    return p2sh({
-      redeem: p2wsh({ redeem: { output: script }, network }),
-      network
+
+  function miniscript2Script({
+    miniscript,
+    isSegwit = true,
+    network = networks.bitcoin
+  }) {
+    //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
+    //miniscript can be compiled with compileMiniscript
+    //Also compute pubKeys from descriptors to use them later.
+    const keyMap = {};
+    const bareM = miniscript.replace(RegExp(reKeyExp, 'g'), keyExp => {
+      const key = 'key_' + Object.keys(keyMap).length;
+      keyMap[key] = keyExpression2PubKey({
+        keyExp,
+        network,
+        isSegwit
+      }).toString('hex');
+      return key;
     });
+    const compiled = compileMiniscript(bareM);
+    if (compiled.issane !== true) {
+      throw new Error(`Error: Miniscript ${bareM} is not sane`);
+    }
+    //Replace back variables into the pubKeys previously computed.
+    const asm = compiled.asm.replace(
+      new RegExp(Object.keys(keyMap).join('|'), 'g'),
+      key => keyMap[key]
+    );
+    //Create binary code from the asm above. Prepare asm:
+    //Replace one or more consecutive whitespace characters (spaces, tabs, or line
+    //breaks) with a single space.
+    //Convert <hexcode> into hexcode (without <, >) as expected in fromASM.
+    return script.fromASM(asm.trim().replace(/\s+/g, ' ').replace(/[<>]/g, ''));
   }
-  //sh(miniscript)
-  else if (isolatedDesc.match(reShMiniscriptOut)) {
-    const miniscript = isolatedDesc.match(reWshMiniscriptOut)[1]; //[1]-> whatever is found wsh(->HERE<-)
-    const script = miniscript2Script({ miniscript, isSegwit: false, network });
-    return p2sh({ redeem: { output: script }, network });
+
+  /**
+   * Parses a descriptor string and returns an object containing the descriptor's information, such as the address and output script. It also performs validation on the descriptor, including validation of the descriptor's checksum.
+   *
+   * @Function
+   *
+   * @param {Object} params
+   * @param {string} params.descriptor - The descriptor string to be parsed.
+   * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is expected to include a checksum.
+   * @returns {Object} An object containing the parsed descriptor's information, including a string with the addresss, and a Buffer with the output script.
+   * @throws {Error} Will throw an error if the descriptor is invalid or fails validation.
+   */
+  function parse({
+    desc,
+    index,
+    checksumRequired = true,
+    network = networks.bitcoin
+  }) {
+    //verify and remove checksum (if exists) and
+    //particularize rante descriptor for index (if desc is range descriptor)
+    const isolatedDesc = isolate({ desc, index, checksumRequired });
+
+    //addr(ADDR)
+    if (isolatedDesc.match(reAddrOut)) {
+      const matchedAddress = isolatedDesc.match(reAddrOut)[1]; //[1] -> whatever is inside addr(->HERE<-)
+      try {
+        address.toOutputScript(matchedAddress, network);
+      } catch (e) {
+        throw new Error(`Error: invalid address ${matchedAddress}`);
+      }
+      return { address: matchedAddress };
+    }
+    //pk(KEY)
+    else if (isolatedDesc.match(rePkOut)) {
+      const keyExp = isolatedDesc.match(reKeyExp)[0];
+      if (isolatedDesc !== `pk(${keyExp})`)
+        throw new Error(`Error: invalid desc ${desc}`);
+      const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
+      //Note, this is the script, not the address
+      return p2pk({ pubkey, network });
+    }
+    //pkh(KEY) - legacy
+    else if (isolatedDesc.match(rePkhOut)) {
+      const keyExp = isolatedDesc.match(reKeyExp)[0];
+      if (isolatedDesc !== `pkh(${keyExp})`)
+        throw new Error(`Error: invalid desc ${desc}`);
+      const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
+      return p2pkh({ pubkey, network });
+    }
+    //sh(wpkh(KEY)) - nested segwit
+    else if (isolatedDesc.match(reShWpkhOut)) {
+      const keyExp = isolatedDesc.match(reKeyExp)[0];
+      if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
+        throw new Error(`Error: invalid desc ${desc}`);
+      const pubkey = keyExpression2PubKey({ keyExp, network });
+      return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
+    }
+    //wpkh(KEY) - native segwit
+    else if (isolatedDesc.match(reWpkhOut)) {
+      const keyExp = isolatedDesc.match(reKeyExp)[0];
+      if (isolatedDesc !== `wpkh(${keyExp})`)
+        throw new Error(`Error: invalid desc ${desc}`);
+      const pubkey = keyExpression2PubKey({ keyExp, network });
+      return p2wpkh({ pubkey, network });
+    }
+    //sh(wsh(miniscript))
+    else if (isolatedDesc.match(reShWshMiniscriptOut)) {
+      const miniscript = isolatedDesc.match(reShWshMiniscriptOut)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+      const script = miniscript2Script({ miniscript, network });
+      return p2sh({
+        redeem: p2wsh({ redeem: { output: script }, network }),
+        network
+      });
+    }
+    //sh(miniscript)
+    else if (isolatedDesc.match(reShMiniscriptOut)) {
+      const miniscript = isolatedDesc.match(reWshMiniscriptOut)[1]; //[1]-> whatever is found wsh(->HERE<-)
+      const script = miniscript2Script({
+        miniscript,
+        isSegwit: false,
+        network
+      });
+      return p2sh({ redeem: { output: script }, network });
+    }
+    //wsh(miniscript)
+    else if (isolatedDesc.match(reWshMiniscriptOut)) {
+      const miniscript = isolatedDesc.match(reShMiniscriptOut)[1]; //[1]-> whatever is found sh(->HERE<-)
+      const script = miniscript2Script({ miniscript, network });
+      return p2wsh({ redeem: { output: script }, network });
+    } else {
+      throw new Error(`Error: Could not parse descriptor ${desc}`);
+    }
   }
-  //wsh(miniscript)
-  else if (isolatedDesc.match(reWshMiniscriptOut)) {
-    const miniscript = isolatedDesc.match(reShMiniscriptOut)[1]; //[1]-> whatever is found sh(->HERE<-)
-    const script = miniscript2Script({ miniscript, network });
-    return p2wsh({ redeem: { output: script }, network });
-  } else {
-    throw new Error(`Error: Could not parse descriptor ${desc}`);
-  }
+
+  return { parse, checksum: DescriptorChecksum };
 }

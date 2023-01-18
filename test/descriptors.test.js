@@ -3,8 +3,11 @@
 
 //TODO: test invalid network / descriptor combination
 //TODO: test vectors: https://github.com/bitcoin/bitcoin/blob/master/src/test/descriptor_tests.cpp
-import { parse } from '../src/index';
+import { DescriptorsFactory } from '../src/index';
 import { fixtures } from './fixtures/descriptors';
+import * as ecc from '@bitcoinerlab/secp256k1';
+const descriptors = DescriptorsFactory(ecc);
+
 //TODO: get more tests from here: https://min.sc/
 
 //"pkh([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1'/2h/3H/4/*H)"
@@ -12,7 +15,7 @@ import { fixtures } from './fixtures/descriptors';
 describe('parse', () => {
   test('parse', () => {
     for (const fixture of fixtures.valid) {
-      const parsed = parse(fixture);
+      const parsed = descriptors.parse(fixture);
       if (fixture.script) {
         expect(parsed.output.toString('hex')).toEqual(fixture.script);
       }
