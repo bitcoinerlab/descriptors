@@ -92,6 +92,7 @@ const reWshMiniscriptOut = anchorStartAndEnd(
   composeChecksum(makeReWsh(reMiniscript))
 );
 
+/** @namespace */
 export function DescriptorsFactory(ecc) {
   const bip32 = BIP32Factory(ecc);
   const ecpair = ECPairFactory(ecc);
