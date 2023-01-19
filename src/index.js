@@ -226,14 +226,17 @@ export function DescriptorsFactory(ecc) {
   }
 
   /**
-   * Parses a descriptor and returns a bitcoinjs-lib [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts) object containing the descriptor's payment information, such as the address and output script.
+   * Parses a `descriptor` and returns a [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts) object from bitcoinjs-lib, including address, output script, and other information.
    *
-   * It also performs validation of the descriptor, including syntax and descriptor's checksum.
+   * Replaces the wildcard character * in range descriptors with `index`.
    *
+   * Validates descriptor syntax and checksum.
    *
    * @param {Object} params
+   * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
    * @param {string} params.descriptor - The descriptor.
    * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
+   * @param {object} [params.network=networks.bitcoin] One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
    * @returns {Payment} A bitcoinjs `Payment` object containing the parsed descriptor's information, including a string with the `addresss`, and a `Buffer` with the `output` script:
    * ```typescript
    * interface Payment {
@@ -259,7 +262,7 @@ export function DescriptorsFactory(ecc) {
    * ```
    *
    * @see {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts}
-   * @throws {Error} Will throw an error if the descriptor is invalid or fails validation.
+   * @throws {Error} - when descriptor is invalid
    */
   function parse({
     desc,
