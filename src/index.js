@@ -51,7 +51,7 @@ const rePath = String.raw`(\/(${rePathComponent})*(${reRangeLevel}|${reLevel}))`
 const reXpubKey = String.raw`(${reXpub})(${rePath})?`;
 const reXprvKey = String.raw`(${reXprv})(${rePath})?`;
 
-//actualKey is the keyExpression without optional origin or checksum
+//actualKey is the keyExpression without optional origin
 const reActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${rePubKey}|${reWIF})`;
 //reOrigin is optional: Optionally, key origin information, consisting of:
 //Matches a key expression: wif, xpub, xprv or pubkey:
@@ -73,22 +73,22 @@ const makeReShWsh = re => makeReSh(makeReWsh(re));
 
 const anchorStartAndEnd = re => String.raw`^${re}$`; //starts and finishes like re (not composable)
 
-const composeChecksum = re => String.raw`${re}(${reChecksum})?`;
+const composeChecksum = re => String.raw`${re}(${reChecksum})?`; //it's optional (note the "?")
 
-const rePkOut = anchorStartAndEnd(composeChecksum(rePk));
-const reAddrOut = anchorStartAndEnd(composeChecksum(reAddr));
+const rePkAnchored = anchorStartAndEnd(composeChecksum(rePk));
+const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
 
-const rePkhOut = anchorStartAndEnd(composeChecksum(rePkh));
-const reWpkhOut = anchorStartAndEnd(composeChecksum(reWpkh));
-const reShWpkhOut = anchorStartAndEnd(composeChecksum(reShWpkh));
+const rePkhAnchored = anchorStartAndEnd(composeChecksum(rePkh));
+const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
+const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
 
-const reShMiniscriptOut = anchorStartAndEnd(
+const reShMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReSh(reMiniscript))
 );
-const reShWshMiniscriptOut = anchorStartAndEnd(
+const reShWshMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReShWsh(reMiniscript))
 );
-const reWshMiniscriptOut = anchorStartAndEnd(
+const reWshMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReWsh(reMiniscript))
 );
 
@@ -97,8 +97,9 @@ export function DescriptorsFactory(ecc) {
   const bip32 = BIP32Factory(ecc);
   const ecpair = ECPairFactory(ecc);
 
-  /** Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
-   * binary format*/
+  /* Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
+   * binary format
+   */
   function keyExpression2PubKey({
     keyExp,
     network = networks.bitcoin,
@@ -158,8 +159,10 @@ export function DescriptorsFactory(ecc) {
     }
   }
 
-  //obtain a bare desc without checksum and particularized for a certain
-  //index (if desc was a rage descriptor)
+  /*
+   * Returns a bare descriptor without checksum and particularized for a certain
+   * index (if desc was a rage descriptor)
+   */
   function isolate({ desc, checksumRequired, index }) {
     const mChecksum = desc.match(String.raw`(${reChecksum})$`);
     if (mChecksum === null && checksumRequired === true)
@@ -223,14 +226,39 @@ export function DescriptorsFactory(ecc) {
   }
 
   /**
-   * Parses a descriptor string and returns an object containing the descriptor's information, such as the address and output script. It also performs validation on the descriptor, including validation of the descriptor's checksum.
+   * Parses a descriptor and returns a bitcoinjs-lib [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts) object containing the descriptor's payment information, such as the address and output script.
    *
-   * @Function
+   * It also performs validation of the descriptor, including syntax and descriptor's checksum.
+   *
    *
    * @param {Object} params
-   * @param {string} params.descriptor - The descriptor string to be parsed.
-   * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is expected to include a checksum.
-   * @returns {Object} An object containing the parsed descriptor's information, including a string with the addresss, and a Buffer with the output script.
+   * @param {string} params.descriptor - The descriptor.
+   * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
+   * @returns {Payment} A bitcoinjs `Payment` object containing the parsed descriptor's information, including a string with the `addresss`, and a `Buffer` with the `output` script:
+   * ```typescript
+   * interface Payment {
+   *     name?: string;
+   *     network?: Network;
+   *     output?: Buffer;
+   *     data?: Buffer[];
+   *     m?: number;
+   *     n?: number;
+   *     pubkeys?: Buffer[];
+   *     input?: Buffer;
+   *     signatures?: Buffer[];
+   *     internalPubkey?: Buffer;
+   *     pubkey?: Buffer;
+   *     signature?: Buffer;
+   *     address?: string;
+   *     hash?: Buffer;
+   *     redeem?: Payment;
+   *     redeemVersion?: number;
+   *     scriptTree?: Taptree;
+   *     witness?: Buffer[];
+   * }
+   * ```
+   *
+   * @see {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts}
    * @throws {Error} Will throw an error if the descriptor is invalid or fails validation.
    */
   function parse({
@@ -244,8 +272,8 @@ export function DescriptorsFactory(ecc) {
     const isolatedDesc = isolate({ desc, index, checksumRequired });
 
     //addr(ADDR)
-    if (isolatedDesc.match(reAddrOut)) {
-      const matchedAddress = isolatedDesc.match(reAddrOut)[1]; //[1] -> whatever is inside addr(->HERE<-)
+    if (isolatedDesc.match(reAddrAnchored)) {
+      const matchedAddress = isolatedDesc.match(reAddrAnchored)[1]; //[1] -> whatever is inside addr(->HERE<-)
       try {
         address.toOutputScript(matchedAddress, network);
       } catch (e) {
@@ -254,7 +282,7 @@ export function DescriptorsFactory(ecc) {
       return { address: matchedAddress };
     }
     //pk(KEY)
-    else if (isolatedDesc.match(rePkOut)) {
+    else if (isolatedDesc.match(rePkAnchored)) {
       const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `pk(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
@@ -263,7 +291,7 @@ export function DescriptorsFactory(ecc) {
       return p2pk({ pubkey, network });
     }
     //pkh(KEY) - legacy
-    else if (isolatedDesc.match(rePkhOut)) {
+    else if (isolatedDesc.match(rePkhAnchored)) {
       const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `pkh(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
@@ -271,7 +299,7 @@ export function DescriptorsFactory(ecc) {
       return p2pkh({ pubkey, network });
     }
     //sh(wpkh(KEY)) - nested segwit
-    else if (isolatedDesc.match(reShWpkhOut)) {
+    else if (isolatedDesc.match(reShWpkhAnchored)) {
       const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
         throw new Error(`Error: invalid desc ${desc}`);
@@ -279,7 +307,7 @@ export function DescriptorsFactory(ecc) {
       return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
     }
     //wpkh(KEY) - native segwit
-    else if (isolatedDesc.match(reWpkhOut)) {
+    else if (isolatedDesc.match(reWpkhAnchored)) {
       const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `wpkh(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
@@ -287,8 +315,8 @@ export function DescriptorsFactory(ecc) {
       return p2wpkh({ pubkey, network });
     }
     //sh(wsh(miniscript))
-    else if (isolatedDesc.match(reShWshMiniscriptOut)) {
-      const miniscript = isolatedDesc.match(reShWshMiniscriptOut)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+    else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
+      const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       const script = miniscript2Script({ miniscript, network });
       return p2sh({
         redeem: p2wsh({ redeem: { output: script }, network }),
@@ -296,8 +324,8 @@ export function DescriptorsFactory(ecc) {
       });
     }
     //sh(miniscript)
-    else if (isolatedDesc.match(reShMiniscriptOut)) {
-      const miniscript = isolatedDesc.match(reWshMiniscriptOut)[1]; //[1]-> whatever is found wsh(->HERE<-)
+    else if (isolatedDesc.match(reShMiniscriptAnchored)) {
+      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
@@ -306,8 +334,8 @@ export function DescriptorsFactory(ecc) {
       return p2sh({ redeem: { output: script }, network });
     }
     //wsh(miniscript)
-    else if (isolatedDesc.match(reWshMiniscriptOut)) {
-      const miniscript = isolatedDesc.match(reShMiniscriptOut)[1]; //[1]-> whatever is found sh(->HERE<-)
+    else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
+      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
       const script = miniscript2Script({ miniscript, network });
       return p2wsh({ redeem: { output: script }, network });
     } else {
@@ -315,5 +343,14 @@ export function DescriptorsFactory(ecc) {
     }
   }
 
-  return { parse, checksum: DescriptorChecksum };
+  /**
+   * Computes the checksum of a descriptor.
+   *
+   * @Function
+   * @param {string} descriptor - The descriptor.
+   * @returns {string} - The checksum.
+   */
+  const checksum = DescriptorChecksum;
+
+  return { parse, checksum };
 }
