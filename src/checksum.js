@@ -1,5 +1,5 @@
 // Copyright (c) 2018-2022 The Bitcoin Core developers
-// Converted into Javascript by Jose-Luis Landabaso
+// Converted in 2023 into Javascript by Jose-Luis Landabaso
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 //
 // Distributed under the MIT software license, see

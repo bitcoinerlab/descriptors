@@ -1,8 +1,6 @@
 // Copyright (c) 2023 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-/** @module descriptors */
-
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
 import { address, networks, payments, script } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
@@ -11,6 +9,8 @@ import BIP32Factory from 'bip32';
 import ECPairFactory from 'ecpair';
 
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
+
+import { numberEncodeAsm } from './numberEncodeAsm';
 
 //Regular expressions cheat sheet:
 //https://www.keycdn.com/support/regex-cheat-sheet
@@ -92,12 +92,50 @@ const reWshMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReWsh(reMiniscript))
 );
 
-/** @namespace */
+/*
+ * Returns a bare descriptor without checksum and particularized for a certain
+ * index (if desc was a rage descriptor)
+ */
+function isolate({ desc, checksumRequired, index }) {
+  const mChecksum = desc.match(String.raw`(${reChecksum})$`);
+  if (mChecksum === null && checksumRequired === true)
+    throw new Error(`Error: descriptor ${desc} has not checksum`);
+  //isolatedDesc: a bare desc without checksum and particularized for a certain
+  //index (if desc was a rage descriptor)
+  let isolatedDesc = desc;
+  if (mChecksum !== null) {
+    const checksum = mChecksum[0].substring(1); //remove the leading #
+    isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
+    if (checksum !== DescriptorChecksum(isolatedDesc)) {
+      throw new Error(`Error: invalid descriptor checksum for ${desc}`);
+    }
+  }
+  let mWildcard = isolatedDesc.match(/\*/g);
+  if (mWildcard && mWildcard.length > 1) {
+    throw new Error(
+      `Error: cannot extract an address when using multiple ranges`
+    );
+  }
+  if (mWildcard && mWildcard.length === 1) {
+    if (!Number.isInteger(index) || index < 0)
+      throw new Error(`Error: invalid index ${index}`);
+    isolatedDesc = isolatedDesc.replace('*', index);
+  }
+  return isolatedDesc;
+}
+
+/**
+ * Builds the functions needed to operate with descriptors using an external elliptic curve (ecc) library.
+ * @param {Object} ecc - an object containing elliptic curve operations, such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
+ * @returns {Object} an object containing functions, `parse` and `checksum`.
+ * @namespace
+ */
 export function DescriptorsFactory(ecc) {
   const bip32 = BIP32Factory(ecc);
   const ecpair = ECPairFactory(ecc);
 
-  /* Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
+  /*
+   * Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
    * binary format
    */
   function keyExpression2PubKey({
@@ -128,6 +166,11 @@ export function DescriptorsFactory(ecc) {
       }
       //match WIF:
     } else if ((mWIF = actualKey.match(anchorStartAndEnd(reWIF))) !== null) {
+      if (mWIF[0] === 'KwsfyHKRUTZPQtysN7M3tZ4GXTnuov5XRgjdF2XCG8faAPmFruRF')
+        console.log({
+          wif: mWIF[0],
+          pubkey: ecpair.fromWIF(mWIF[0], network).publicKey.toString('hex')
+        });
       //fromWIF will throw if the wif is not valid
       return ecpair.fromWIF(mWIF[0], network).publicKey;
       //match xpub:
@@ -159,45 +202,13 @@ export function DescriptorsFactory(ecc) {
     }
   }
 
-  /*
-   * Returns a bare descriptor without checksum and particularized for a certain
-   * index (if desc was a rage descriptor)
-   */
-  function isolate({ desc, checksumRequired, index }) {
-    const mChecksum = desc.match(String.raw`(${reChecksum})$`);
-    if (mChecksum === null && checksumRequired === true)
-      throw new Error(`Error: descriptor ${desc} has not checksum`);
-    //isolatedDesc: a bare desc without checksum and particularized for a certain
-    //index (if desc was a rage descriptor)
-    let isolatedDesc = desc;
-    if (mChecksum !== null) {
-      const checksum = mChecksum[0].substring(1); //remove the leading #
-      isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
-      if (checksum !== DescriptorChecksum(isolatedDesc)) {
-        throw new Error(`Error: invalid descriptor checksum for ${desc}`);
-      }
-    }
-    let mWildcard = isolatedDesc.match(/\*/g);
-    if (mWildcard && mWildcard.length > 1) {
-      throw new Error(
-        `Error: cannot extract an address when using multiple ranges`
-      );
-    }
-    if (mWildcard && mWildcard.length === 1) {
-      if (!Number.isInteger(index) || index < 0)
-        throw new Error(`Error: invalid index ${index}`);
-      isolatedDesc = isolatedDesc.replace('*', index);
-    }
-    return isolatedDesc;
-  }
-
   function miniscript2Script({
     miniscript,
     isSegwit = true,
     network = networks.bitcoin
   }) {
     //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
-    //miniscript can be compiled with compileMiniscript
+    //it can be compiled with compileMiniscript
     //Also compute pubKeys from descriptors to use them later.
     const keyMap = {};
     const bareM = miniscript.replace(RegExp(reKeyExp, 'g'), keyExp => {
@@ -214,15 +225,28 @@ export function DescriptorsFactory(ecc) {
       throw new Error(`Error: Miniscript ${bareM} is not sane`);
     }
     //Replace back variables into the pubKeys previously computed.
-    const asm = compiled.asm.replace(
-      new RegExp(Object.keys(keyMap).join('|'), 'g'),
-      key => keyMap[key]
+    const asm = Object.keys(keyMap).reduce(
+      (accAsm, key) =>
+        accAsm.replace(RegExp('<' + key + '>', 'g'), '<' + keyMap[key] + '>'),
+      compiled.asm
     );
-    //Create binary code from the asm above. Prepare asm:
-    //Replace one or more consecutive whitespace characters (spaces, tabs, or line
-    //breaks) with a single space.
-    //Convert <hexcode> into hexcode (without <, >) as expected in fromASM.
-    return script.fromASM(asm.trim().replace(/\s+/g, ' ').replace(/[<>]/g, ''));
+    //Create binary code from the asm above. Prepare asm to fromASM.
+    //fromASM does not expect "<", ">". It expects numbers already encoded and
+    //and assumes the rest to be either OP_CODES or hex that has to be pushed.
+    const parsedAsm = asm
+      .trim()
+      //Replace one or more consecutive whitespace characters (spaces, tabs,
+      //or line breaks) with a single space.
+      .replace(/\s+/g, ' ')
+      //Now encode numbers to little endian hex. Note that numbers are not
+      //enclosed in <>, since <> represents hex code already encoded.
+      //The regex below will match one or more digits within a string,
+      //except if the sequence is surrounded by "<" and ">"
+      .replace(/(?<![<])\b\d+\b(?![>])/g, num => numberEncodeAsm(Number(num)))
+      //we don't have numbers anymore, now it's safe to remove < and > since we
+      //know that every remaining is either an op_code or a hex encoded number
+      .replace(/[<>]/g, '');
+    return script.fromASM(parsedAsm);
   }
 
   /**
@@ -270,8 +294,8 @@ export function DescriptorsFactory(ecc) {
     checksumRequired = true,
     network = networks.bitcoin
   }) {
-    //verify and remove checksum (if exists) and
-    //particularize rante descriptor for index (if desc is range descriptor)
+    //Verify and remove checksum (if exists) and
+    //particularize range descriptor for index (if desc is range descriptor)
     const isolatedDesc = isolate({ desc, index, checksumRequired });
 
     //addr(ADDR)
@@ -290,7 +314,7 @@ export function DescriptorsFactory(ecc) {
       if (isolatedDesc !== `pk(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
       const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
-      //Note, this is the script, not the address
+      //Note there exists no address for p2pk, but we can still use the script
       return p2pk({ pubkey, network });
     }
     //pkh(KEY) - legacy
@@ -328,7 +352,7 @@ export function DescriptorsFactory(ecc) {
     }
     //sh(miniscript)
     else if (isolatedDesc.match(reShMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
+      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
@@ -338,7 +362,7 @@ export function DescriptorsFactory(ecc) {
     }
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
+      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
       const script = miniscript2Script({ miniscript, network });
       return p2wsh({ redeem: { output: script }, network });
     } else {
