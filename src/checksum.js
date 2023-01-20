@@ -1,9 +1,6 @@
-// Copyright (c) 2018-2022 The Bitcoin Core developers
-// Converted in 2023 into Javascript by Jose-Luis Landabaso
+// Converted to Javascript by Jose-Luis Landabaso, 2023
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
-//
-// Distributed under the MIT software license, see
-// http://www.opensource.org/licenses/mit-license.php.
+// Distributed under the MIT software license
 const PolyMod = (c, val) => {
   let c0 = c >> 35n;
   c = ((c & 0x7ffffffffn) << 5n) ^ val;

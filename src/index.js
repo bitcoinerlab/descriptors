@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
-import { address, networks, payments, script } from 'bitcoinjs-lib';
+import { address, networks, payments, script, crypto } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
 import BIP32Factory from 'bip32';
@@ -166,11 +166,6 @@ export function DescriptorsFactory(ecc) {
       }
       //match WIF:
     } else if ((mWIF = actualKey.match(anchorStartAndEnd(reWIF))) !== null) {
-      if (mWIF[0] === 'KwsfyHKRUTZPQtysN7M3tZ4GXTnuov5XRgjdF2XCG8faAPmFruRF')
-        console.log({
-          wif: mWIF[0],
-          pubkey: ecpair.fromWIF(mWIF[0], network).publicKey.toString('hex')
-        });
       //fromWIF will throw if the wif is not valid
       return ecpair.fromWIF(mWIF[0], network).publicKey;
       //match xpub:
@@ -179,24 +174,34 @@ export function DescriptorsFactory(ecc) {
     ) {
       const xPubKey = mXpubKey[0];
       const xPub = xPubKey.match(reXpub)[0];
-      const path = xPubKey.match(rePath)[0];
-      //fromBase58 and derivePath will throw if xPub or path are not valid
-      return bip32
-        .fromBase58(xPub, network)
-        .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-        .publicKey;
-      //match xrv:
+      const mPath = xPubKey.match(rePath);
+      if (mPath !== null) {
+        const path = xPubKey.match(rePath)[0];
+        //fromBase58 and derivePath will throw if xPub or path are not valid
+        return bip32
+          .fromBase58(xPub, network)
+          .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
+          .publicKey;
+      } else {
+        return bip32.fromBase58(xPub, network).publicKey;
+      }
+      //match xprv:
     } else if (
       (mXprvKey = actualKey.match(anchorStartAndEnd(reXprvKey))) !== null
     ) {
       const xPrvKey = mXprvKey[0];
       const xPrv = xPrvKey.match(reXprv)[0];
-      const path = xPrvKey.match(rePath)[0];
-      //fromBase58 and derivePath will throw if xPrv or path are not valid
-      return bip32
-        .fromBase58(xPrv, network)
-        .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-        .publicKey;
+      const mPath = xPrvKey.match(rePath);
+      if (mPath !== null) {
+        const path = xPrvKey.match(rePath)[0];
+        //fromBase58 and derivePath will throw if xPrv or path are not valid
+        return bip32
+          .fromBase58(xPrv, network)
+          .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
+          .publicKey;
+      } else {
+        return bip32.fromBase58(xPrv, network).publicKey;
+      }
     } else {
       throw new Error(`Error: could not get pubkey for keyExp ${keyExp}`);
     }
@@ -225,11 +230,14 @@ export function DescriptorsFactory(ecc) {
       throw new Error(`Error: Miniscript ${bareM} is not sane`);
     }
     //Replace back variables into the pubKeys previously computed.
-    const asm = Object.keys(keyMap).reduce(
-      (accAsm, key) =>
-        accAsm.replace(RegExp('<' + key + '>', 'g'), '<' + keyMap[key] + '>'),
-      compiled.asm
-    );
+    const asm = Object.keys(keyMap).reduce((accAsm, key) => {
+      return accAsm
+        .replaceAll(`<${key}>`, '<' + keyMap[key] + '>')
+        .replaceAll(
+          `<HASH160\(${key}\)>`,
+          `<${crypto.hash160(Buffer.from(keyMap[key], 'hex')).toString('hex')}>`
+        );
+    }, compiled.asm);
     //Create binary code from the asm above. Prepare asm to fromASM.
     //fromASM does not expect "<", ">". It expects numbers already encoded and
     //and assumes the rest to be either OP_CODES or hex that has to be pushed.
@@ -294,6 +302,9 @@ export function DescriptorsFactory(ecc) {
     checksumRequired = true,
     network = networks.bitcoin
   }) {
+    if (typeof desc !== 'string')
+      throw new Error(`Error: invalid descriptor type`);
+
     //Verify and remove checksum (if exists) and
     //particularize range descriptor for index (if desc is range descriptor)
     const isolatedDesc = isolate({ desc, index, checksumRequired });
@@ -346,25 +357,25 @@ export function DescriptorsFactory(ecc) {
       const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       const script = miniscript2Script({ miniscript, network });
       return p2sh({
-        redeem: p2wsh({ redeem: { output: script }, network }),
+        redeem: p2wsh({ redeem: { output: script, network }, network }),
         network
       });
     }
     //sh(miniscript)
     else if (isolatedDesc.match(reShMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
+      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
         network
       });
-      return p2sh({ redeem: { output: script }, network });
+      return p2sh({ redeem: { output: script, network }, network });
     }
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
+      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
       const script = miniscript2Script({ miniscript, network });
-      return p2wsh({ redeem: { output: script }, network });
+      return p2wsh({ redeem: { output: script, network }, network });
     } else {
       throw new Error(`Error: Could not parse descriptor ${desc}`);
     }

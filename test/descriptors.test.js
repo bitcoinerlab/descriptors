@@ -2,27 +2,44 @@
 // Distributed under the MIT software license
 
 import { DescriptorsFactory } from '../src/index';
-import { fixtures } from './fixtures/descriptors';
+import { fixtures as customFixtures } from './fixtures/descriptors';
+import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCoreFixtures';
 import * as ecc from '@bitcoinerlab/secp256k1';
 const descriptors = DescriptorsFactory(ecc);
 
-describe('parse', () => {
-  test('parse valid descriptors', () => {
+for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
+  describe(`Parse valid ${
+    fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
+  }`, () => {
     for (const fixture of fixtures.valid) {
-      const parsed = descriptors.parse(fixture);
-      if (fixture.outputScript) {
-        expect(parsed.output.toString('hex')).toEqual(fixture.outputScript);
-      }
-      if (fixture.address) {
-        expect(parsed.address).toEqual(fixture.address);
-      }
+      test(`Parse valid ${fixture.desc}`, () => {
+        const parsed = descriptors.parse(fixture);
+        if (!fixture.outputScript && !fixture.address)
+          throw new Error(`Error: pass a valid test for ${fixture.desc}`);
+        if (fixture.outputScript) {
+          expect(parsed.output.toString('hex')).toEqual(fixture.outputScript);
+        }
+        if (fixture.address) {
+          expect(parsed.address).toEqual(fixture.address);
+        }
+      });
     }
   });
-  test('parse invalid descriptors', () => {
+  describe(`Parse invalid ${
+    fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
+  }`, () => {
     for (const fixture of fixtures.invalid) {
-      expect(() => {
-        descriptors.parse(fixture);
-      }).toThrow(fixture.throw);
+      test(`Parse invalid ${fixture.desc}`, () => {
+        if (typeof fixture.throw !== 'string') {
+          expect(() => {
+            descriptors.parse(fixture);
+          }).toThrow();
+        } else {
+          expect(() => {
+            descriptors.parse(fixture);
+          }).toThrow(fixture.throw);
+        }
+      });
     }
   });
-});
+}

@@ -27,6 +27,19 @@ import { networks } from 'bitcoinjs-lib';
 export const fixtures = {
   valid: [
     {
+      desc: 'sh(pkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))',
+      address: '345X16vrwhSrbV4hp1AM5wqLh8s2kj6di4',
+      note: 'bdk-cli -n bitcoin wallet -d "sh(pkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))" get_new_address',
+      checksumRequired: false
+    },
+
+    {
+      desc: 'sh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))',
+      address: '345X16vrwhSrbV4hp1AM5wqLh8s2kj6di4',
+      note: 'using the pubkey instead of thw WIF of the test above; bdk-cli -n bitcoin wallet -d "sh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))" get_new_address',
+      checksumRequired: false
+    },
+    {
       desc: 'pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
       outputScript:
         '2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac',
@@ -142,6 +155,11 @@ export const fixtures = {
       outputScript:
         '0020376bd8344b8b6ebe504ff85ef743eaa1aa9272178223bcb6887e9378efb341ac',
       address: 'bc1qxa4asdzt3dhtu5z0lp00wsl25x4fyushsg3med5g06fh3mangxkqgf3se4'
+    },
+    {
+      note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L454',
+      desc: "sh(multi(2,[00000000/111'/222]xprvA1RpRA33e1JQ7ifknakTFpgNXPmW2YvmhqLQYMmrj4xJXXWYpDPS3xz7iAxn8L39njGVyuoseXzU6rcxFLJ8HFsTjSyQbLYnMpCqE2VbFWc,xprv9uPDJpEQgRQfDcW7BkF7eTya6RPxXeJCqCJGHuCJ4GiRVLzkTXBAJMu2qaMWPrS7AANYqdq6vcBcBUdJCVVFceUvJFjaPdGZ2y9WACViL4L/0))#ggrsrxfy",
+      outputScript: 'a91445a9a622a8b0a1269944be477640eedc447bbd8487'
     }
   ],
   invalid: [
@@ -180,6 +198,30 @@ export const fixtures = {
       index: 23,
       throw:
         "Error: Could not parse descriptor wpkh([de41e56d/84'/1'/0']upubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*)"
+    },
+    {
+      note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L445',
+      desc: 'sh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
+      checksumRequired: false,
+      throw: 'Error: Miniscript key_0 is not sane'
+    },
+    {
+      note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L447',
+      desc: 'wsh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
+      checksumRequired: false,
+      throw: 'Error: Miniscript key_0 is not sane'
+    },
+    {
+      note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L448',
+      desc: 'wsh(wpkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))',
+      checksumRequired: false,
+      throw: 'Error: Miniscript wpkh(key_0) is not sane'
+    },
+    {
+      note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L449',
+      desc: 'wsh(sh(pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)))',
+      checksumRequired: false,
+      throw: 'Error: Miniscript sh(pk(key_0)) is not sane'
     }
   ]
 };
