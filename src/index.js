@@ -1,8 +1,14 @@
-// Copyright (c) 2023 Jose-Luis Landabaso
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
-import { address, networks, payments, script, crypto } from 'bitcoinjs-lib';
+import {
+  address,
+  networks,
+  payments,
+  script as bscript,
+  crypto
+} from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
 import BIP32Factory from 'bip32';
@@ -11,6 +17,12 @@ import ECPairFactory from 'ecpair';
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
 
 import { numberEncodeAsm } from './numberEncodeAsm';
+
+//See "Resource limitations" https://bitcoin.sipa.be/miniscript/
+//https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
+const MAX_SCRIPT_ELEMENT_SIZE = 520;
+const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
+const MAX_OPS_PER_SCRIPT = 201;
 
 //Regular expressions cheat sheet:
 //https://www.keycdn.com/support/regex-cheat-sheet
@@ -207,6 +219,11 @@ export function DescriptorsFactory(ecc) {
     }
   }
 
+  function countNonPushOnlyOPs(script) {
+    return bscript.decompile(script).filter(op => op > bscript.OPS.OP_16)
+      .length;
+  }
+
   function miniscript2Script({
     miniscript,
     isSegwit = true,
@@ -225,6 +242,12 @@ export function DescriptorsFactory(ecc) {
       }).toString('hex');
       return key;
     });
+    const pubKeys = Object.values(keyMap);
+    if (new Set(pubKeys).size !== pubKeys.length) {
+      throw new Error(
+        `Error: miniscript ${miniscript} is not sane: contains duplicate public keys.`
+      );
+    }
     const compiled = compileMiniscript(bareM);
     if (compiled.issane !== true) {
       throw new Error(`Error: Miniscript ${bareM} is not sane`);
@@ -232,7 +255,7 @@ export function DescriptorsFactory(ecc) {
     //Replace back variables into the pubKeys previously computed.
     const asm = Object.keys(keyMap).reduce((accAsm, key) => {
       return accAsm
-        .replaceAll(`<${key}>`, '<' + keyMap[key] + '>')
+        .replaceAll(`<${key}>`, `<${keyMap[key]}>`)
         .replaceAll(
           `<HASH160\(${key}\)>`,
           `<${crypto.hash160(Buffer.from(keyMap[key], 'hex')).toString('hex')}>`
@@ -254,7 +277,7 @@ export function DescriptorsFactory(ecc) {
       //we don't have numbers anymore, now it's safe to remove < and > since we
       //know that every remaining is either an op_code or a hex encoded number
       .replace(/[<>]/g, '');
-    return script.fromASM(parsedAsm);
+    return bscript.fromASM(parsedAsm);
   }
 
   /**
@@ -356,6 +379,17 @@ export function DescriptorsFactory(ecc) {
     else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
       const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       const script = miniscript2Script({ miniscript, network });
+      if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+        throw new Error(
+          `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+        );
+      }
+      const nonPushOnlyOps = countNonPushOnlyOPs(script);
+      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+        throw new Error(
+          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+        );
+      }
       return p2sh({
         redeem: p2wsh({ redeem: { output: script, network }, network }),
         network
@@ -369,12 +403,34 @@ export function DescriptorsFactory(ecc) {
         isSegwit: false,
         network
       });
+      if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
+        throw new Error(
+          `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
+        );
+      }
+      const nonPushOnlyOps = countNonPushOnlyOPs(script);
+      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+        throw new Error(
+          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+        );
+      }
       return p2sh({ redeem: { output: script, network }, network });
     }
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
       const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
       const script = miniscript2Script({ miniscript, network });
+      if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+        throw new Error(
+          `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+        );
+      }
+      const nonPushOnlyOps = countNonPushOnlyOPs(script);
+      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+        throw new Error(
+          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+        );
+      }
       return p2wsh({ redeem: { output: script, network }, network });
     } else {
       throw new Error(`Error: Could not parse descriptor ${desc}`);

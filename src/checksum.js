@@ -1,4 +1,4 @@
-// Converted to Javascript by Jose-Luis Landabaso, 2023
+// Converted to Javascript by Jose-Luis Landabaso, 2023 - https://bitcoinerlab.com
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 // Distributed under the MIT software license
 const PolyMod = (c, val) => {

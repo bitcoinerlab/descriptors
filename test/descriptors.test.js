@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Jose-Luis Landabaso
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import { DescriptorsFactory } from '../src/index';
@@ -14,10 +14,10 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
     for (const fixture of fixtures.valid) {
       test(`Parse valid ${fixture.desc}`, () => {
         const parsed = descriptors.parse(fixture);
-        if (!fixture.outputScript && !fixture.address)
+        if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.desc}`);
-        if (fixture.outputScript) {
-          expect(parsed.output.toString('hex')).toEqual(fixture.outputScript);
+        if (fixture.script) {
+          expect(parsed.output.toString('hex')).toEqual(fixture.script);
         }
         if (fixture.address) {
           expect(parsed.address).toEqual(fixture.address);
