@@ -123,15 +123,18 @@ function isolate({ desc, checksumRequired, index }) {
     }
   }
   let mWildcard = isolatedDesc.match(/\*/g);
-  if (mWildcard && mWildcard.length > 1) {
-    throw new Error(
-      `Error: cannot extract an address when using multiple ranges`
-    );
-  }
-  if (mWildcard && mWildcard.length === 1) {
+  if (mWildcard && mWildcard.length > 0) {
     if (!Number.isInteger(index) || index < 0)
       throw new Error(`Error: invalid index ${index}`);
-    isolatedDesc = isolatedDesc.replace('*', index);
+    //From  https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
+    //To prevent a combinatorial explosion of the search space, if more than
+    //one of the multi() key arguments is a BIP32 wildcard path ending in /* or
+    //*', the multi() expression only matches multisig scripts with the ith
+    //child key from each wildcard path in lockstep, rather than scripts with
+    //any combination of child keys from each wildcard path.
+    //TODO: make sure that if there are multiple *, then they are inside a
+    //multi, sortedmulti, multi_a or sortedmulti_a
+    isolatedDesc = isolatedDesc.replaceAll('*', index);
   }
   return isolatedDesc;
 }
