@@ -136,6 +136,24 @@ function isolate({ desc, checksumRequired, index }) {
   return isolatedDesc;
 }
 
+const derivePath = (node, path) => {
+  if (typeof path !== 'string') {
+    throw new Error(`Error: invalid derivation path ${path}`);
+  }
+  const parsedPath = path.replaceAll('H', "'").replaceAll('h', "'").slice(1);
+  const splitPath = parsedPath.split('/');
+  for (const element of splitPath) {
+    const unhardened = element.endsWith("'") ? element.slice(0, -1) : element;
+    if (
+      !Number.isInteger(Number(unhardened)) ||
+      Number(unhardened) >= 0x80000000
+    )
+      throw new Error(`Error: BIP 32 path element overflow`);
+  }
+
+  return node.derivePath(parsedPath);
+};
+
 /**
  * Builds the functions needed to operate with descriptors using an external elliptic curve (ecc) library.
  * @param {Object} ecc - an object containing elliptic curve operations, such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
@@ -190,10 +208,7 @@ export function DescriptorsFactory(ecc) {
       if (mPath !== null) {
         const path = xPubKey.match(rePath)[0];
         //fromBase58 and derivePath will throw if xPub or path are not valid
-        return bip32
-          .fromBase58(xPub, network)
-          .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-          .publicKey;
+        return derivePath(bip32.fromBase58(xPub, network), path).publicKey;
       } else {
         return bip32.fromBase58(xPub, network).publicKey;
       }
@@ -207,10 +222,7 @@ export function DescriptorsFactory(ecc) {
       if (mPath !== null) {
         const path = xPrvKey.match(rePath)[0];
         //fromBase58 and derivePath will throw if xPrv or path are not valid
-        return bip32
-          .fromBase58(xPrv, network)
-          .derivePath(path.replaceAll('H', "'").replaceAll('h', "'").slice(1))
-          .publicKey;
+        return derivePath(bip32.fromBase58(xPrv, network), path).publicKey;
       } else {
         return bip32.fromBase58(xPrv, network).publicKey;
       }
@@ -401,13 +413,17 @@ export function DescriptorsFactory(ecc) {
       const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
       if (
         allowMiniscriptInP2SH === false &&
+        //These top-level expressions within sh are allowed within sh.
+        //They can be parsed with miniscript2Script, but first we must make sure
+        //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
         miniscript.search(
           /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
         ) !== 0
-      )
+      ) {
         throw new Error(
           `Error: Miniscript expressions can only be used in wsh`
         );
+      }
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
