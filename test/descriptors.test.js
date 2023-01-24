@@ -2,8 +2,8 @@
 // Distributed under the MIT software license
 
 import { DescriptorsFactory } from '../src/index';
-import { fixtures as customFixtures } from './fixtures/descriptors';
-import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCoreFixtures';
+import { fixtures as customFixtures } from './fixtures/custom';
+import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
 const descriptors = DescriptorsFactory(ecc);
 

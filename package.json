@@ -8,7 +8,7 @@
     "build": "rollup -c --bundleConfigAsCjs",
     "prepublishOnly": "npm run build && npm test",
     "docs": "jsdoc -c jsdoc.json",
-    "test": "jest",
+    "test": "node test/generateBitcoinCoreFixtures.js && jest",
     "example": ""
   },
   "COMMENT_babel": "Babel plugins are are only needed for the jest testing environment. Jest needs to use commonjs. Also, jest cannot handle ESM converted code, since it uses 'import.meta.url'. See src/bindings.js. babel-plugin-transform-import-meta fixes it.",

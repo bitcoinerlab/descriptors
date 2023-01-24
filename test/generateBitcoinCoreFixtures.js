@@ -152,6 +152,6 @@ export const fixtures = ${JSON.stringify(fixtures, null, 2)};`;
   const fullPath = path.join(__dirname, './fixtures', 'bitcoinCoreFixtures.js');
   fs.writeFile(fullPath, contents, err => {
     if (err) throw err;
-    console.log('The file has been saved!');
+    console.log('Bitcoin Core fixtures file created.');
   });
 });
