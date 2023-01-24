@@ -204,7 +204,6 @@ export const fixtures = {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L445',
       desc: 'sh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
       checksumRequired: false,
-      throw: 'Error: Miniscript key_0 is not sane'
     },
     {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L447',
