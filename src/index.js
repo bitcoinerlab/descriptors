@@ -323,6 +323,7 @@ export function DescriptorsFactory(ecc) {
     desc,
     index,
     checksumRequired = true,
+    allowMiniscriptInP2SH = false,
     network = networks.bitcoin
   }) {
     if (typeof desc !== 'string')
@@ -398,6 +399,15 @@ export function DescriptorsFactory(ecc) {
     //sh(miniscript)
     else if (isolatedDesc.match(reShMiniscriptAnchored)) {
       const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
+      if (
+        allowMiniscriptInP2SH === false &&
+        miniscript.search(
+          /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
+        ) !== 0
+      )
+        throw new Error(
+          `Error: Miniscript expressions can only be used in wsh`
+        );
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
