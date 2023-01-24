@@ -132,8 +132,8 @@ function isolate({ desc, checksumRequired, index }) {
     //*', the multi() expression only matches multisig scripts with the ith
     //child key from each wildcard path in lockstep, rather than scripts with
     //any combination of child keys from each wildcard path.
-    //TODO: make sure that if there are multiple *, then they are inside a
-    //multi, sortedmulti, multi_a or sortedmulti_a
+
+    //We extend this reasoning for musig for all cases
     isolatedDesc = isolatedDesc.replaceAll('*', index);
   }
   return isolatedDesc;

@@ -56,8 +56,14 @@ const parseTests = str => {
       currentArg += argsString[i];
     }
   }
-  //remove duplicated descs
-  return { descs: [...new Set(descs)], scripts };
+  if (str.match(/HARDENED/)) {
+    //When using the flag HARDENED, first desc in the tests always includes
+    //xprv or private keys
+    return { descs: [descs[0]], scripts };
+  } else {
+    //remove duplicated descs
+    return { descs: [...new Set(descs)], scripts };
+  }
 };
 
 const isSupported = parsed => {
