@@ -106,14 +106,14 @@ const reWshMiniscriptAnchored = anchorStartAndEnd(
 
 /*
  * Returns a bare descriptor without checksum and particularized for a certain
- * index (if desc was a rage descriptor)
+ * index (if desc was a range descriptor)
  */
 function isolate({ desc, checksumRequired, index }) {
   const mChecksum = desc.match(String.raw`(${reChecksum})$`);
   if (mChecksum === null && checksumRequired === true)
     throw new Error(`Error: descriptor ${desc} has not checksum`);
   //isolatedDesc: a bare desc without checksum and particularized for a certain
-  //index (if desc was a rage descriptor)
+  //index (if desc was a range descriptor)
   let isolatedDesc = desc;
   if (mChecksum !== null) {
     const checksum = mChecksum[0].substring(1); //remove the leading #
