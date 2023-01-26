@@ -11,8 +11,8 @@ import {
 } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
-import BIP32Factory from 'bip32';
-import ECPairFactory from 'ecpair';
+import { BIP32Factory } from 'bip32';
+import { ECPairFactory } from 'ecpair';
 
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
 
@@ -242,6 +242,7 @@ export function DescriptorsFactory(ecc) {
   function miniscript2Script({
     miniscript,
     isSegwit = true,
+    unknowns = [],
     network = networks.bitcoin
   }) {
     //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
@@ -339,6 +340,7 @@ export function DescriptorsFactory(ecc) {
     index,
     checksumRequired = true,
     allowMiniscriptInP2SH = false,
+    unknowns = [],
     network = networks.bitcoin
   }) {
     if (typeof desc !== 'string')
@@ -394,7 +396,7 @@ export function DescriptorsFactory(ecc) {
     //sh(wsh(miniscript))
     else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
       const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
-      const script = miniscript2Script({ miniscript, network });
+      const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
           `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
@@ -430,6 +432,7 @@ export function DescriptorsFactory(ecc) {
       const script = miniscript2Script({
         miniscript,
         isSegwit: false,
+        unknowns,
         network
       });
       if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
@@ -448,7 +451,7 @@ export function DescriptorsFactory(ecc) {
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
       const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
-      const script = miniscript2Script({ miniscript, network });
+      const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
           `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
