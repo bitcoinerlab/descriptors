@@ -1,17 +1,21 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+//@ts-ignore
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
 import {
   address,
   networks,
   payments,
   script as bscript,
-  crypto
+  crypto,
+  Network
 } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 
-import { BIP32Factory } from 'bip32';
+import type { TinySecp256k1Interface } from './tinysecp';
+
+import { BIP32Factory, BIP32Interface } from 'bip32';
 import { ECPairFactory } from 'ecpair';
 
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
@@ -79,13 +83,13 @@ const reShWpkh = String.raw`sh\(wpkh\(${reKeyExp}\)\)`;
 const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
 
 //RegExp makers:
-const makeReSh = re => String.raw`sh\(${re}\)`;
-const makeReWsh = re => String.raw`wsh\(${re}\)`;
-const makeReShWsh = re => makeReSh(makeReWsh(re));
+const makeReSh = (re: string) => String.raw`sh\(${re}\)`;
+const makeReWsh = (re: string) => String.raw`wsh\(${re}\)`;
+const makeReShWsh = (re: string) => makeReSh(makeReWsh(re));
 
-const anchorStartAndEnd = re => String.raw`^${re}$`; //starts and finishes like re (not composable)
+const anchorStartAndEnd = (re: string) => String.raw`^${re}$`; //starts and finishes like re (not composable)
 
-const composeChecksum = re => String.raw`${re}(${reChecksum})?`; //it's optional (note the "?")
+const composeChecksum = (re: string) => String.raw`${re}(${reChecksum})?`; //it's optional (note the "?")
 
 const rePkAnchored = anchorStartAndEnd(composeChecksum(rePk));
 const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
@@ -108,7 +112,15 @@ const reWshMiniscriptAnchored = anchorStartAndEnd(
  * Returns a bare descriptor without checksum and particularized for a certain
  * index (if desc was a range descriptor)
  */
-function isolate({ desc, checksumRequired, index }) {
+function isolate({
+  desc,
+  checksumRequired,
+  index
+}: {
+  desc: string;
+  checksumRequired: boolean;
+  index: number;
+}): string {
   const mChecksum = desc.match(String.raw`(${reChecksum})$`);
   if (mChecksum === null && checksumRequired === true)
     throw new Error(`Error: descriptor ${desc} has not checksum`);
@@ -134,12 +146,12 @@ function isolate({ desc, checksumRequired, index }) {
     //any combination of child keys from each wildcard path.
 
     //We extend this reasoning for musig for all cases
-    isolatedDesc = isolatedDesc.replaceAll('*', index);
+    isolatedDesc = isolatedDesc.replaceAll('*', index.toString());
   }
   return isolatedDesc;
 }
 
-const derivePath = (node, path) => {
+const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {
     throw new Error(`Error: invalid derivation path ${path}`);
   }
@@ -163,7 +175,7 @@ const derivePath = (node, path) => {
  * @returns {Object} an object containing functions, `parse` and `checksum`.
  * @namespace
  */
-export function DescriptorsFactory(ecc) {
+export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const bip32 = BIP32Factory(ecc);
   const ecpair = ECPairFactory(ecc);
 
@@ -175,7 +187,11 @@ export function DescriptorsFactory(ecc) {
     keyExp,
     network = networks.bitcoin,
     isSegwit = true
-  }) {
+  }: {
+    keyExp: string;
+    network?: Network;
+    isSegwit?: boolean;
+  }): Buffer {
     //Validate the keyExp:
     const keyExps = keyExp.match(reKeyExp);
     if (keyExps === null || keyExps[0] !== keyExp) {
@@ -206,10 +222,12 @@ export function DescriptorsFactory(ecc) {
       (mXpubKey = actualKey.match(anchorStartAndEnd(reXpubKey))) !== null
     ) {
       const xPubKey = mXpubKey[0];
-      const xPub = xPubKey.match(reXpub)[0];
+      const xPub = xPubKey.match(reXpub)?.[0];
+      if (!xPub) throw new Error(`Error: xpub could not be matched`);
       const mPath = xPubKey.match(rePath);
       if (mPath !== null) {
-        const path = xPubKey.match(rePath)[0];
+        const path = xPubKey.match(rePath)?.[0];
+        if (!path) throw new Error(`Error: could not extract a path`);
         //fromBase58 and derivePath will throw if xPub or path are not valid
         return derivePath(bip32.fromBase58(xPub, network), path).publicKey;
       } else {
@@ -220,10 +238,12 @@ export function DescriptorsFactory(ecc) {
       (mXprvKey = actualKey.match(anchorStartAndEnd(reXprvKey))) !== null
     ) {
       const xPrvKey = mXprvKey[0];
-      const xPrv = xPrvKey.match(reXprv)[0];
+      const xPrv = xPrvKey.match(reXprv)?.[0];
+      if (!xPrv) throw new Error(`Error: xprv could not be matched`);
       const mPath = xPrvKey.match(rePath);
       if (mPath !== null) {
-        const path = xPrvKey.match(rePath)[0];
+        const path = xPrvKey.match(rePath)?.[0];
+        if (!path) throw new Error(`Error: could not extract a path`);
         //fromBase58 and derivePath will throw if xPrv or path are not valid
         return derivePath(bip32.fromBase58(xPrv, network), path).publicKey;
       } else {
@@ -234,30 +254,41 @@ export function DescriptorsFactory(ecc) {
     }
   }
 
-  function countNonPushOnlyOPs(script) {
-    return bscript.decompile(script).filter(op => op > bscript.OPS.OP_16)
-      .length;
+  function countNonPushOnlyOPs(script: Buffer): number {
+    const decompile = bscript.decompile(script);
+    if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
+    return decompile.filter(op => op > bscript.OPS['OP_16']!).length;
   }
 
   function miniscript2Script({
     miniscript,
     isSegwit = true,
+    //@ts-ignore
     unknowns = [],
     network = networks.bitcoin
-  }) {
+  }: {
+    miniscript: string;
+    isSegwit?: boolean;
+    unknowns?: Array<string>;
+    network?: Network;
+  }): Buffer {
     //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
     //it can be compiled with compileMiniscript
     //Also compute pubKeys from descriptors to use them later.
-    const keyMap = {};
-    const bareM = miniscript.replace(RegExp(reKeyExp, 'g'), keyExp => {
-      const key = 'key_' + Object.keys(keyMap).length;
-      keyMap[key] = keyExpression2PubKey({
-        keyExp,
-        network,
-        isSegwit
-      }).toString('hex');
-      return key;
-    });
+    const keyMap: { [key: string]: string } = {};
+
+    const bareM = miniscript.replace(
+      RegExp(reKeyExp, 'g'),
+      (keyExp: string) => {
+        const key = 'key_' + Object.keys(keyMap).length;
+        keyMap[key] = keyExpression2PubKey({
+          keyExp,
+          network,
+          isSegwit
+        }).toString('hex');
+        return key;
+      }
+    );
     const pubKeys = Object.values(keyMap);
     if (new Set(pubKeys).size !== pubKeys.length) {
       throw new Error(
@@ -270,11 +301,15 @@ export function DescriptorsFactory(ecc) {
     }
     //Replace back variables into the pubKeys previously computed.
     const asm = Object.keys(keyMap).reduce((accAsm, key) => {
+      const pubKey = keyMap[key];
+      if (!pubKey) {
+        throw new Error(`Error: invalid keyMap for ${key}`);
+      }
       return accAsm
         .replaceAll(`<${key}>`, `<${keyMap[key]}>`)
         .replaceAll(
           `<HASH160\(${key}\)>`,
-          `<${crypto.hash160(Buffer.from(keyMap[key], 'hex')).toString('hex')}>`
+          `<${crypto.hash160(Buffer.from(pubKey, 'hex')).toString('hex')}>`
         );
     }, compiled.asm);
     //Create binary code from the asm above. Prepare asm to fromASM.
@@ -289,7 +324,9 @@ export function DescriptorsFactory(ecc) {
       //enclosed in <>, since <> represents hex code already encoded.
       //The regex below will match one or more digits within a string,
       //except if the sequence is surrounded by "<" and ">"
-      .replace(/(?<![<])\b\d+\b(?![>])/g, num => numberEncodeAsm(Number(num)))
+      .replace(/(?<![<])\b\d+\b(?![>])/g, (num: number) =>
+        numberEncodeAsm(Number(num))
+      )
       //we don't have numbers anymore, now it's safe to remove < and > since we
       //know that every remaining is either an op_code or a hex encoded number
       .replace(/[<>]/g, '');
@@ -342,6 +379,13 @@ export function DescriptorsFactory(ecc) {
     allowMiniscriptInP2SH = false,
     unknowns = [],
     network = networks.bitcoin
+  }: {
+    desc: string;
+    index: number;
+    checksumRequired?: boolean;
+    allowMiniscriptInP2SH?: boolean;
+    unknowns?: Array<string>;
+    network?: Network;
   }) {
     if (typeof desc !== 'string')
       throw new Error(`Error: invalid descriptor type`);
@@ -350,9 +394,11 @@ export function DescriptorsFactory(ecc) {
     //particularize range descriptor for index (if desc is range descriptor)
     const isolatedDesc = isolate({ desc, index, checksumRequired });
 
+    const matchedAddress = isolatedDesc.match(reAddrAnchored)?.[1];
+    const keyExp = isolatedDesc.match(reKeyExp)?.[0];
+
     //addr(ADDR)
-    if (isolatedDesc.match(reAddrAnchored)) {
-      const matchedAddress = isolatedDesc.match(reAddrAnchored)[1]; //[1] -> whatever is inside addr(->HERE<-)
+    if (matchedAddress) {
       try {
         address.toOutputScript(matchedAddress, network);
       } catch (e) {
@@ -362,44 +408,46 @@ export function DescriptorsFactory(ecc) {
     }
     //pk(KEY)
     else if (isolatedDesc.match(rePkAnchored)) {
-      const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `pk(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
+      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
       //Note there exists no address for p2pk, but we can still use the script
       return p2pk({ pubkey, network });
     }
     //pkh(KEY) - legacy
     else if (isolatedDesc.match(rePkhAnchored)) {
-      const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `pkh(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
+      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
       return p2pkh({ pubkey, network });
     }
     //sh(wpkh(KEY)) - nested segwit
     else if (isolatedDesc.match(reShWpkhAnchored)) {
-      const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
         throw new Error(`Error: invalid desc ${desc}`);
+      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network });
       return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
     }
     //wpkh(KEY) - native segwit
     else if (isolatedDesc.match(reWpkhAnchored)) {
-      const keyExp = isolatedDesc.match(reKeyExp)[0];
       if (isolatedDesc !== `wpkh(${keyExp})`)
         throw new Error(`Error: invalid desc ${desc}`);
+      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network });
       return p2wpkh({ pubkey, network });
     }
     //sh(wsh(miniscript))
     else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+      const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+      if (!miniscript)
+        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
       const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
-          `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
         );
       }
       const nonPushOnlyOps = countNonPushOnlyOPs(script);
@@ -415,7 +463,9 @@ export function DescriptorsFactory(ecc) {
     }
     //sh(miniscript)
     else if (isolatedDesc.match(reShMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)[1]; //[1]-> whatever is found sh(->HERE<-)
+      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
+      if (!miniscript)
+        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
       if (
         allowMiniscriptInP2SH === false &&
         //These top-level expressions within sh are allowed within sh.
@@ -450,11 +500,13 @@ export function DescriptorsFactory(ecc) {
     }
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)[1]; //[1]-> whatever is found wsh(->HERE<-)
+      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
+      if (!miniscript)
+        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
       const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
-          `Error: script is too large, ${ret.output.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
         );
       }
       const nonPushOnlyOps = countNonPushOnlyOPs(script);

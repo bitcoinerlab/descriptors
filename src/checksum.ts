@@ -1,7 +1,7 @@
 // Converted to Javascript by Jose-Luis Landabaso, 2023 - https://bitcoinerlab.com
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 // Distributed under the MIT software license
-const PolyMod = (c, val) => {
+const PolyMod = (c: any, val: any) => {
   let c0 = c >> 35n;
   c = ((c & 0x7ffffffffn) << 5n) ^ val;
   if (c0 & 1n) c ^= 0xf5dee51989n;
@@ -13,7 +13,7 @@ const PolyMod = (c, val) => {
 };
 
 export const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-export const DescriptorChecksum = span => {
+export const DescriptorChecksum = (span: any) => {
   const INPUT_CHARSET =
     '0123456789()[],\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\ ';
 
@@ -37,6 +37,7 @@ export const DescriptorChecksum = span => {
 
   let ret = '';
   for (let j = 0; j < 8; ++j)
+    // @ts-expect-error TS(2538): Type 'bigint' cannot be used as an index type.
     ret += CHECKSUM_CHARSET[(c >> (5n * (7n - BigInt(j)))) & 31n];
   return ret;
 };

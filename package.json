@@ -3,7 +3,7 @@
   "homepage": "https://bitcoinerlab.com/descriptors",
   "version": "0.1.0",
   "description": "A JavaScript library for parsing and interpreting Bitcoin descriptors, including those based on the Miniscript language.",
-  "main": "dist/index.js",
+  "main": "dist/bundle.js",
   "scripts": {
     "build": "rollup -c --bundleConfigAsCjs",
     "prepublishOnly": "npm run build && npm test",
@@ -37,6 +37,9 @@
   "bugs": {
     "url": "https://github.com/bitcoinerlab/descriptors/issues"
   },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@bitcoinerlab/miniscript": "^1.0.5",
     "bip32": "^3.1.0",
@@ -46,12 +49,12 @@
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.20.11",
     "@bitcoinerlab/secp256k1": "^1.0.1",
+    "@rollup/plugin-typescript": "^11.0.0",
     "babel-plugin-transform-import-meta": "^2.2.0",
     "fs": "^0.0.1-security",
     "jest": "^29.3.1",
     "jsdoc": "^4.0.0",
     "path": "^0.12.7",
-    "rollup": "^3.10.0",
-    "rollup-plugin-commonjs": "^10.1.0"
+    "rollup": "^3.10.0"
   }
 }

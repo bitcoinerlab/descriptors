@@ -56,7 +56,7 @@ import { script } from 'bitcoinjs-lib';
  * @param {number} number An integer.
  * @returns {string} Returns `"OP_0"` for `number === 0` and a hex string representing other numbers in Little Endian encoding.
  */
-export function numberEncodeAsm(number) {
+export function numberEncodeAsm(number: any) {
   if (Number.isSafeInteger(number) === false) {
     throw new Error(`Error: invalid number ${number}`);
   }
