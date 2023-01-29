@@ -5,7 +5,7 @@ import { DescriptorsFactory } from '../dist/index';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
-const descriptors = DescriptorsFactory(ecc);
+const Descriptor = DescriptorsFactory(ecc);
 
 for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
   describe(`Parse valid ${
@@ -13,14 +13,14 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
   }`, () => {
     for (const fixture of fixtures.valid) {
       test(`Parse valid ${fixture.desc}`, () => {
-        const parsed = descriptors.parse(fixture);
+        const descriptor = new Descriptor(fixture);
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.desc}`);
         if (fixture.script) {
-          expect(parsed.output.toString('hex')).toEqual(fixture.script);
+          expect(descriptor.getOutputScript()).toEqual(fixture.script);
         }
         if (fixture.address) {
-          expect(parsed.address).toEqual(fixture.address);
+          expect(descriptor.getAddress()).toEqual(fixture.address);
         }
       });
     }
@@ -32,11 +32,11 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
       test(`Parse invalid ${fixture.desc}`, () => {
         if (typeof fixture.throw !== 'string') {
           expect(() => {
-            descriptors.parse(fixture);
+            new Descriptor(fixture);
           }).toThrow();
         } else {
           expect(() => {
-            descriptors.parse(fixture);
+            new Descriptor(fixture);
           }).toThrow(fixture.throw);
         }
       });

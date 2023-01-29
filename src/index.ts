@@ -375,17 +375,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   function parse({
     desc,
     index,
-    checksumRequired = true,
-    allowMiniscriptInP2SH = false,
+    checksumRequired,
+    allowMiniscriptInP2SH,
     unknowns = [],
     network = networks.bitcoin
   }: {
     desc: string;
     index: number;
-    checksumRequired?: boolean;
-    allowMiniscriptInP2SH?: boolean;
-    unknowns?: Array<string>;
-    network?: Network;
+    checksumRequired: boolean;
+    allowMiniscriptInP2SH: boolean;
+    unknowns: Array<string>;
+    network: Network;
   }) {
     if (typeof desc !== 'string')
       throw new Error(`Error: invalid descriptor type`);
@@ -404,7 +404,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } catch (e) {
         throw new Error(`Error: invalid address ${matchedAddress}`);
       }
-      return { address: matchedAddress };
+      return { payment: { address: matchedAddress } };
     }
     //pk(KEY)
     else if (isolatedDesc.match(rePkAnchored)) {
@@ -413,7 +413,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
       //Note there exists no address for p2pk, but we can still use the script
-      return p2pk({ pubkey, network });
+      return { payment: p2pk({ pubkey, network }) };
     }
     //pkh(KEY) - legacy
     else if (isolatedDesc.match(rePkhAnchored)) {
@@ -421,7 +421,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: invalid desc ${desc}`);
       if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
-      return p2pkh({ pubkey, network });
+      return { payment: p2pkh({ pubkey, network }) };
     }
     //sh(wpkh(KEY)) - nested segwit
     else if (isolatedDesc.match(reShWpkhAnchored)) {
@@ -429,7 +429,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: invalid desc ${desc}`);
       if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network });
-      return p2sh({ redeem: p2wpkh({ pubkey, network }), network });
+      return {
+        payment: p2sh({ redeem: p2wpkh({ pubkey, network }), network })
+      };
     }
     //wpkh(KEY) - native segwit
     else if (isolatedDesc.match(reWpkhAnchored)) {
@@ -437,7 +439,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: invalid desc ${desc}`);
       if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
       const pubkey = keyExpression2PubKey({ keyExp, network });
-      return p2wpkh({ pubkey, network });
+      return { payment: p2wpkh({ pubkey, network }) };
     }
     //sh(wsh(miniscript))
     else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
@@ -456,10 +458,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
         );
       }
-      return p2sh({
-        redeem: p2wsh({ redeem: { output: script, network }, network }),
-        network
-      });
+      return {
+        payment: p2sh({
+          redeem: p2wsh({ redeem: { output: script, network }, network }),
+          network
+        })
+      };
     }
     //sh(miniscript)
     else if (isolatedDesc.match(reShMiniscriptAnchored)) {
@@ -496,7 +500,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
         );
       }
-      return p2sh({ redeem: { output: script, network }, network });
+      return {
+        payment: p2sh({ redeem: { output: script, network }, network })
+      };
     }
     //wsh(miniscript)
     else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
@@ -515,20 +521,61 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
         );
       }
-      return p2wsh({ redeem: { output: script, network }, network });
+      return {
+        payment: p2wsh({ redeem: { output: script, network }, network })
+      };
     } else {
       throw new Error(`Error: Could not parse descriptor ${desc}`);
     }
   }
 
-  /**
-   * Computes the checksum of a descriptor.
-   *
-   * @Function
-   * @param {string} descriptor - The descriptor.
-   * @returns {string} - The checksum.
-   */
-  const checksum = DescriptorChecksum;
+  class Descriptor {
+    #payment;
+    constructor({
+      desc,
+      index,
+      checksumRequired = true,
+      allowMiniscriptInP2SH = false,
+      unknowns = [],
+      network = networks.bitcoin
+    }: {
+      desc: string;
+      index: number;
+      checksumRequired?: boolean;
+      allowMiniscriptInP2SH?: boolean;
+      unknowns?: Array<string>;
+      network?: Network;
+    }) {
+      ({ payment: this.#payment } = parse({
+        desc,
+        index,
+        checksumRequired,
+        allowMiniscriptInP2SH,
+        unknowns,
+        network
+      }));
+    }
+    getAddress() {
+      if (!this.#payment.address)
+        throw new Error(`Error: could extract an address from the payment`);
+      return this.#payment.address;
+    }
+    getOutputScript() {
+      if (!this.#payment.output)
+        throw new Error(`Error: could extract output.script from the payment`);
+      return this.#payment.output.toString('hex');
+    }
+    /**
+     * Computes the checksum of a descriptor.
+     *
+     * @Function
+     * @param {string} descriptor - The descriptor.
+     * @returns {string} - The checksum.
+     */
+    static checksum(descriptor: string) {
+      return DescriptorChecksum(descriptor);
+    }
+  }
 
-  return { parse, checksum };
+  return Descriptor;
 }
