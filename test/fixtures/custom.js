@@ -184,14 +184,6 @@ export const fixtures = {
         "Error: descriptor wpkh([de41e56d/84'/1'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*) has not checksum"
     },
     {
-      note: 'it fails when not passing a checksum if required (but omitted param checksumRequired)',
-      network: networks.testnet,
-      desc: "wpkh([de41e56d/84'/1'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*)",
-      index: 23,
-      throw:
-        "Error: descriptor wpkh([de41e56d/84'/1'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*) has not checksum"
-    },
-    {
       note: 'using a upub (which does not make sense using descriptors anymore; only xpub and tpub are supported)',
       network: networks.testnet,
       desc: "wpkh([de41e56d/84'/1'/0']upubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*)",

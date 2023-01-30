@@ -1,7 +1,6 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//@ts-ignore
 import { compileMiniscript } from '@bitcoinerlab/miniscript';
 import {
   address,
@@ -324,7 +323,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //enclosed in <>, since <> represents hex code already encoded.
       //The regex below will match one or more digits within a string,
       //except if the sequence is surrounded by "<" and ">"
-      .replace(/(?<![<])\b\d+\b(?![>])/g, (num: number) =>
+      .replace(/(?<![<])\b\d+\b(?![>])/g, (num: string) =>
         numberEncodeAsm(Number(num))
       )
       //we don't have numbers anymore, now it's safe to remove < and > since we
@@ -534,7 +533,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     constructor({
       desc,
       index,
-      checksumRequired = true,
+      checksumRequired = false,
       allowMiniscriptInP2SH = false,
       unknowns = [],
       network = networks.bitcoin
