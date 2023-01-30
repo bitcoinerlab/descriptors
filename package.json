@@ -3,7 +3,8 @@
   "homepage": "https://bitcoinerlab.com/descriptors",
   "version": "0.1.0",
   "description": "A JavaScript library for parsing and interpreting Bitcoin descriptors, including those based on the Miniscript language.",
-  "main": "dist/bundle.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "npx tsc",
     "prepublishOnly": "npm run build && npm test",
