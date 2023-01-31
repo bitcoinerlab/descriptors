@@ -589,7 +589,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could extract an address from the payment`);
       return this.#payment.address;
     }
-    getOutputScript() {
+    getScriptPubKey() {
       if (!this.#payment.output)
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output.toString('hex');
