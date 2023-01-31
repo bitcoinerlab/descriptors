@@ -112,28 +112,31 @@ const reWshMiniscriptAnchored = anchorStartAndEnd(
  * index (if desc was a range descriptor)
  */
 function isolate({
-  desc,
+  expression,
   checksumRequired,
   index
 }: {
-  desc: string;
+  expression: string;
   checksumRequired: boolean;
   index: number;
 }): string {
-  const mChecksum = desc.match(String.raw`(${reChecksum})$`);
+  const mChecksum = expression.match(String.raw`(${reChecksum})$`);
   if (mChecksum === null && checksumRequired === true)
-    throw new Error(`Error: descriptor ${desc} has not checksum`);
-  //isolatedDesc: a bare desc without checksum and particularized for a certain
+    throw new Error(`Error: descriptor ${expression} has not checksum`);
+  //isolatedExpression: a bare desc without checksum and particularized for a certain
   //index (if desc was a range descriptor)
-  let isolatedDesc = desc;
+  let isolatedExpression = expression;
   if (mChecksum !== null) {
     const checksum = mChecksum[0].substring(1); //remove the leading #
-    isolatedDesc = desc.substring(0, desc.length - mChecksum[0].length);
-    if (checksum !== DescriptorChecksum(isolatedDesc)) {
-      throw new Error(`Error: invalid descriptor checksum for ${desc}`);
+    isolatedExpression = expression.substring(
+      0,
+      expression.length - mChecksum[0].length
+    );
+    if (checksum !== DescriptorChecksum(isolatedExpression)) {
+      throw new Error(`Error: invalid descriptor checksum for ${expression}`);
     }
   }
-  let mWildcard = isolatedDesc.match(/\*/g);
+  let mWildcard = isolatedExpression.match(/\*/g);
   if (mWildcard && mWildcard.length > 0) {
     if (!Number.isInteger(index) || index < 0)
       throw new Error(`Error: invalid index ${index}`);
@@ -145,9 +148,9 @@ function isolate({
     //any combination of child keys from each wildcard path.
 
     //We extend this reasoning for musig for all cases
-    isolatedDesc = isolatedDesc.replaceAll('*', index.toString());
+    isolatedExpression = isolatedExpression.replaceAll('*', index.toString());
   }
-  return isolatedDesc;
+  return isolatedExpression;
 }
 
 const derivePath = (node: BIP32Interface, path: string) => {
@@ -183,21 +186,26 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
    * binary format
    */
   function keyExpression2PubKey({
-    keyExp,
+    keyExpression,
     network = networks.bitcoin,
     isSegwit = true
   }: {
-    keyExp: string;
+    keyExpression: string;
     network?: Network;
     isSegwit?: boolean;
   }): Buffer {
-    //Validate the keyExp:
-    const keyExps = keyExp.match(reKeyExp);
-    if (keyExps === null || keyExps[0] !== keyExp) {
-      throw new Error(`Error: expected a keyExp but got ${keyExp}`);
+    //Validate the keyExpression:
+    const keyExpressions = keyExpression.match(reKeyExp);
+    if (keyExpressions === null || keyExpressions[0] !== keyExpression) {
+      throw new Error(
+        `Error: expected a keyExpression but got ${keyExpression}`
+      );
     }
     //Remove the origin (if it exists) and store result in actualKey
-    const actualKey = keyExp.replace(RegExp(String.raw`^(${reOrigin})?`), ''); //starts with ^origin
+    const actualKey = keyExpression.replace(
+      RegExp(String.raw`^(${reOrigin})?`),
+      ''
+    ); //starts with ^origin
     let mPubKey, mWIF, mXpubKey, mXprvKey;
     //match pubkey:
     if ((mPubKey = actualKey.match(anchorStartAndEnd(rePubKey))) !== null) {
@@ -249,7 +257,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         return bip32.fromBase58(xPrv, network).publicKey;
       }
     } else {
-      throw new Error(`Error: could not get pubkey for keyExp ${keyExp}`);
+      throw new Error(
+        `Error: could not get pubkey for keyExpression ${keyExpression}`
+      );
     }
   }
 
@@ -271,17 +281,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     unknowns?: Array<string>;
     network?: Network;
   }): Buffer {
-    //Repalace miniscript's descriptors to variables: key_0, key_1, ... so that
+    //Repalace miniscript's descriptors to variables: @0, @1, ... so that
     //it can be compiled with compileMiniscript
     //Also compute pubKeys from descriptors to use them later.
     const keyMap: { [key: string]: string } = {};
 
     const bareM = miniscript.replace(
       RegExp(reKeyExp, 'g'),
-      (keyExp: string) => {
-        const key = 'key_' + Object.keys(keyMap).length;
+      (keyExpression: string) => {
+        const key = '@' + Object.keys(keyMap).length;
         keyMap[key] = keyExpression2PubKey({
-          keyExp,
+          keyExpression,
           network,
           isSegwit
         }).toString('hex');
@@ -372,29 +382,29 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
    * @throws {Error} - when descriptor is invalid
    */
   function parse({
-    desc,
+    expression,
     index,
     checksumRequired,
     allowMiniscriptInP2SH,
     unknowns = [],
     network = networks.bitcoin
   }: {
-    desc: string;
+    expression: string;
     index: number;
     checksumRequired: boolean;
     allowMiniscriptInP2SH: boolean;
     unknowns: Array<string>;
     network: Network;
   }) {
-    if (typeof desc !== 'string')
+    if (typeof expression !== 'string')
       throw new Error(`Error: invalid descriptor type`);
 
     //Verify and remove checksum (if exists) and
     //particularize range descriptor for index (if desc is range descriptor)
-    const isolatedDesc = isolate({ desc, index, checksumRequired });
+    const isolatedExpression = isolate({ expression, index, checksumRequired });
 
-    const matchedAddress = isolatedDesc.match(reAddrAnchored)?.[1];
-    const keyExp = isolatedDesc.match(reKeyExp)?.[0];
+    const matchedAddress = isolatedExpression.match(reAddrAnchored)?.[1];
+    const keyExpression = isolatedExpression.match(reKeyExp)?.[0];
 
     //addr(ADDR)
     if (matchedAddress) {
@@ -406,45 +416,61 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       return { payment: { address: matchedAddress } };
     }
     //pk(KEY)
-    else if (isolatedDesc.match(rePkAnchored)) {
-      if (isolatedDesc !== `pk(${keyExp})`)
-        throw new Error(`Error: invalid desc ${desc}`);
-      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
+    else if (isolatedExpression.match(rePkAnchored)) {
+      if (isolatedExpression !== `pk(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      const pubkey = keyExpression2PubKey({
+        keyExpression,
+        network,
+        isSegwit: false
+      });
       //Note there exists no address for p2pk, but we can still use the script
       return { payment: p2pk({ pubkey, network }) };
     }
     //pkh(KEY) - legacy
-    else if (isolatedDesc.match(rePkhAnchored)) {
-      if (isolatedDesc !== `pkh(${keyExp})`)
-        throw new Error(`Error: invalid desc ${desc}`);
-      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExp, network, isSegwit: false });
+    else if (isolatedExpression.match(rePkhAnchored)) {
+      if (isolatedExpression !== `pkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      const pubkey = keyExpression2PubKey({
+        keyExpression,
+        network,
+        isSegwit: false
+      });
       return { payment: p2pkh({ pubkey, network }) };
     }
     //sh(wpkh(KEY)) - nested segwit
-    else if (isolatedDesc.match(reShWpkhAnchored)) {
-      if (isolatedDesc !== `sh(wpkh(${keyExp}))`)
-        throw new Error(`Error: invalid desc ${desc}`);
-      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExp, network });
+    else if (isolatedExpression.match(reShWpkhAnchored)) {
+      if (isolatedExpression !== `sh(wpkh(${keyExpression}))`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      const pubkey = keyExpression2PubKey({ keyExpression, network });
       return {
         payment: p2sh({ redeem: p2wpkh({ pubkey, network }), network })
       };
     }
     //wpkh(KEY) - native segwit
-    else if (isolatedDesc.match(reWpkhAnchored)) {
-      if (isolatedDesc !== `wpkh(${keyExp})`)
-        throw new Error(`Error: invalid desc ${desc}`);
-      if (!keyExp) throw new Error(`Error: keyExp could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExp, network });
+    else if (isolatedExpression.match(reWpkhAnchored)) {
+      if (isolatedExpression !== `wpkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      const pubkey = keyExpression2PubKey({ keyExpression, network });
       return { payment: p2wpkh({ pubkey, network }) };
     }
     //sh(wsh(miniscript))
-    else if (isolatedDesc.match(reShWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+    else if (isolatedExpression.match(reShWshMiniscriptAnchored)) {
+      const miniscript = isolatedExpression.match(
+        reShWshMiniscriptAnchored
+      )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
+        throw new Error(
+          `Error: could not get miniscript in ${isolatedExpression}`
+        );
       const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
@@ -465,10 +491,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       };
     }
     //sh(miniscript)
-    else if (isolatedDesc.match(reShMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
+    else if (isolatedExpression.match(reShMiniscriptAnchored)) {
+      const miniscript = isolatedExpression.match(reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
+        throw new Error(
+          `Error: could not get miniscript in ${isolatedExpression}`
+        );
       if (
         allowMiniscriptInP2SH === false &&
         //These top-level expressions within sh are allowed within sh.
@@ -504,10 +532,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       };
     }
     //wsh(miniscript)
-    else if (isolatedDesc.match(reWshMiniscriptAnchored)) {
-      const miniscript = isolatedDesc.match(reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
+    else if (isolatedExpression.match(reWshMiniscriptAnchored)) {
+      const miniscript = isolatedExpression.match(reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${isolatedDesc}`);
+        throw new Error(
+          `Error: could not get miniscript in ${isolatedExpression}`
+        );
       const script = miniscript2Script({ miniscript, unknowns, network });
       if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         throw new Error(
@@ -524,21 +554,21 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment: p2wsh({ redeem: { output: script, network }, network })
       };
     } else {
-      throw new Error(`Error: Could not parse descriptor ${desc}`);
+      throw new Error(`Error: Could not parse descriptor ${expression}`);
     }
   }
 
   class Descriptor {
     #payment;
     constructor({
-      desc,
+      expression,
       index,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
       unknowns = [],
       network = networks.bitcoin
     }: {
-      desc: string;
+      expression: string;
       index: number;
       checksumRequired?: boolean;
       allowMiniscriptInP2SH?: boolean;
@@ -546,7 +576,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       network?: Network;
     }) {
       ({ payment: this.#payment } = parse({
-        desc,
+        expression,
         index,
         checksumRequired,
         allowMiniscriptInP2SH,
@@ -571,8 +601,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * @param {string} descriptor - The descriptor.
      * @returns {string} - The checksum.
      */
-    static checksum(descriptor: string) {
-      return DescriptorChecksum(descriptor);
+    static checksum(expression: string) {
+      return DescriptorChecksum(expression);
     }
   }
 

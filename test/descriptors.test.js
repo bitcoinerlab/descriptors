@@ -12,10 +12,10 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.valid) {
-      test(`Parse valid ${fixture.desc}`, () => {
+      test(`Parse valid ${fixture.expression}`, () => {
         const descriptor = new Descriptor(fixture);
         if (!fixture.script && !fixture.address)
-          throw new Error(`Error: pass a valid test for ${fixture.desc}`);
+          throw new Error(`Error: pass a valid test for ${fixture.expression}`);
         if (fixture.script) {
           expect(descriptor.getOutputScript()).toEqual(fixture.script);
         }
@@ -29,7 +29,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.invalid) {
-      test(`Parse invalid ${fixture.desc}`, () => {
+      test(`Parse invalid ${fixture.expression}`, () => {
         if (typeof fixture.throw !== 'string') {
           expect(() => {
             new Descriptor(fixture);
