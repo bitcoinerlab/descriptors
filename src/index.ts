@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { compileMiniscript } from '@bitcoinerlab/miniscript';
+import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import {
   address,
   networks,
@@ -269,10 +269,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     return decompile.filter(op => op > bscript.OPS['OP_16']!).length;
   }
 
-  function miniscript2Script({
+  function solveMiniscript({
     miniscript,
     isSegwit = true,
-    //@ts-ignore
     unknowns = [],
     network = networks.bitcoin
   }: {
@@ -280,7 +279,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     isSegwit?: boolean;
     unknowns?: Array<string>;
     network?: Network;
-  }): Buffer {
+  }): { lockingScript: Buffer; satAsm: string } {
     //Repalace miniscript's descriptors to variables: @0, @1, ... so that
     //it can be compiled with compileMiniscript
     //Also compute pubKeys from descriptors to use them later.
@@ -339,227 +338,46 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //we don't have numbers anymore, now it's safe to remove < and > since we
       //know that every remaining is either an op_code or a hex encoded number
       .replace(/[<>]/g, '');
-    return bscript.fromASM(parsedAsm);
-  }
-
-  /**
-   * Parses a `descriptor` and returns a [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts) object from bitcoinjs-lib, including address, output script, and other information.
-   *
-   * Replaces the wildcard character * in range descriptors with `index`.
-   *
-   * Validates descriptor syntax and checksum.
-   *
-   * @param {Object} params
-   * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
-   * @param {string} params.descriptor - The descriptor.
-   * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
-   * @param {object} [params.network=networks.bitcoin] One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
-   * @returns {Payment} A bitcoinjs `Payment` object containing the parsed descriptor's information, including a string with the `addresss`, and a `Buffer` with the `output` script:
-   * ```typescript
-   * interface Payment {
-   *     name?: string;
-   *     network?: Network;
-   *     output?: Buffer;
-   *     data?: Buffer[];
-   *     m?: number;
-   *     n?: number;
-   *     pubkeys?: Buffer[];
-   *     input?: Buffer;
-   *     signatures?: Buffer[];
-   *     internalPubkey?: Buffer;
-   *     pubkey?: Buffer;
-   *     signature?: Buffer;
-   *     address?: string;
-   *     hash?: Buffer;
-   *     redeem?: Payment;
-   *     redeemVersion?: number;
-   *     scriptTree?: Taptree;
-   *     witness?: Buffer[];
-   * }
-   * ```
-   *
-   * @see {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts}
-   * @throws {Error} - when descriptor is invalid
-   */
-  function parse({
-    expression,
-    index,
-    checksumRequired,
-    allowMiniscriptInP2SH,
-    unknowns = [],
-    network = networks.bitcoin
-  }: {
-    expression: string;
-    index: number;
-    checksumRequired: boolean;
-    allowMiniscriptInP2SH: boolean;
-    unknowns: Array<string>;
-    network: Network;
-  }) {
-    if (typeof expression !== 'string')
-      throw new Error(`Error: invalid descriptor type`);
-
-    //Verify and remove checksum (if exists) and
-    //particularize range descriptor for index (if desc is range descriptor)
-    const isolatedExpression = isolate({ expression, index, checksumRequired });
-
-    const matchedAddress = isolatedExpression.match(reAddrAnchored)?.[1];
-    const keyExpression = isolatedExpression.match(reKeyExp)?.[0];
-
-    //addr(ADDR)
-    if (matchedAddress) {
-      try {
-        address.toOutputScript(matchedAddress, network);
-      } catch (e) {
-        throw new Error(`Error: invalid address ${matchedAddress}`);
+    const { nonMalleableSats } = satisfier(bareM, unknowns);
+    if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
+      throw new Error(`Error: unresolvable miniscript ${miniscript}`);
+    //TODO: also replace the preimages - but do this when signing.
+    //<ripemd160_preimage(xxx)> -> aaa
+    //<hash160_preimage(xxx)> -> aaa
+    //<sha256_preimage(xxx)> -> aaa
+    //<hash256_preimage(xxx)> -> aaa
+    //Replace back variables into the pubKeys previously computed.
+    const satAsm = Object.keys(keyMap).reduce((accAsm, key) => {
+      const pubKey = keyMap[key];
+      if (!pubKey) {
+        throw new Error(`Error: invalid keyMap for ${key}`);
       }
-      return { payment: { address: matchedAddress } };
-    }
-    //pk(KEY)
-    else if (isolatedExpression.match(rePkAnchored)) {
-      if (isolatedExpression !== `pk(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
-      if (!keyExpression)
-        throw new Error(`Error: keyExpression could not me extracted`);
-      const pubkey = keyExpression2PubKey({
-        keyExpression,
-        network,
-        isSegwit: false
-      });
-      //Note there exists no address for p2pk, but we can still use the script
-      return { payment: p2pk({ pubkey, network }) };
-    }
-    //pkh(KEY) - legacy
-    else if (isolatedExpression.match(rePkhAnchored)) {
-      if (isolatedExpression !== `pkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
-      if (!keyExpression)
-        throw new Error(`Error: keyExpression could not me extracted`);
-      const pubkey = keyExpression2PubKey({
-        keyExpression,
-        network,
-        isSegwit: false
-      });
-      return { payment: p2pkh({ pubkey, network }) };
-    }
-    //sh(wpkh(KEY)) - nested segwit
-    else if (isolatedExpression.match(reShWpkhAnchored)) {
-      if (isolatedExpression !== `sh(wpkh(${keyExpression}))`)
-        throw new Error(`Error: invalid expression ${expression}`);
-      if (!keyExpression)
-        throw new Error(`Error: keyExpression could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExpression, network });
-      return {
-        payment: p2sh({ redeem: p2wpkh({ pubkey, network }), network })
-      };
-    }
-    //wpkh(KEY) - native segwit
-    else if (isolatedExpression.match(reWpkhAnchored)) {
-      if (isolatedExpression !== `wpkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
-      if (!keyExpression)
-        throw new Error(`Error: keyExpression could not me extracted`);
-      const pubkey = keyExpression2PubKey({ keyExpression, network });
-      return { payment: p2wpkh({ pubkey, network }) };
-    }
-    //sh(wsh(miniscript))
-    else if (isolatedExpression.match(reShWshMiniscriptAnchored)) {
-      const miniscript = isolatedExpression.match(
-        reShWshMiniscriptAnchored
-      )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
-      if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${isolatedExpression}`
-        );
-      const script = miniscript2Script({ miniscript, unknowns, network });
-      if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
-        throw new Error(
-          `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
-        );
-      }
-      const nonPushOnlyOps = countNonPushOnlyOPs(script);
-      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-        throw new Error(
-          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-        );
-      }
-      return {
-        payment: p2sh({
-          redeem: p2wsh({ redeem: { output: script, network }, network }),
-          network
-        })
-      };
-    }
-    //sh(miniscript)
-    else if (isolatedExpression.match(reShMiniscriptAnchored)) {
-      const miniscript = isolatedExpression.match(reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
-      if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${isolatedExpression}`
-        );
-      if (
-        allowMiniscriptInP2SH === false &&
-        //These top-level expressions within sh are allowed within sh.
-        //They can be parsed with miniscript2Script, but first we must make sure
-        //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
-        miniscript.search(
-          /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
-        ) !== 0
-      ) {
-        throw new Error(
-          `Error: Miniscript expressions can only be used in wsh`
-        );
-      }
-      const script = miniscript2Script({
-        miniscript,
-        isSegwit: false,
-        unknowns,
-        network
-      });
-      if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
-        throw new Error(
-          `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
-        );
-      }
-      const nonPushOnlyOps = countNonPushOnlyOPs(script);
-      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-        throw new Error(
-          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-        );
-      }
-      return {
-        payment: p2sh({ redeem: { output: script, network }, network })
-      };
-    }
-    //wsh(miniscript)
-    else if (isolatedExpression.match(reWshMiniscriptAnchored)) {
-      const miniscript = isolatedExpression.match(reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
-      if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${isolatedExpression}`
-        );
-      const script = miniscript2Script({ miniscript, unknowns, network });
-      if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
-        throw new Error(
-          `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
-        );
-      }
-      const nonPushOnlyOps = countNonPushOnlyOPs(script);
-      if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-        throw new Error(
-          `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-        );
-      }
-      return {
-        payment: p2wsh({ redeem: { output: script, network }, network })
-      };
-    } else {
-      throw new Error(`Error: Could not parse descriptor ${expression}`);
-    }
+      return accAsm
+        .replaceAll(`<${key}>`, `<${keyMap[key]}>`)
+        .replaceAll(`<sig(${key})>`, `<sig(${keyMap[key]})>`);
+    }, nonMalleableSats[0].asm);
+    return { lockingScript: bscript.fromASM(parsedAsm), satAsm };
   }
 
   class Descriptor {
     #payment;
+    #satAsm: string | undefined;
+    /**
+     * Parses a `descriptor`.
+     *
+     * Replaces the wildcard character * in range descriptors with `index`.
+     *
+     * Validates descriptor syntax and checksum.
+     *
+     * @param {Object} params
+     * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
+     * @param {string} params.descriptor - The descriptor.
+     * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
+     * @param {object} [params.network=networks.bitcoin] One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
+     *
+     * @see {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts}
+     * @throws {Error} - when descriptor is invalid
+     */
     constructor({
       expression,
       index,
@@ -575,14 +393,181 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       unknowns?: Array<string>;
       network?: Network;
     }) {
-      ({ payment: this.#payment } = parse({
+      if (typeof expression !== 'string')
+        throw new Error(`Error: invalid descriptor type`);
+
+      //Verify and remove checksum (if exists) and
+      //particularize range descriptor for index (if desc is range descriptor)
+      const isolatedExpression = isolate({
         expression,
         index,
-        checksumRequired,
-        allowMiniscriptInP2SH,
-        unknowns,
-        network
-      }));
+        checksumRequired
+      });
+
+      const matchedAddress = isolatedExpression.match(reAddrAnchored)?.[1];
+      const keyExpression = isolatedExpression.match(reKeyExp)?.[0];
+
+      //addr(ADDR)
+      if (matchedAddress) {
+        try {
+          address.toOutputScript(matchedAddress, network);
+        } catch (e) {
+          throw new Error(`Error: invalid address ${matchedAddress}`);
+        }
+        this.#payment = { address: matchedAddress };
+      }
+      //pk(KEY)
+      else if (isolatedExpression.match(rePkAnchored)) {
+        if (isolatedExpression !== `pk(${keyExpression})`)
+          throw new Error(`Error: invalid expression ${expression}`);
+        if (!keyExpression)
+          throw new Error(`Error: keyExpression could not me extracted`);
+        const pubkey = keyExpression2PubKey({
+          keyExpression,
+          network,
+          isSegwit: false
+        });
+        //Note there exists no address for p2pk, but we can still use the script
+        this.#payment = p2pk({ pubkey, network });
+      }
+      //pkh(KEY) - legacy
+      else if (isolatedExpression.match(rePkhAnchored)) {
+        if (isolatedExpression !== `pkh(${keyExpression})`)
+          throw new Error(`Error: invalid expression ${expression}`);
+        if (!keyExpression)
+          throw new Error(`Error: keyExpression could not me extracted`);
+        const pubkey = keyExpression2PubKey({
+          keyExpression,
+          network,
+          isSegwit: false
+        });
+        this.#payment = p2pkh({ pubkey, network });
+      }
+      //sh(wpkh(KEY)) - nested segwit
+      else if (isolatedExpression.match(reShWpkhAnchored)) {
+        if (isolatedExpression !== `sh(wpkh(${keyExpression}))`)
+          throw new Error(`Error: invalid expression ${expression}`);
+        if (!keyExpression)
+          throw new Error(`Error: keyExpression could not me extracted`);
+        const pubkey = keyExpression2PubKey({ keyExpression, network });
+        this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
+      }
+      //wpkh(KEY) - native segwit
+      else if (isolatedExpression.match(reWpkhAnchored)) {
+        if (isolatedExpression !== `wpkh(${keyExpression})`)
+          throw new Error(`Error: invalid expression ${expression}`);
+        if (!keyExpression)
+          throw new Error(`Error: keyExpression could not me extracted`);
+        const pubkey = keyExpression2PubKey({ keyExpression, network });
+        this.#payment = p2wpkh({ pubkey, network });
+      }
+      //sh(wsh(miniscript))
+      else if (isolatedExpression.match(reShWshMiniscriptAnchored)) {
+        const miniscript = isolatedExpression.match(
+          reShWshMiniscriptAnchored
+        )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+        if (!miniscript)
+          throw new Error(
+            `Error: could not get miniscript in ${isolatedExpression}`
+          );
+        const { lockingScript: script, satAsm } = solveMiniscript({
+          miniscript,
+          unknowns,
+          network
+        });
+        this.#satAsm = satAsm;
+        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+          throw new Error(
+            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        this.#payment = p2sh({
+          redeem: p2wsh({ redeem: { output: script, network }, network }),
+          network
+        });
+      }
+      //sh(miniscript)
+      else if (isolatedExpression.match(reShMiniscriptAnchored)) {
+        const miniscript = isolatedExpression.match(
+          reShMiniscriptAnchored
+        )?.[1]; //[1]-> whatever is found sh(->HERE<-)
+        if (!miniscript)
+          throw new Error(
+            `Error: could not get miniscript in ${isolatedExpression}`
+          );
+        if (
+          allowMiniscriptInP2SH === false &&
+          //These top-level expressions within sh are allowed within sh.
+          //They can be parsed with solveMiniscript, but first we must make sure
+          //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
+          miniscript.search(
+            /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
+          ) !== 0
+        ) {
+          throw new Error(
+            `Error: Miniscript expressions can only be used in wsh`
+          );
+        }
+        const { lockingScript: script, satAsm } = solveMiniscript({
+          miniscript,
+          isSegwit: false,
+          unknowns,
+          network
+        });
+        this.#satAsm = satAsm;
+        if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
+          throw new Error(
+            `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        this.#payment = p2sh({ redeem: { output: script, network }, network });
+      }
+      //wsh(miniscript)
+      else if (isolatedExpression.match(reWshMiniscriptAnchored)) {
+        const miniscript = isolatedExpression.match(
+          reWshMiniscriptAnchored
+        )?.[1]; //[1]-> whatever is found wsh(->HERE<-)
+        if (!miniscript)
+          throw new Error(
+            `Error: could not get miniscript in ${isolatedExpression}`
+          );
+        const { lockingScript: script, satAsm } = solveMiniscript({
+          miniscript,
+          unknowns,
+          network
+        });
+        this.#satAsm = satAsm;
+        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+          throw new Error(
+            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        this.#payment = p2wsh({ redeem: { output: script, network }, network });
+      } else {
+        throw new Error(`Error: Could not parse descriptor ${expression}`);
+      }
+      console.log(this.#satAsm);
+    }
+    getPayment() {
+      return this.#payment;
     }
     getAddress() {
       if (!this.#payment.address)
@@ -592,7 +577,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     getScriptPubKey() {
       if (!this.#payment.output)
         throw new Error(`Error: could extract output.script from the payment`);
-      return this.#payment.output.toString('hex');
+      return this.#payment.output;
     }
     /**
      * Computes the checksum of a descriptor.
@@ -603,6 +588,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      */
     static checksum(expression: string) {
       return DescriptorChecksum(expression);
+    }
+    static keyExpression2PubKey({
+      keyExpression,
+      network = networks.bitcoin,
+      isSegwit = true
+    }: {
+      keyExpression: string;
+      network?: Network;
+      isSegwit?: boolean;
+    }): Buffer {
+      return keyExpression2PubKey({ keyExpression, network, isSegwit });
     }
   }
 

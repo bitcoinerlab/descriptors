@@ -17,7 +17,9 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.expression}`);
         if (fixture.script) {
-          expect(descriptor.getScriptPubKey()).toEqual(fixture.script);
+          expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
+            fixture.script
+          );
         }
         if (fixture.address) {
           expect(descriptor.getAddress()).toEqual(fixture.address);
