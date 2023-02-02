@@ -47,7 +47,7 @@
     "dist"
   ],
   "dependencies": {
-    "@bitcoinerlab/miniscript": "^1.2.0",
+    "@bitcoinerlab/miniscript": "^1.2.1",
     "bip32": "^3.1.0",
     "bitcoinjs-lib": "^6.1.0",
     "ecpair": "^2.1.0"
