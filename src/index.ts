@@ -318,22 +318,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   }
 
   /**
-   * Particularize the expanded ASM expression using the variables in
-   * expansionMap and the signatures and preimages.
-   * This is the opposite to expandMiniscript
+   * Particularize an expanded ASM expression using the variables in
+   * expansionMap.
+   * This is the kind of the opposite to what expandMiniscript does.
+   * Signatures and preimages are already subsituted by the satisfier calling
+   * this function.
    */
   function substituteAsm({
     expandedAsm,
-    expansionMap,
-    //@ts-ignore
-    signatures = [],
-    //@ts-ignore
-    preimages = []
+    expansionMap
   }: {
     expandedAsm: string;
     expansionMap: { [key: string]: string };
-    signatures?: PartialSig[];
-    preimages?: Preimage[];
   }): string {
     //Replace back variables into the pubKeys previously computed.
     let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
@@ -346,13 +342,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         .replaceAll(
           `<HASH160\(${key}\)>`,
           `<${crypto.hash160(Buffer.from(pubKey, 'hex')).toString('hex')}>`
-        )
-        .replaceAll(`<sig(${key})>`, `<sig(${expansionMap[key]})>`);
+        );
     }, expandedAsm);
-
-    //TODO: Now deal with signatures
-
-    //TODO: Now deal with preimages
 
     //Now clean it and prepare it so that fromASM can be called:
     asm = asm
@@ -402,7 +393,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
    * The attacker does not have access to any of the private keys of public keys that participate in the Script.
    * The attacker only has access to hash preimages that honest users have access to as well.
    */
-  //@ts-ignore
   function satisfyMiniscript({
     miniscript,
     isSegwit = true,
@@ -422,30 +412,54 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       network
     });
 
-    //TODO Based on the signatures and preimages, obtain the unknowns
-    const unknowns: string[] = [];
+    //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
+    let preimageMap: { [key: string]: string } = {};
+    preimages.forEach(preimage => {
+      preimageMap['<' + preimage.digest.replace('(', '_preimage(') + '>'] =
+        '<' + preimage.preimage + '>';
+    });
 
-    const { nonMalleableSats } = satisfier(expandedMiniscript, unknowns);
+    //convert the pubkeys in signatures into [{['<sig(@0)>']: '30450221'}, ...]
+    //get the keyExpressions: @0, @1 from the keys in expansionMap
+    let expandedSignatureMap: { [key: string]: string } = {};
+    signatures.forEach(signature => {
+      const pubkey = signature.pubkey.toString('hex');
+      const keyExpression = Object.keys(expansionMap).find(
+        k => expansionMap[k] === pubkey
+      );
+      expandedSignatureMap['<sig(' + keyExpression + ')>'] =
+        '<' + signature.signature.toString('hex') + '>';
+    });
+    const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
+    const knowns = Object.keys(expandedKnownsMap);
+
+    const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
 
     if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
       throw new Error(`Error: unresolvable miniscript ${miniscript}`);
 
-    return bscript.fromASM(
-      substituteAsm({
-        expandedAsm: nonMalleableSats[0].asm,
-        expansionMap,
-        signatures,
-        preimages
-      })
-    );
+    //substitute signatures and preimages:
+    let expandedAsm = nonMalleableSats[0].asm;
+    //replace in expandedAsm all the <sig(@0)> and <sha256_preimage(6c...33)>
+    //to <304...01> and <107...5f> ...
+    for (const search in expandedKnownsMap) {
+      const replace = expandedKnownsMap[search];
+      if (!replace)
+        throw new Error(
+          `Error: invalid expandedKnownsMap ${expandedKnownsMap}`
+        );
+      expandedAsm = expandedAsm.replaceAll(search, replace);
+    }
+    return bscript.fromASM( substituteAsm({ expandedAsm, expansionMap }));
   }
 
   class Descriptor {
     #payment;
-    //@ts-ignore
-    #satAsm: string | undefined;
     #signatures: PartialSig[] = [];
     #preimages: Preimage[] = [];
+    #miniscript: string | undefined;
+    #isSegwit: boolean = true;
+    #network: Network;
     /**
      * Parses a `descriptor`.
      *
@@ -475,6 +489,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
     }) {
+      this.#network = network;
       if (typeof expression !== 'string')
         throw new Error(`Error: invalid descriptor type`);
 
@@ -504,6 +519,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
           throw new Error(`Error: keyExpression could not me extracted`);
+        this.#isSegwit = false;
         const pubkey = keyExpression2PubKey({
           keyExpression,
           network,
@@ -518,6 +534,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
           throw new Error(`Error: keyExpression could not me extracted`);
+        this.#isSegwit = false;
         const pubkey = keyExpression2PubKey({
           keyExpression,
           network,
@@ -552,6 +569,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(
             `Error: could not get miniscript in ${isolatedExpression}`
           );
+        this.#miniscript = miniscript;
         const script = miniscript2Script({
           miniscript,
           network
@@ -594,6 +612,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: Miniscript expressions can only be used in wsh`
           );
         }
+        this.#miniscript = miniscript;
+        this.#isSegwit = false;
         const script = miniscript2Script({
           miniscript,
           isSegwit: false,
@@ -621,6 +641,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(
             `Error: could not get miniscript in ${isolatedExpression}`
           );
+        this.#miniscript = miniscript;
         const script = miniscript2Script({
           miniscript,
           network
@@ -654,13 +675,25 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
+    getSatisfaction() {
+      if (!this.#miniscript)
+        throw new Error(
+          `Error: this descriptor does not have a miniscript expression`
+        );
+      return satisfyMiniscript({
+        miniscript: this.#miniscript,
+        isSegwit: this.#isSegwit,
+        network: this.#network,
+        signatures: this.#signatures,
+        preimages: this.#preimages
+      });
+    }
     addSignatures(signatures: PartialSig[]) {
       const pubkeys = this.#signatures.map(partialSig => partialSig.pubkey);
       const newPartialSigs = signatures.filter(
         partialSig => !pubkeys.includes(partialSig.pubkey)
       );
       this.#signatures = this.#signatures.concat(newPartialSigs);
-      console.log({ signatures: this.#signatures });
     }
     addPreimages(preimages: Preimage[]) {
       const digests = this.#preimages.map(preimage => preimage.digest);
@@ -668,7 +701,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         preimage => !digests.includes(preimage.digest)
       );
       this.#preimages = this.#preimages.concat(newPreimages);
-      console.log({ preimages: this.#preimages });
     }
     /**
      * Computes the checksum of a descriptor.
