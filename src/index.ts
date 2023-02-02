@@ -11,6 +11,7 @@ import {
   Network
 } from 'bitcoinjs-lib';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
+import type { PartialSig } from 'bip174/src/lib/interfaces';
 
 import type { TinySecp256k1Interface } from './tinysecp';
 
@@ -20,6 +21,12 @@ import { ECPairFactory } from 'ecpair';
 import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
 
 import { numberEncodeAsm } from './numberEncodeAsm';
+export interface Preimage {
+  digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
+  //Accepted functions: sha256, hash256, ripemd160, hash160
+  // 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160
+  preimage: string; //Preimages are always 32 bytes (64 character in hex)
+}
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -269,27 +276,31 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     return decompile.filter(op => op > bscript.OPS['OP_16']!).length;
   }
 
-  function solveMiniscript({
+  /**
+   * Expand a miniscript to a generalized form using variables instead of key
+   * expressions. Variables will be of this form: @0, @1, ...
+   * This is done so that it can be compiled with compileMiniscript and
+   * satisfied with satisfier.
+   * Also compute pubKeys from descriptors to use them later.
+   */
+  function expandMiniscript({
     miniscript,
     isSegwit = true,
-    unknowns = [],
     network = networks.bitcoin
   }: {
     miniscript: string;
     isSegwit?: boolean;
-    unknowns?: Array<string>;
     network?: Network;
-  }): { lockingScript: Buffer; satAsm: string } {
-    //Repalace miniscript's descriptors to variables: @0, @1, ... so that
-    //it can be compiled with compileMiniscript
-    //Also compute pubKeys from descriptors to use them later.
-    const keyMap: { [key: string]: string } = {};
-
-    const bareM = miniscript.replace(
+  }): {
+    expandedMiniscript: string;
+    expansionMap: { [key: string]: string };
+  } {
+    const expansionMap: { [key: string]: string } = {};
+    const expandedMiniscript = miniscript.replace(
       RegExp(reKeyExp, 'g'),
       (keyExpression: string) => {
-        const key = '@' + Object.keys(keyMap).length;
-        keyMap[key] = keyExpression2PubKey({
+        const key = '@' + Object.keys(expansionMap).length;
+        expansionMap[key] = keyExpression2PubKey({
           keyExpression,
           network,
           isSegwit
@@ -297,33 +308,54 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         return key;
       }
     );
-    const pubKeys = Object.values(keyMap);
+    const pubKeys = Object.values(expansionMap);
     if (new Set(pubKeys).size !== pubKeys.length) {
       throw new Error(
         `Error: miniscript ${miniscript} is not sane: contains duplicate public keys.`
       );
     }
-    const compiled = compileMiniscript(bareM);
-    if (compiled.issane !== true) {
-      throw new Error(`Error: Miniscript ${bareM} is not sane`);
-    }
+    return { expandedMiniscript, expansionMap };
+  }
+
+  /**
+   * Particularize the expanded ASM expression using the variables in
+   * expansionMap and the signatures and preimages.
+   * This is the opposite to expandMiniscript
+   */
+  function substituteAsm({
+    expandedAsm,
+    expansionMap,
+    //@ts-ignore
+    signatures = [],
+    //@ts-ignore
+    preimages = []
+  }: {
+    expandedAsm: string;
+    expansionMap: { [key: string]: string };
+    signatures?: PartialSig[];
+    preimages?: Preimage[];
+  }): string {
     //Replace back variables into the pubKeys previously computed.
-    const asm = Object.keys(keyMap).reduce((accAsm, key) => {
-      const pubKey = keyMap[key];
+    let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
+      const pubKey = expansionMap[key];
       if (!pubKey) {
-        throw new Error(`Error: invalid keyMap for ${key}`);
+        throw new Error(`Error: invalid expansionMap for ${key}`);
       }
       return accAsm
-        .replaceAll(`<${key}>`, `<${keyMap[key]}>`)
+        .replaceAll(`<${key}>`, `<${expansionMap[key]}>`)
         .replaceAll(
           `<HASH160\(${key}\)>`,
           `<${crypto.hash160(Buffer.from(pubKey, 'hex')).toString('hex')}>`
-        );
-    }, compiled.asm);
-    //Create binary code from the asm above. Prepare asm to fromASM.
-    //fromASM does not expect "<", ">". It expects numbers already encoded and
-    //and assumes the rest to be either OP_CODES or hex that has to be pushed.
-    const parsedAsm = asm
+        )
+        .replaceAll(`<sig(${key})>`, `<sig(${expansionMap[key]})>`);
+    }, expandedAsm);
+
+    //TODO: Now deal with signatures
+
+    //TODO: Now deal with preimages
+
+    //Now clean it and prepare it so that fromASM can be called:
+    asm = asm
       .trim()
       //Replace one or more consecutive whitespace characters (spaces, tabs,
       //or line breaks) with a single space.
@@ -338,30 +370,82 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //we don't have numbers anymore, now it's safe to remove < and > since we
       //know that every remaining is either an op_code or a hex encoded number
       .replace(/[<>]/g, '');
-    const { nonMalleableSats } = satisfier(bareM, unknowns);
+
+    return asm;
+  }
+
+  function miniscript2Script({
+    miniscript,
+    isSegwit = true,
+    network = networks.bitcoin
+  }: {
+    miniscript: string;
+    isSegwit?: boolean;
+    network?: Network;
+  }): Buffer {
+    const { expandedMiniscript, expansionMap } = expandMiniscript({
+      miniscript,
+      isSegwit,
+      network
+    });
+    const compiled = compileMiniscript(expandedMiniscript);
+    if (compiled.issane !== true) {
+      throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
+    }
+    return bscript.fromASM(
+      substituteAsm({ expandedAsm: compiled.asm, expansionMap })
+    );
+  }
+
+  /**
+   * Assumptions:
+   * The attacker does not have access to any of the private keys of public keys that participate in the Script.
+   * The attacker only has access to hash preimages that honest users have access to as well.
+   */
+  //@ts-ignore
+  function satisfyMiniscript({
+    miniscript,
+    isSegwit = true,
+    signatures = [],
+    preimages = [],
+    network = networks.bitcoin
+  }: {
+    miniscript: string;
+    isSegwit?: boolean;
+    signatures?: PartialSig[];
+    preimages?: Preimage[];
+    network?: Network;
+  }): Buffer {
+    const { expandedMiniscript, expansionMap } = expandMiniscript({
+      miniscript,
+      isSegwit,
+      network
+    });
+
+    //TODO Based on the signatures and preimages, obtain the unknowns
+    const unknowns: string[] = [];
+
+    const { nonMalleableSats } = satisfier(expandedMiniscript, unknowns);
+
     if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
       throw new Error(`Error: unresolvable miniscript ${miniscript}`);
-    //TODO: also replace the preimages - but do this when signing.
-    //<ripemd160_preimage(xxx)> -> aaa
-    //<hash160_preimage(xxx)> -> aaa
-    //<sha256_preimage(xxx)> -> aaa
-    //<hash256_preimage(xxx)> -> aaa
-    //Replace back variables into the pubKeys previously computed.
-    const satAsm = Object.keys(keyMap).reduce((accAsm, key) => {
-      const pubKey = keyMap[key];
-      if (!pubKey) {
-        throw new Error(`Error: invalid keyMap for ${key}`);
-      }
-      return accAsm
-        .replaceAll(`<${key}>`, `<${keyMap[key]}>`)
-        .replaceAll(`<sig(${key})>`, `<sig(${keyMap[key]})>`);
-    }, nonMalleableSats[0].asm);
-    return { lockingScript: bscript.fromASM(parsedAsm), satAsm };
+
+    return bscript.fromASM(
+      substituteAsm({
+        expandedAsm: nonMalleableSats[0].asm,
+        expansionMap,
+        signatures,
+        preimages
+      })
+    );
   }
 
   class Descriptor {
     #payment;
+    //@ts-ignore
     #satAsm: string | undefined;
+    #signatures: PartialSig[] = [];
+    #preimages: Preimage[] = [];
     /**
      * Parses a `descriptor`.
      *
@@ -383,14 +467,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       index,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
-      unknowns = [],
       network = networks.bitcoin
     }: {
       expression: string;
       index: number;
       checksumRequired?: boolean;
       allowMiniscriptInP2SH?: boolean;
-      unknowns?: Array<string>;
       network?: Network;
     }) {
       if (typeof expression !== 'string')
@@ -470,12 +552,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(
             `Error: could not get miniscript in ${isolatedExpression}`
           );
-        const { lockingScript: script, satAsm } = solveMiniscript({
+        const script = miniscript2Script({
           miniscript,
-          unknowns,
           network
         });
-        this.#satAsm = satAsm;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
@@ -504,7 +584,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         if (
           allowMiniscriptInP2SH === false &&
           //These top-level expressions within sh are allowed within sh.
-          //They can be parsed with solveMiniscript, but first we must make sure
+          //They can be parsed with miniscript2Script, but first we must make sure
           //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
           miniscript.search(
             /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
@@ -514,13 +594,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: Miniscript expressions can only be used in wsh`
           );
         }
-        const { lockingScript: script, satAsm } = solveMiniscript({
+        const script = miniscript2Script({
           miniscript,
           isSegwit: false,
-          unknowns,
           network
         });
-        this.#satAsm = satAsm;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
@@ -543,12 +621,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(
             `Error: could not get miniscript in ${isolatedExpression}`
           );
-        const { lockingScript: script, satAsm } = solveMiniscript({
+        const script = miniscript2Script({
           miniscript,
-          unknowns,
           network
         });
-        this.#satAsm = satAsm;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
@@ -564,7 +640,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } else {
         throw new Error(`Error: Could not parse descriptor ${expression}`);
       }
-      console.log(this.#satAsm);
     }
     getPayment() {
       return this.#payment;
@@ -578,6 +653,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!this.#payment.output)
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
+    }
+    addSignatures(signatures: PartialSig[]) {
+      const pubkeys = this.#signatures.map(partialSig => partialSig.pubkey);
+      const newPartialSigs = signatures.filter(
+        partialSig => !pubkeys.includes(partialSig.pubkey)
+      );
+      this.#signatures = this.#signatures.concat(newPartialSigs);
+      console.log({ signatures: this.#signatures });
+    }
+    addPreimages(preimages: Preimage[]) {
+      const digests = this.#preimages.map(preimage => preimage.digest);
+      const newPreimages = preimages.filter(
+        preimage => !digests.includes(preimage.digest)
+      );
+      this.#preimages = this.#preimages.concat(newPreimages);
+      console.log({ preimages: this.#preimages });
     }
     /**
      * Computes the checksum of a descriptor.
