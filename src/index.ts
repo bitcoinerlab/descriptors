@@ -1,7 +1,5 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
-//
-// TODO: redeemScript for P2SH-P2WSH, P2SH-P2WSH
 
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import {
@@ -451,7 +449,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         );
       expandedAsm = expandedAsm.replaceAll(search, replace);
     }
-    return bscript.fromASM( substituteAsm({ expandedAsm, expansionMap }));
+    return bscript.fromASM(substituteAsm({ expandedAsm, expansionMap }));
   }
 
   class Descriptor {
@@ -460,7 +458,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     #preimages: Preimage[] = [];
     #miniscript: string | undefined;
     #witnessScript: Buffer | undefined;
-    #redeemScript: Buffer | undefined;
     #isSegwit: boolean = true;
     #network: Network;
     /**
@@ -509,12 +506,33 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
 
       //addr(ADDR)
       if (matchedAddress) {
+        let output;
+        let payment;
         try {
-          address.toOutputScript(matchedAddress, network);
+          output = address.toOutputScript(matchedAddress, network);
         } catch (e) {
           throw new Error(`Error: invalid address ${matchedAddress}`);
         }
-        this.#payment = { address: matchedAddress };
+        try {
+          payment = payments.p2pkh({ output, network });
+        } catch (e) {}
+        try {
+          payment = payments.p2sh({ output, network });
+        } catch (e) {}
+        try {
+          payment = payments.p2wpkh({ output, network });
+        } catch (e) {}
+        try {
+          payment = payments.p2wsh({ output, network });
+        } catch (e) {}
+        try {
+          payment = payments.p2tr({ output, network });
+        } catch (e) {}
+        if (!payment) {
+          throw new Error(`Error: invalid address ${matchedAddress}`);
+        }
+
+        this.#payment = payment;
       }
       //pk(KEY)
       else if (isolatedExpression.match(rePkAnchored)) {
@@ -623,7 +641,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           isSegwit: false,
           network
         });
-        this.#redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
@@ -698,7 +715,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       return this.#witnessScript;
     }
     getRedeemcript() {
-      return this.#redeemScript;
+      return this.#payment.redeem?.output;
     }
     addSignatures(signatures: PartialSig[]) {
       const pubkeys = this.#signatures.map(partialSig => partialSig.pubkey);
