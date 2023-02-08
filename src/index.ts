@@ -1,5 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
+//
+// TODO: redeemScript for P2SH-P2WSH, P2SH-P2WSH
 
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import {
@@ -174,7 +176,6 @@ const derivePath = (node: BIP32Interface, path: string) => {
     )
       throw new Error(`Error: BIP 32 path element overflow`);
   }
-
   return node.derivePath(parsedPath);
 };
 
@@ -458,6 +459,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     #signatures: PartialSig[] = [];
     #preimages: Preimage[] = [];
     #miniscript: string | undefined;
+    #witnessScript: Buffer | undefined;
+    #redeemScript: Buffer | undefined;
     #isSegwit: boolean = true;
     #network: Network;
     /**
@@ -574,6 +577,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           miniscript,
           network
         });
+        this.#witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
@@ -619,6 +623,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           isSegwit: false,
           network
         });
+        this.#redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
@@ -646,6 +651,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           miniscript,
           network
         });
+        this.#witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
@@ -687,6 +693,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         signatures: this.#signatures,
         preimages: this.#preimages
       });
+    }
+    getWitnessScript() {
+      return this.#witnessScript;
+    }
+    getRedeemcript() {
+      return this.#redeemScript;
     }
     addSignatures(signatures: PartialSig[]) {
       const pubkeys = this.#signatures.map(partialSig => partialSig.pubkey);
