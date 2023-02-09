@@ -391,20 +391,33 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
    * Assumptions:
    * The attacker does not have access to any of the private keys of public keys that participate in the Script.
    * The attacker only has access to hash preimages that honest users have access to as well.
+   *
+   * Pass constraints to search for the first solution with this nLockTime and nSequence.
+   * Don't pass constraints (this is the default) if you want to get the smallest size solution altogether.
+   *
+   * It a solution is not found this function throws.
    */
   function satisfyMiniscript({
     miniscript,
     isSegwit = true,
     signatures = [],
     preimages = [],
+    constraints,
     network = networks.bitcoin
   }: {
     miniscript: string;
     isSegwit?: boolean;
     signatures?: PartialSig[];
     preimages?: Preimage[];
+    constraints?:
+      | { nLockTime: number | undefined; nSequence: number | undefined }
+      | undefined;
     network?: Network;
-  }): Buffer {
+  }): {
+    scriptSatisfaction: Buffer | undefined;
+    nLockTime: number | undefined;
+    nSequence: number | undefined;
+  } {
     const { expandedMiniscript, expansionMap } = expandMiniscript({
       miniscript,
       isSegwit,
@@ -437,19 +450,41 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
       throw new Error(`Error: unresolvable miniscript ${miniscript}`);
 
+    let sat;
+    if (!constraints) {
+      sat = nonMalleableSats[0];
+    } else {
+      sat = nonMalleableSats.find(
+        nonMalleableSat =>
+          nonMalleableSat.nSequence === constraints.nSequence &&
+          nonMalleableSat.nLockTime === constraints.nLockTime
+      );
+      if (sat === undefined) {
+        throw new Error(
+          `Error: unresolvable miniscript ${miniscript}. Could not find solutions for nSequence=${constraints.nSequence}, nLockTime=${constraints.nLockTime}. Signatures depend on sequence and locktime and would not match.`
+        );
+      }
+    }
+
     //substitute signatures and preimages:
-    let expandedAsm = nonMalleableSats[0].asm;
+    let expandedAsm = sat.asm;
     //replace in expandedAsm all the <sig(@0)> and <sha256_preimage(6c...33)>
     //to <304...01> and <107...5f> ...
     for (const search in expandedKnownsMap) {
       const replace = expandedKnownsMap[search];
-      if (!replace)
-        throw new Error(
-          `Error: invalid expandedKnownsMap ${expandedKnownsMap}`
-        );
+      if (!replace || replace === '<>')
+        throw new Error(`Error: invalid expandedKnownsMap`);
       expandedAsm = expandedAsm.replaceAll(search, replace);
     }
-    return bscript.fromASM(substituteAsm({ expandedAsm, expansionMap }));
+    const scriptSatisfaction = bscript.fromASM(
+      substituteAsm({ expandedAsm, expansionMap })
+    );
+
+    return {
+      scriptSatisfaction,
+      nLockTime: sat.nLockTime,
+      nSequence: sat.nSequence
+    };
   }
 
   class Descriptor {
@@ -460,6 +495,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     #witnessScript: Buffer | undefined;
     #isSegwit: boolean = true;
     #network: Network;
+    #nLockTime: number | undefined;
+    #nSequence: number | undefined;
     /**
      * Parses a `descriptor`.
      *
@@ -481,15 +518,20 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       index,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
-      network = networks.bitcoin
+      network = networks.bitcoin,
+      preimages = [],
+      signers = []
     }: {
       expression: string;
       index: number;
       checksumRequired?: boolean;
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
+      preimages?: Preimage[];
+      signers?: string[];
     }) {
       this.#network = network;
+      this.#preimages = preimages;
       if (typeof expression !== 'string')
         throw new Error(`Error: invalid descriptor type`);
 
@@ -569,7 +611,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
           throw new Error(`Error: keyExpression could not me extracted`);
-        const pubkey = keyExpression2PubKey({ keyExpression, network });
+        const pubkey = keyExpression2PubKey({
+          keyExpression,
+          network,
+          isSegwit: true
+        });
         this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
       }
       //wpkh(KEY) - native segwit
@@ -578,7 +624,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
           throw new Error(`Error: keyExpression could not me extracted`);
-        const pubkey = keyExpression2PubKey({ keyExpression, network });
+        const pubkey = keyExpression2PubKey({
+          keyExpression,
+          network,
+          isSegwit: true
+        });
         this.#payment = p2wpkh({ pubkey, network });
       }
       //sh(wsh(miniscript))
@@ -684,6 +734,28 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } else {
         throw new Error(`Error: Could not parse descriptor ${expression}`);
       }
+
+      if (this.#miniscript) {
+        //We create some fakeSignatures since we don't have them yet.
+        //We only want to retrieve the nLockTime and nSequence of the satisfaction
+        const fakeSignatures = signers.map(keyExpression => ({
+          pubkey: keyExpression2PubKey({
+            keyExpression,
+            network,
+            isSegwit: this.#isSegwit
+          }),
+          signature: Buffer.alloc(64, 0)
+        }));
+        const { nLockTime, nSequence } = satisfyMiniscript({
+          miniscript: this.#miniscript,
+          isSegwit: this.#isSegwit,
+          signatures: fakeSignatures,
+          preimages,
+          network
+        });
+        this.#nLockTime = nLockTime;
+        this.#nSequence = nSequence;
+      }
     }
     getPayment() {
       return this.#payment;
@@ -698,18 +770,35 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
-    getSatisfaction() {
+    //TODO: This is wrong. getScriptWitness should only return if isSegwit is true.
+    //If isSegwit is false then it's different
+    getScriptWitness() {
       if (!this.#miniscript)
         throw new Error(
           `Error: this descriptor does not have a miniscript expression`
         );
+      //Note that we pass the original nLockTime and nSequence that were
+      //used to compute the signatures as constraings.
+      //satisfyMiniscript will make sure
+      //that the solution given, still meets the nLockTime and nSequence
+      //conditions
       return satisfyMiniscript({
         miniscript: this.#miniscript,
         isSegwit: this.#isSegwit,
-        network: this.#network,
         signatures: this.#signatures,
-        preimages: this.#preimages
-      });
+        preimages: this.#preimages,
+        constraints: {
+          nLockTime: this.#nLockTime,
+          nSequence: this.#nSequence
+        },
+        network: this.#network
+      }).scriptSatisfaction;
+    }
+    getSequence() {
+      return this.#nSequence;
+    }
+    getLockTime() {
+      return this.#nLockTime;
     }
     getWitnessScript() {
       return this.#witnessScript;
@@ -723,13 +812,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         partialSig => !pubkeys.includes(partialSig.pubkey)
       );
       this.#signatures = this.#signatures.concat(newPartialSigs);
-    }
-    addPreimages(preimages: Preimage[]) {
-      const digests = this.#preimages.map(preimage => preimage.digest);
-      const newPreimages = preimages.filter(
-        preimage => !digests.includes(preimage.digest)
-      );
-      this.#preimages = this.#preimages.concat(newPreimages);
     }
     /**
      * Computes the checksum of a descriptor.
