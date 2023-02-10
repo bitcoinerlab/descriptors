@@ -1,6 +1,9 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+//TODO: keyExpression2PubKey should not be a static method of the class
+//but a function by its own.
+
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import {
   address,
@@ -520,7 +523,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       allowMiniscriptInP2SH = false,
       network = networks.bitcoin,
       preimages = [],
-      signers = []
+      signersKeyExpressions
     }: {
       expression: string;
       index: number;
@@ -528,7 +531,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
       preimages?: Preimage[];
-      signers?: string[];
+      signersKeyExpressions?: string[];
     }) {
       this.#network = network;
       this.#preimages = preimages;
@@ -573,7 +576,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         if (!payment) {
           throw new Error(`Error: invalid address ${matchedAddress}`);
         }
-
         this.#payment = payment;
       }
       //pk(KEY)
@@ -736,9 +738,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
 
       if (this.#miniscript) {
+        if (!signersKeyExpressions) {
+          //signersKeyExpressions can be left unset if all possible signers will
+          //sign, although this is not recommended.
+          const { expansionMap } = expandMiniscript({
+            miniscript: this.#miniscript,
+            isSegwit: this.#isSegwit,
+            network
+          });
+          signersKeyExpressions = Object.values(expansionMap);
+        }
         //We create some fakeSignatures since we don't have them yet.
         //We only want to retrieve the nLockTime and nSequence of the satisfaction
-        const fakeSignatures = signers.map(keyExpression => ({
+        const fakeSignatures = signersKeyExpressions.map(keyExpression => ({
           pubkey: keyExpression2PubKey({
             keyExpression,
             network,
@@ -770,9 +782,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
-    //TODO: This is wrong. getScriptWitness should only return if isSegwit is true.
-    //If isSegwit is false then it's different
-    getScriptWitness() {
+    getSatisfaction(): Buffer {
       if (!this.#miniscript)
         throw new Error(
           `Error: this descriptor does not have a miniscript expression`
@@ -782,7 +792,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //satisfyMiniscript will make sure
       //that the solution given, still meets the nLockTime and nSequence
       //conditions
-      return satisfyMiniscript({
+      const satisfaction = satisfyMiniscript({
         miniscript: this.#miniscript,
         isSegwit: this.#isSegwit,
         signatures: this.#signatures,
@@ -793,6 +803,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         },
         network: this.#network
       }).scriptSatisfaction;
+
+      if (!satisfaction)
+        throw new Error(`Error: could not produce a valid satisfaction`);
+      return satisfaction;
     }
     getSequence() {
       return this.#nSequence;
@@ -812,6 +826,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         partialSig => !pubkeys.includes(partialSig.pubkey)
       );
       this.#signatures = this.#signatures.concat(newPartialSigs);
+    }
+    isSegwit() {
+      return this.#isSegwit;
     }
     /**
      * Computes the checksum of a descriptor.
