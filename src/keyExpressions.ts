@@ -4,6 +4,17 @@ import type { BIP32API, BIP32Interface } from 'bip32';
 
 import * as RE from './re';
 
+export type KeyExpression = {
+  keyExpression: string;
+  pubkey: Buffer;
+  ecpair?: ECPairInterface | undefined;
+  bip32?: BIP32Interface | undefined;
+  masterFingerprint?: Buffer | undefined;
+  originPath?: string | undefined; //The path from the masterFingerprint to the xpub/xprv root
+  keyPath?: string | undefined; //The path from the xpub/xprv root
+  path?: string | undefined; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
+};
+
 const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {
     throw new Error(`Error: invalid derivation path ${path}`);
@@ -19,16 +30,6 @@ const derivePath = (node: BIP32Interface, path: string) => {
       throw new Error(`Error: BIP 32 path element overflow`);
   }
   return node.derivePath(parsedPath);
-};
-
-export type KeyExpression = {
-  keyExpression: string;
-  pubkey: Buffer;
-  ecpair?: ECPairInterface | undefined;
-  bip32?: BIP32Interface | undefined;
-  masterFingerprint?: Buffer | undefined;
-  originPath?: string | undefined; //The path from the masterFingerprint to the xpub/xprv root
-  keyPath?: string | undefined; //The path from the xpub/xprv root
 };
 
 /*
@@ -54,6 +55,7 @@ export function parseKeyExpression({
   let masterFingerprint: Buffer | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
+  let path: string | undefined;
 
   //Validate the keyExpression:
   const keyExpressions = keyExpression.match(RE.reKeyExp);
@@ -69,7 +71,9 @@ export function parseKeyExpression({
     const mMasterFingerprint = bareOrigin.match(
       reMasterFingerprintAnchoredStart
     );
-    const masterFingerprintHex = mMasterFingerprint ? mMasterFingerprint[0] : '';
+    const masterFingerprintHex = mMasterFingerprint
+      ? mMasterFingerprint[0]
+      : '';
     originPath = bareOrigin.replace(masterFingerprintHex, '');
     if (masterFingerprintHex.length > 0) {
       if (masterFingerprintHex.length !== 8)
@@ -141,6 +145,9 @@ export function parseKeyExpression({
       `Error: could not get pubkey for keyExpression ${keyExpression}`
     );
   }
+  if (masterFingerprint && (originPath || keyPath)) {
+    path = 'm' + originPath + keyPath;
+  }
   return {
     pubkey,
     keyExpression,
@@ -148,6 +155,7 @@ export function parseKeyExpression({
     bip32,
     masterFingerprint,
     originPath,
-    keyPath
+    keyPath,
+    path
   };
 }

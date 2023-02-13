@@ -9,11 +9,12 @@ import {
   script as bscript,
   crypto,
   Network,
-  //  Transaction,
-  // PsbtTxInput,
+  Payment,
+  Transaction,
+  PsbtTxInput,
   Psbt
 } from 'bitcoinjs-lib';
-//import type { PsbtInput } from 'bip174/src/lib/interfaces';
+import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 
@@ -35,7 +36,7 @@ import {
 
 import * as RE from './re';
 
-//interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
+interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
 export interface Preimage {
   digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
@@ -104,6 +105,9 @@ interface ParseKeyExpression {
   }): KeyExpression;
 }
 
+interface ExpansionMap {
+  [key: string]: KeyExpression;
+}
 //TODO: Do a proper declaration interface DescriptorInterface or API...
 export interface DescriptorInterface {
   //getPayment(): any;
@@ -149,6 +153,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     });
   }
 
+  //TODO: refactor - move from here
   function countNonPushOnlyOPs(script: Buffer): number {
     const decompile = bscript.decompile(script);
     if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
@@ -172,9 +177,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     network?: Network;
   }): {
     expandedMiniscript: string;
-    expansionMap: { [key: string]: string };
+    expansionMap: ExpansionMap;
   } {
-    const expansionMap: { [key: string]: string } = {};
+    const expansionMap: ExpansionMap = {};
     const expandedMiniscript = miniscript.replace(
       RegExp(RE.reKeyExp, 'g'),
       (keyExpression: string) => {
@@ -183,7 +188,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           keyExpression,
           isSegwit,
           network
-        }).pubkey.toString('hex');
+        });
         return key;
       }
     );
@@ -208,19 +213,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     expansionMap
   }: {
     expandedAsm: string;
-    expansionMap: { [key: string]: string };
+    expansionMap: ExpansionMap;
   }): string {
     //Replace back variables into the pubkeys previously computed.
     let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
-      const pubkey = expansionMap[key];
+      const pubkey = expansionMap[key]?.pubkey;
       if (!pubkey) {
         throw new Error(`Error: invalid expansionMap for ${key}`);
       }
       return accAsm
-        .replaceAll(`<${key}>`, `<${expansionMap[key]}>`)
+        .replaceAll(`<${key}>`, `<${pubkey.toString('hex')}>`)
         .replaceAll(
           `<HASH160\(${key}\)>`,
-          `<${crypto.hash160(Buffer.from(pubkey, 'hex')).toString('hex')}>`
+          `<${crypto.hash160(pubkey).toString('hex')}>`
         );
     }, expandedAsm);
 
@@ -244,6 +249,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     return asm;
   }
 
+  //TODO: refactor - move from here
   function miniscript2Script({
     miniscript,
     isSegwit = true,
@@ -267,6 +273,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     );
   }
 
+  //TODO: refactor - move from here
   /**
    * Assumptions:
    * The attacker does not have access to any of the private keys of public keys that participate in the Script.
@@ -315,9 +322,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     //get the keyExpressions: @0, @1 from the keys in expansionMap
     let expandedSignatureMap: { [key: string]: string } = {};
     signatures.forEach(signature => {
-      const pubkey = signature.pubkey.toString('hex');
+      const pubkeyHex = signature.pubkey.toString('hex');
       const keyExpression = Object.keys(expansionMap).find(
-        k => expansionMap[k] === pubkey
+        k => expansionMap[k]?.pubkey.toString('hex') === pubkeyHex
       );
       expandedSignatureMap['<sig(' + keyExpression + ')>'] =
         '<' + signature.signature.toString('hex') + '>';
@@ -368,14 +375,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   }
 
   class Descriptor implements DescriptorInterface {
-    #payment; //TODO add declaration
+    #payment: Payment;
     #preimages: Preimage[] = [];
     #miniscript: string | undefined;
     #witnessScript: Buffer | undefined;
     #isSegwit?: boolean;
     #expandedExpression?: string;
     #expandedMiniscript?: string;
-    #expansionMap?: { [key: string]: KeyExpression }; //TODO: Use a better declaration
+    #expansionMap?: ExpansionMap;
     #network: Network;
     #nLockTime: number | undefined;
     #nSequence: number | undefined;
@@ -532,7 +539,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
       //sh(wsh(miniscript))
       else if (isolatedExpression.match(RE.reShWshMiniscriptAnchored)) {
-        this.#isSegwit = true;
         const miniscript = isolatedExpression.match(
           RE.reShWshMiniscriptAnchored
         )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
@@ -541,17 +547,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
             `Error: could not get miniscript in ${isolatedExpression}`
           );
         this.#miniscript = miniscript;
-
-        //TODO: reactivate the below and apply to sh/wsh when fixed expandMiniscript
-        //({
-        //  expandedMiniscript: this.#expandedMiniscript,
-        //  expansionMap: this.#expansionMap
-        //} = expandMiniscript({
-        //  miniscript,
-        //  isSegwit: this.#isSegwit,
-        //  network
-        //}));
-        //this.#expandedExpression = `sh(wsh(${expandMiniscript}))`;
+        this.#isSegwit = true;
+        ({
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
+        } = expandMiniscript({
+          miniscript,
+          isSegwit: this.#isSegwit,
+          network
+        }));
+        this.#expandedExpression = `sh(wsh(${this.#expandedMiniscript}))`;
 
         const script = miniscript2Script({
           miniscript,
@@ -598,6 +603,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         }
         this.#miniscript = miniscript;
         this.#isSegwit = false;
+        ({
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
+        } = expandMiniscript({
+          miniscript,
+          isSegwit: this.#isSegwit,
+          network
+        }));
+        this.#expandedExpression = `sh(${this.#expandedMiniscript})`;
+
         const script = miniscript2Script({
           miniscript,
           isSegwit: false,
@@ -618,7 +633,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
       //wsh(miniscript)
       else if (isolatedExpression.match(RE.reWshMiniscriptAnchored)) {
-        this.#isSegwit = true;
         const miniscript = isolatedExpression.match(
           RE.reWshMiniscriptAnchored
         )?.[1]; //[1]-> whatever is found wsh(->HERE<-)
@@ -627,6 +641,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
             `Error: could not get miniscript in ${isolatedExpression}`
           );
         this.#miniscript = miniscript;
+        this.#isSegwit = true;
+        ({
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
+        } = expandMiniscript({
+          miniscript,
+          isSegwit: this.#isSegwit,
+          network
+        }));
+        this.#expandedExpression = `wsh(${this.#expandedMiniscript})`;
+
         const script = miniscript2Script({
           miniscript,
           network
@@ -692,7 +717,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
             isSegwit,
             network
           });
-          signersKeyExpressions = Object.values(expansionMap);
+          signersKeyExpressions = Object.values(expansionMap).map(
+            keyExpression => keyExpression.pubkey.toString('hex')
+          );
         }
         //We create some fakeSignatures since we don't have them yet.
         //We only want to retrieve the nLockTime and nSequence of the satisfaction
@@ -730,12 +757,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         throw new Error(
           `Error: this descriptor does not have a miniscript expression`
         );
-        if (this.#isSegwit === undefined)
-          throw new Error(
-            `Error: could not determine whether miniscript ${
-              this.#miniscript
-            } is segwit`
-          );
+      if (this.#isSegwit === undefined)
+        throw new Error(
+          `Error: could not determine whether miniscript ${
+            this.#miniscript
+          } is segwit`
+        );
       //Note that we pass the original nLockTime and nSequence that were
       //used to compute the signatures as constraings.
       //satisfyMiniscript will make sure
@@ -773,59 +800,60 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       return this.#isSegwit;
     }
     //TODO throw if the txHex+vout don't correspond to the descriptor described
+    //also check the redeemScript / witnessScript (if exists)?
     //f.ex. compute the scriptPubKey and assert it's the same.
-    //    updatePsbt(txHex: string, vout: number, psbt: Psbt) {
-    //      const tx = Transaction.fromHex(txHex);
-    //      if (this.#nLockTime !== undefined) {
-    //        if (psbt.locktime !== undefined)
-    //          throw new Error(`Error: transaction locktime has already been set`);
-    //        psbt.setLocktime(this.#nLockTime);
-    //      }
-    //      let inputSequence;
-    //      if (this.#nSequence !== undefined) {
-    //        inputSequence = this.#nSequence;
-    //      } else if (this.#nLockTime !== undefined) {
-    //        // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
-    //        inputSequence = 0xfffffffe;
-    //      }
-    //      const softPubKey = parseKeyExpression({
-    //        keyExpression: getSoftKeyExpression(EXTERNAL, RECEIVE_INDEX),
-    //        network: this.#network
-    //      }).pubkey;
-    //      const ledgerPubKey = parseKeyExpression({
-    //        keyExpression: getLedgerKeyExpression(EXTERNAL, RECEIVE_INDEX),
-    //        network: this.#network
-    //      }).pubkey;
-    //
-    //      const input: PsbtInputExtended = {
-    //        hash: tx.getHash(),
-    //        index: vout,
-    //        nonWitnessUtxo: tx.toBuffer(),
-    //        bip32Derivation: [
-    //          {
-    //            masterFingerprint: softMasterFingerprint,
-    //            pubkey: softPubKey,
-    //            path: `m/${SOFT_ORIGIN_PATH}/${ACCOUNT}/${RECEIVE_INDEX}`
-    //          },
-    //          {
-    //            masterFingerprint: ledgerMasterFingerprint,
-    //            pubkey: ledgerPubKey,
-    //            path: `m/${LEDGER_ORIGIN_PATH}/${ACCOUNT}/${RECEIVE_INDEX}`
-    //          }
-    //        ]
-    //      };
-    //      if (this.isSegwit())
-    //        input.witnessUtxo = {
-    //          script: this.getScriptPubKey(),
-    //          value: INITIAL_VALUE
-    //        };
-    //      if (this.#witnessScript !== undefined)
-    //        input.witnessScript = this.#witnessScript;
-    //      if (inputSequence !== undefined) input.sequence = inputSequence;
-    //
-    //      psbt.addInput(input);
-    //      const INPUT_INDEX = 0;
-    //    }
+    updatePsbt(txHex: string, vout: number, psbt: Psbt) {
+      const tx = Transaction.fromHex(txHex);
+      const out = tx?.outs?.[vout];
+      if (!out)
+        throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
+      if (this.#nLockTime !== undefined) {
+        if (psbt.locktime !== 0 && psbt.locktime !== undefined)
+          throw new Error(`Error: transaction locktime has already been set: ${psbt.locktime}`);
+        psbt.setLocktime(this.#nLockTime);
+      }
+      let inputSequence;
+      if (this.#nSequence !== undefined) {
+        inputSequence = this.#nSequence;
+      } else if (this.#nLockTime !== undefined) {
+        // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
+        inputSequence = 0xfffffffe;
+      }
+
+      const input: PsbtInputExtended = {
+        hash: tx.getHash(),
+        index: vout,
+        nonWitnessUtxo: tx.toBuffer()
+      };
+      if (this.#expansionMap) {
+        const bip32Derivation = Object.values(this.#expansionMap)
+          .filter(
+            keyExpression =>
+              keyExpression.pubkey &&
+              keyExpression.masterFingerprint &&
+              keyExpression.path
+          )
+          .map(
+            (keyExpression: KeyExpression): Bip32Derivation => ({
+              masterFingerprint: keyExpression.masterFingerprint!,
+              pubkey: keyExpression.pubkey,
+              path: keyExpression.path!
+            })
+          );
+        if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+      }
+      if (this.isSegwit())
+        input.witnessUtxo = {
+          script: this.getScriptPubKey(),
+          value: out.value
+        };
+      if (this.#witnessScript !== undefined)
+        input.witnessScript = this.#witnessScript;
+      if (inputSequence !== undefined) input.sequence = inputSequence;
+
+      psbt.addInput(input);
+      return psbt.data.inputs.length - 1;
+    }
     finalizePsbtInput(index: number, psbt: Psbt) {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
@@ -841,12 +869,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         );
       }
     }
-    expand() {
-      //TODO: Proper declaration
+    expand(): {
+      expandedExpression: string | undefined;
+      miniscript: string | undefined;
+      expandedMiniscript: string | undefined;
+      expansionMap: ExpansionMap | undefined;
+    } {
       return {
-        expansionMap: this.#expansionMap,
         expandedExpression: this.#expandedExpression,
-        expandedMiniscript: this.#expandedMiniscript
+        miniscript: this.#miniscript,
+        expandedMiniscript: this.#expandedMiniscript,
+        expansionMap: this.#expansionMap
       };
     }
     /**
@@ -856,7 +889,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
      * @param {string} descriptor - The descriptor.
      * @returns {string} - The checksum.
      */
-    static checksum(expression: string) {
+    static checksum(expression: string): string {
       return DescriptorChecksum(expression);
     }
   }
