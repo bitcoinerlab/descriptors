@@ -11,19 +11,30 @@ import {
   payments,
   script as bscript,
   crypto,
-  Network
+  Network,
+  //  Transaction,
+  // PsbtTxInput,
+  Psbt
 } from 'bitcoinjs-lib';
+//import type { PsbtInput } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh } = payments;
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 
 import type { TinySecp256k1Interface } from './tinysecp';
 
+import { /*FinalScriptsFunc,*/ finalScriptsFuncFactory } from './psbt';
+
 import { BIP32Factory, BIP32Interface } from 'bip32';
 import { ECPairFactory } from 'ecpair';
 
-import { DescriptorChecksum, CHECKSUM_CHARSET } from './checksum';
+import { DescriptorChecksum } from './checksum';
 
 import { numberEncodeAsm } from './numberEncodeAsm';
+
+import * as RE from './re';
+
+//interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
+
 export interface Preimage {
   digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
   //Accepted functions: sha256, hash256, ripemd160, hash160
@@ -36,86 +47,6 @@ export interface Preimage {
 const MAX_SCRIPT_ELEMENT_SIZE = 520;
 const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
 const MAX_OPS_PER_SCRIPT = 201;
-
-//Regular expressions cheat sheet:
-//https://www.keycdn.com/support/regex-cheat-sheet
-
-//hardened characters
-const reHardened = String.raw`(['hH])`;
-//a level is a series of integers followed (optional) by a hardener char
-const reLevel = String.raw`(\d+${reHardened}?)`;
-//a path component is a level followed by a slash "/" char
-const rePathComponent = String.raw`(${reLevel}\/)`;
-
-//A path formed by a series of path components that can be hardened: /2'/23H/23
-const reOriginPath = String.raw`(\/${rePathComponent}*${reLevel})`; //The "*" means: "match 0 or more of the previous"
-//an origin is something like this: [d34db33f/44'/0'/0'] where the path is optional. The fingerPrint is 8 chars hex
-const reOrigin = String.raw`(\[[0-9a-fA-F]{8}(${reOriginPath})?\])`;
-
-const reChecksum = String.raw`(#[${CHECKSUM_CHARSET}]{8})`;
-
-//Something like this: 0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2
-//as explained here: github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#reference
-const reCompressedPubKey = String.raw`((02|03)[0-9a-fA-F]{64})`;
-const reUncompressedPubKey = String.raw`(04[0-9a-fA-F]{128})`;
-const rePubKey = String.raw`(${reCompressedPubKey}|${reUncompressedPubKey})`;
-
-//https://learnmeabitcoin.com/technical/wif
-//5, K, L for mainnet, 5: uncompressed, {K, L}: compressed
-//c, 9, testnet, c: compressed, 9: uncompressed
-const reWIF = String.raw`([5KLc9][1-9A-HJ-NP-Za-km-z]{50,51})`;
-
-//x for mainnet, t for testnet
-const reXpub = String.raw`([xXtT]pub[1-9A-HJ-NP-Za-km-z]{79,108})`;
-const reXprv = String.raw`([xXtT]prv[1-9A-HJ-NP-Za-km-z]{79,108})`;
-//reRangeLevel is like reLevel but using a wildcard "*"
-const reRangeLevel = String.raw`(\*(${reHardened})?)`;
-//A path can be finished with stuff like this: /23 or /23h or /* or /*'
-const rePath = String.raw`(\/(${rePathComponent})*(${reRangeLevel}|${reLevel}))`;
-//rePath is optional (note the "zero"): Followed by zero or more /NUM or /NUM' path elements to indicate unhardened or hardened derivation steps between the fingerprint and the key or xpub/xprv root that follows
-const reXpubKey = String.raw`(${reXpub})(${rePath})?`;
-const reXprvKey = String.raw`(${reXprv})(${rePath})?`;
-
-//actualKey is the keyExpression without optional origin
-const reActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${rePubKey}|${reWIF})`;
-//reOrigin is optional: Optionally, key origin information, consisting of:
-//Matches a key expression: wif, xpub, xprv or pubkey:
-const reKeyExp = String.raw`(${reOrigin})?(${reActualKey})`;
-
-const rePk = String.raw`pk\((.*?)\)`; //Matches anything. We assert later in the code that the pubkey is valid.
-const reAddr = String.raw`addr\((.*?)\)`; //Matches anything. We assert later in the code that the address is valid.
-
-const rePkh = String.raw`pkh\(${reKeyExp}\)`;
-const reWpkh = String.raw`wpkh\(${reKeyExp}\)`;
-const reShWpkh = String.raw`sh\(wpkh\(${reKeyExp}\)\)`;
-
-const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
-
-//RegExp makers:
-const makeReSh = (re: string) => String.raw`sh\(${re}\)`;
-const makeReWsh = (re: string) => String.raw`wsh\(${re}\)`;
-const makeReShWsh = (re: string) => makeReSh(makeReWsh(re));
-
-const anchorStartAndEnd = (re: string) => String.raw`^${re}$`; //starts and finishes like re (not composable)
-
-const composeChecksum = (re: string) => String.raw`${re}(${reChecksum})?`; //it's optional (note the "?")
-
-const rePkAnchored = anchorStartAndEnd(composeChecksum(rePk));
-const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
-
-const rePkhAnchored = anchorStartAndEnd(composeChecksum(rePkh));
-const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
-const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
-
-const reShMiniscriptAnchored = anchorStartAndEnd(
-  composeChecksum(makeReSh(reMiniscript))
-);
-const reShWshMiniscriptAnchored = anchorStartAndEnd(
-  composeChecksum(makeReShWsh(reMiniscript))
-);
-const reWshMiniscriptAnchored = anchorStartAndEnd(
-  composeChecksum(makeReWsh(reMiniscript))
-);
 
 /*
  * Returns a bare descriptor without checksum and particularized for a certain
@@ -130,7 +61,7 @@ function isolate({
   checksumRequired: boolean;
   index: number;
 }): string {
-  const mChecksum = expression.match(String.raw`(${reChecksum})$`);
+  const mChecksum = expression.match(String.raw`(${RE.reChecksum})$`);
   if (mChecksum === null && checksumRequired === true)
     throw new Error(`Error: descriptor ${expression} has not checksum`);
   //isolatedExpression: a bare desc without checksum and particularized for a certain
@@ -204,7 +135,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     isSegwit?: boolean;
   }): Buffer {
     //Validate the keyExpression:
-    const keyExpressions = keyExpression.match(reKeyExp);
+    const keyExpressions = keyExpression.match(RE.reKeyExp);
     if (keyExpressions === null || keyExpressions[0] !== keyExpression) {
       throw new Error(
         `Error: expected a keyExpression but got ${keyExpression}`
@@ -212,12 +143,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
     //Remove the origin (if it exists) and store result in actualKey
     const actualKey = keyExpression.replace(
-      RegExp(String.raw`^(${reOrigin})?`),
+      RegExp(String.raw`^(${RE.reOrigin})?`),
       ''
     ); //starts with ^origin
     let mPubKey, mWIF, mXpubKey, mXprvKey;
     //match pubkey:
-    if ((mPubKey = actualKey.match(anchorStartAndEnd(rePubKey))) !== null) {
+    if (
+      (mPubKey = actualKey.match(RE.anchorStartAndEnd(RE.rePubKey))) !== null
+    ) {
       const pubkey = Buffer.from(mPubKey[0], 'hex');
       //Validate the pubkey (compressed or uncompressed)
       if (
@@ -230,19 +163,21 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         return pubkey;
       }
       //match WIF:
-    } else if ((mWIF = actualKey.match(anchorStartAndEnd(reWIF))) !== null) {
+    } else if (
+      (mWIF = actualKey.match(RE.anchorStartAndEnd(RE.reWIF))) !== null
+    ) {
       //fromWIF will throw if the wif is not valid
       return ecpair.fromWIF(mWIF[0], network).publicKey;
       //match xpub:
     } else if (
-      (mXpubKey = actualKey.match(anchorStartAndEnd(reXpubKey))) !== null
+      (mXpubKey = actualKey.match(RE.anchorStartAndEnd(RE.reXpubKey))) !== null
     ) {
       const xPubKey = mXpubKey[0];
-      const xPub = xPubKey.match(reXpub)?.[0];
+      const xPub = xPubKey.match(RE.reXpub)?.[0];
       if (!xPub) throw new Error(`Error: xpub could not be matched`);
-      const mPath = xPubKey.match(rePath);
+      const mPath = xPubKey.match(RE.rePath);
       if (mPath !== null) {
-        const path = xPubKey.match(rePath)?.[0];
+        const path = xPubKey.match(RE.rePath)?.[0];
         if (!path) throw new Error(`Error: could not extract a path`);
         //fromBase58 and derivePath will throw if xPub or path are not valid
         return derivePath(bip32.fromBase58(xPub, network), path).publicKey;
@@ -251,14 +186,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       //match xprv:
     } else if (
-      (mXprvKey = actualKey.match(anchorStartAndEnd(reXprvKey))) !== null
+      (mXprvKey = actualKey.match(RE.anchorStartAndEnd(RE.reXprvKey))) !== null
     ) {
       const xPrvKey = mXprvKey[0];
-      const xPrv = xPrvKey.match(reXprv)?.[0];
+      const xPrv = xPrvKey.match(RE.reXprv)?.[0];
       if (!xPrv) throw new Error(`Error: xprv could not be matched`);
-      const mPath = xPrvKey.match(rePath);
+      const mPath = xPrvKey.match(RE.rePath);
       if (mPath !== null) {
-        const path = xPrvKey.match(rePath)?.[0];
+        const path = xPrvKey.match(RE.rePath)?.[0];
         if (!path) throw new Error(`Error: could not extract a path`);
         //fromBase58 and derivePath will throw if xPrv or path are not valid
         return derivePath(bip32.fromBase58(xPrv, network), path).publicKey;
@@ -283,7 +218,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
    * expressions. Variables will be of this form: @0, @1, ...
    * This is done so that it can be compiled with compileMiniscript and
    * satisfied with satisfier.
-   * Also compute pubKeys from descriptors to use them later.
+   * Also compute pubkeys from descriptors to use them later.
    */
   function expandMiniscript({
     miniscript,
@@ -299,19 +234,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   } {
     const expansionMap: { [key: string]: string } = {};
     const expandedMiniscript = miniscript.replace(
-      RegExp(reKeyExp, 'g'),
+      RegExp(RE.reKeyExp, 'g'),
       (keyExpression: string) => {
         const key = '@' + Object.keys(expansionMap).length;
         expansionMap[key] = keyExpression2PubKey({
           keyExpression,
-          network,
-          isSegwit
+          isSegwit,
+          network
         }).toString('hex');
         return key;
       }
     );
-    const pubKeys = Object.values(expansionMap);
-    if (new Set(pubKeys).size !== pubKeys.length) {
+    const pubkeys = Object.values(expansionMap);
+    if (new Set(pubkeys).size !== pubkeys.length) {
       throw new Error(
         `Error: miniscript ${miniscript} is not sane: contains duplicate public keys.`
       );
@@ -333,17 +268,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     expandedAsm: string;
     expansionMap: { [key: string]: string };
   }): string {
-    //Replace back variables into the pubKeys previously computed.
+    //Replace back variables into the pubkeys previously computed.
     let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
-      const pubKey = expansionMap[key];
-      if (!pubKey) {
+      const pubkey = expansionMap[key];
+      if (!pubkey) {
         throw new Error(`Error: invalid expansionMap for ${key}`);
       }
       return accAsm
         .replaceAll(`<${key}>`, `<${expansionMap[key]}>`)
         .replaceAll(
           `<HASH160\(${key}\)>`,
-          `<${crypto.hash160(Buffer.from(pubKey, 'hex')).toString('hex')}>`
+          `<${crypto.hash160(Buffer.from(pubkey, 'hex')).toString('hex')}>`
         );
     }, expandedAsm);
 
@@ -492,7 +427,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
 
   class Descriptor {
     #payment;
-    #signatures: PartialSig[] = [];
     #preimages: Preimage[] = [];
     #miniscript: string | undefined;
     #witnessScript: Buffer | undefined;
@@ -546,8 +480,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         checksumRequired
       });
 
-      const matchedAddress = isolatedExpression.match(reAddrAnchored)?.[1];
-      const keyExpression = isolatedExpression.match(reKeyExp)?.[0];
+      const matchedAddress = isolatedExpression.match(RE.reAddrAnchored)?.[1];
+      const keyExpression = isolatedExpression.match(RE.reKeyExp)?.[0];
 
       //addr(ADDR)
       if (matchedAddress) {
@@ -579,7 +513,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = payment;
       }
       //pk(KEY)
-      else if (isolatedExpression.match(rePkAnchored)) {
+      else if (isolatedExpression.match(RE.rePkAnchored)) {
         if (isolatedExpression !== `pk(${keyExpression})`)
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
@@ -594,7 +528,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = p2pk({ pubkey, network });
       }
       //pkh(KEY) - legacy
-      else if (isolatedExpression.match(rePkhAnchored)) {
+      else if (isolatedExpression.match(RE.rePkhAnchored)) {
         if (isolatedExpression !== `pkh(${keyExpression})`)
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
@@ -608,7 +542,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = p2pkh({ pubkey, network });
       }
       //sh(wpkh(KEY)) - nested segwit
-      else if (isolatedExpression.match(reShWpkhAnchored)) {
+      else if (isolatedExpression.match(RE.reShWpkhAnchored)) {
         if (isolatedExpression !== `sh(wpkh(${keyExpression}))`)
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
@@ -621,7 +555,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
       }
       //wpkh(KEY) - native segwit
-      else if (isolatedExpression.match(reWpkhAnchored)) {
+      else if (isolatedExpression.match(RE.reWpkhAnchored)) {
         if (isolatedExpression !== `wpkh(${keyExpression})`)
           throw new Error(`Error: invalid expression ${expression}`);
         if (!keyExpression)
@@ -634,9 +568,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = p2wpkh({ pubkey, network });
       }
       //sh(wsh(miniscript))
-      else if (isolatedExpression.match(reShWshMiniscriptAnchored)) {
+      else if (isolatedExpression.match(RE.reShWshMiniscriptAnchored)) {
         const miniscript = isolatedExpression.match(
-          reShWshMiniscriptAnchored
+          RE.reShWshMiniscriptAnchored
         )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
         if (!miniscript)
           throw new Error(
@@ -665,9 +599,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         });
       }
       //sh(miniscript)
-      else if (isolatedExpression.match(reShMiniscriptAnchored)) {
+      else if (isolatedExpression.match(RE.reShMiniscriptAnchored)) {
         const miniscript = isolatedExpression.match(
-          reShMiniscriptAnchored
+          RE.reShMiniscriptAnchored
         )?.[1]; //[1]-> whatever is found sh(->HERE<-)
         if (!miniscript)
           throw new Error(
@@ -707,9 +641,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#payment = p2sh({ redeem: { output: script, network }, network });
       }
       //wsh(miniscript)
-      else if (isolatedExpression.match(reWshMiniscriptAnchored)) {
+      else if (isolatedExpression.match(RE.reWshMiniscriptAnchored)) {
         const miniscript = isolatedExpression.match(
-          reWshMiniscriptAnchored
+          RE.reWshMiniscriptAnchored
         )?.[1]; //[1]-> whatever is found wsh(->HERE<-)
         if (!miniscript)
           throw new Error(
@@ -782,7 +716,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
-    getSatisfaction(): Buffer {
+    getScriptSatisfaction(signatures: PartialSig[]): Buffer {
       if (!this.#miniscript)
         throw new Error(
           `Error: this descriptor does not have a miniscript expression`
@@ -795,7 +729,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       const satisfaction = satisfyMiniscript({
         miniscript: this.#miniscript,
         isSegwit: this.#isSegwit,
-        signatures: this.#signatures,
+        signatures,
         preimages: this.#preimages,
         constraints: {
           nLockTime: this.#nLockTime,
@@ -820,15 +754,75 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     getRedeemcript() {
       return this.#payment.redeem?.output;
     }
-    addSignatures(signatures: PartialSig[]) {
-      const pubkeys = this.#signatures.map(partialSig => partialSig.pubkey);
-      const newPartialSigs = signatures.filter(
-        partialSig => !pubkeys.includes(partialSig.pubkey)
-      );
-      this.#signatures = this.#signatures.concat(newPartialSigs);
-    }
     isSegwit() {
       return this.#isSegwit;
+    }
+    //    updatePsbt(txHex: string, vout: number, psbt: Psbt) {
+    //      const tx = Transaction.fromHex(txHex);
+    //      if (this.#nLockTime !== undefined) {
+    //        if (psbt.locktime !== undefined)
+    //          throw new Error(`Error: transaction locktime has already been set`);
+    //        psbt.setLocktime(this.#nLockTime);
+    //      }
+    //      let inputSequence;
+    //      if (this.#nSequence !== undefined) {
+    //        inputSequence = this.#nSequence;
+    //      } else if (this.#nLockTime !== undefined) {
+    //        // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
+    //        inputSequence = 0xfffffffe;
+    //      }
+    //      const softPubKey = Descriptor.keyExpression2PubKey({
+    //        keyExpression: getSoftKeyExpression(EXTERNAL, RECEIVE_INDEX),
+    //        network: this.#network
+    //      });
+    //      const ledgerPubKey = Descriptor.keyExpression2PubKey({
+    //        keyExpression: getLedgerKeyExpression(EXTERNAL, RECEIVE_INDEX),
+    //        network: this.#network
+    //      });
+    //
+    //      const input: PsbtInputExtended = {
+    //        hash: tx.getHash(),
+    //        index: vout,
+    //        nonWitnessUtxo: tx.toBuffer(),
+    //        bip32Derivation: [
+    //          {
+    //            masterFingerprint: softMasterFingerprint,
+    //            pubkey: softPubKey,
+    //            path: `m/${SOFT_ORIGIN_PATH}/${ACCOUNT}/${RECEIVE_INDEX}`
+    //          },
+    //          {
+    //            masterFingerprint: ledgerMasterFingerprint,
+    //            pubkey: ledgerPubKey,
+    //            path: `m/${LEDGER_ORIGIN_PATH}/${ACCOUNT}/${RECEIVE_INDEX}`
+    //          }
+    //        ]
+    //      };
+    //      if (this.isSegwit())
+    //        input.witnessUtxo = {
+    //          script: this.getScriptPubKey(),
+    //          value: INITIAL_VALUE
+    //        };
+    //      if (this.#witnessScript !== undefined)
+    //        input.witnessScript = this.#witnessScript;
+    //      if (inputSequence !== undefined) input.sequence = inputSequence;
+    //
+    //      psbt.addInput(input);
+    //      const INPUT_INDEX = 0;
+    //    }
+    finalizePsbtInput(index: number, psbt: Psbt) {
+      const signatures = psbt.data.inputs[index]?.partialSig;
+      if (!signatures)
+        throw new Error(`Error: cannot finalize without signatures`);
+      const scriptSatisfaction = this.getScriptSatisfaction(signatures);
+      if (!scriptSatisfaction) {
+        //Use standard finalizers
+        psbt.finalizeInput(index);
+      } else {
+        psbt.finalizeInput(
+          index,
+          finalScriptsFuncFactory(scriptSatisfaction, this.#network)
+        );
+      }
     }
     /**
      * Computes the checksum of a descriptor.
@@ -853,5 +847,5 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
   }
 
-  return Descriptor;
+  return { Descriptor, ecpair, bip32 };
 }
