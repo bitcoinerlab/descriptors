@@ -5,7 +5,7 @@ import { DescriptorsFactory } from '../dist/index';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
-const Descriptor = DescriptorsFactory(ecc);
+const { Descriptor } = DescriptorsFactory(ecc);
 
 for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
   describe(`Parse valid ${
