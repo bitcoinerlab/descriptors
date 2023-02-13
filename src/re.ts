@@ -10,9 +10,10 @@ const reLevel = String.raw`(\d+${reHardened}?)`;
 const rePathComponent = String.raw`(${reLevel}\/)`;
 
 //A path formed by a series of path components that can be hardened: /2'/23H/23
-const reOriginPath = String.raw`(\/${rePathComponent}*${reLevel})`; //The "*" means: "match 0 or more of the previous"
+export const reOriginPath = String.raw`(\/${rePathComponent}*${reLevel})`; //The "*" means: "match 0 or more of the previous"
 //an origin is something like this: [d34db33f/44'/0'/0'] where the path is optional. The fingerPrint is 8 chars hex
-export const reOrigin = String.raw`(\[[0-9a-fA-F]{8}(${reOriginPath})?\])`;
+export const reMasterFingerprint = String.raw`[0-9a-fA-F]{8}`;
+export const reOrigin = String.raw`(\[${reMasterFingerprint}(${reOriginPath})?\])`;
 
 export const reChecksum = String.raw`(#[${CHECKSUM_CHARSET}]{8})`;
 
