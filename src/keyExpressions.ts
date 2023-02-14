@@ -7,12 +7,12 @@ import * as RE from './re';
 export type KeyInfo = {
   keyExpression: string;
   pubkey: Buffer;
-  ecpair?: ECPairInterface | undefined;
-  bip32?: BIP32Interface | undefined;
-  masterFingerprint?: Buffer | undefined;
-  originPath?: string | undefined; //The path from the masterFingerprint to the xpub/xprv root
-  keyPath?: string | undefined; //The path from the xpub/xprv root
-  path?: string | undefined; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
+  ecpair?: ECPairInterface;
+  bip32?: BIP32Interface;
+  masterFingerprint?: Buffer;
+  originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
+  keyPath?: string; //The path from the xpub/xprv root
+  path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
 };
 
 const derivePath = (node: BIP32Interface, path: string) => {
@@ -151,11 +151,11 @@ export function parseKeyExpression({
   return {
     pubkey,
     keyExpression,
-    ecpair,
-    bip32,
-    masterFingerprint,
-    originPath,
-    keyPath,
-    path
+    ...(ecpair !== undefined ? { ecpair } : {}),
+    ...(bip32 !== undefined ? { bip32 } : {}),
+    ...(masterFingerprint !== undefined ? { masterFingerprint } : {}),
+    ...(originPath !== undefined ? { originPath } : {}),
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(path !== undefined ? { path } : {})
   };
 }
