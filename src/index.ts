@@ -22,7 +22,7 @@ import type { PartialSig } from 'bip174/src/lib/interfaces';
 
 import type { TinySecp256k1Interface } from './tinysecp';
 
-import { /*FinalScriptsFunc,*/ finalScriptsFuncFactory } from './psbt';
+import { finalScriptsFuncFactory } from './psbt';
 
 import { BIP32Factory, BIP32API } from 'bip32';
 import { ECPairFactory, ECPairAPI } from 'ecpair';
@@ -264,21 +264,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   }
 
   //TODO: refactor - move from here
-  //TODO - also pass expandedMiniscript, and expansionMap
   function miniscript2Script({
-    miniscript,
-    isSegwit,
-    network = networks.bitcoin
+    expandedMiniscript,
+    expansionMap
   }: {
-    miniscript: string;
-    isSegwit: boolean;
-    network?: Network;
+    expandedMiniscript: string;
+    expansionMap: ExpansionMap;
   }): Buffer {
-    const { expandedMiniscript, expansionMap } = expandMiniscript({
-      miniscript,
-      isSegwit,
-      network
-    });
     const compiled = compileMiniscript(expandedMiniscript);
     if (compiled.issane !== true) {
       throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
@@ -306,30 +298,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
    * It a solution is not found this function throws.
    */
   function satisfyMiniscript({
-    miniscript,
-    isSegwit = true,
+    expandedMiniscript,
+    expansionMap,
     signatures = [],
     preimages = [],
-    timeConstraints,
-    network = networks.bitcoin
+    timeConstraints
   }: {
-    miniscript: string;
-    isSegwit?: boolean;
+    expandedMiniscript: string;
+    expansionMap: ExpansionMap;
     signatures?: PartialSig[];
     preimages?: Preimage[];
     timeConstraints?: TimeConstraints;
-    network?: Network;
   }): {
     scriptSatisfaction: Buffer | undefined;
     nLockTime: number | undefined;
     nSequence: number | undefined;
   } {
-    const { expandedMiniscript, expansionMap } = expandMiniscript({
-      miniscript,
-      isSegwit,
-      network
-    });
-
     //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
     let preimageMap: { [key: string]: string } = {};
     preimages.forEach(preimage => {
@@ -356,7 +340,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
 
     if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
-      throw new Error(`Error: unresolvable miniscript ${miniscript}`);
+      throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
 
     let sat;
     if (!timeConstraints) {
@@ -369,7 +353,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       );
       if (sat === undefined) {
         throw new Error(
-          `Error: unresolvable miniscript ${miniscript}. Could not find solutions for sequence ${timeConstraints.nSequence} & locktime=${timeConstraints.nLockTime}. Signatures are applied to a hash that depends on sequence and locktime. Did you provide all the signatures wrt the signers keys declared and include all preimages?`
+          `Error: unresolvable miniscript ${expandedMiniscript}. Could not find solutions for sequence ${timeConstraints.nSequence} & locktime=${timeConstraints.nLockTime}. Signatures are applied to a hash that depends on sequence and locktime. Did you provide all the signatures wrt the signers keys declared and include all preimages?`
         );
       }
     }
@@ -589,9 +573,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         this.#expandedExpression = `sh(wsh(${this.#expandedMiniscript}))`;
 
         const script = miniscript2Script({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
         });
         this.#witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -645,9 +628,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         this.#expandedExpression = `sh(${this.#expandedMiniscript})`;
 
         const script = miniscript2Script({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
         });
         //TODO: shouldn't this be a this.#redeemScript = stript (or whatever name it has)?
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
@@ -685,9 +667,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         this.#expandedExpression = `wsh(${this.#expandedMiniscript})`;
 
         const script = miniscript2Script({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
+          expandedMiniscript: this.#expandedMiniscript,
+          expansionMap: this.#expansionMap
         });
         this.#witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -711,22 +692,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       const network = this.#network;
       const miniscript = this.#miniscript;
       const preimages = this.#preimages;
+      const expandedMiniscript = this.#expandedMiniscript;
+      const expansionMap = this.#expansionMap;
       let signersKeyExpressions = this.#signersKeyExpressions;
       //Create a method. solvePreimages to solve them.
       if (miniscript) {
-        if (isSegwit === undefined)
+        if (
+          expandedMiniscript === undefined ||
+          expansionMap === undefined ||
+          isSegwit === undefined
+        )
           throw new Error(
-            `Error: could not determine whether miniscript ${miniscript} is segwit`
+            `Error: cannot get time constraints from not expanded miniscript ${miniscript}`
           );
         if (!signersKeyExpressions) {
           //signersKeyExpressions can be left unset if all possible signers will
           //sign, although this is not recommended.
-          //TODO: get this from the private #expansionMap
-          const { expansionMap } = expandMiniscript({
-            miniscript,
-            isSegwit,
-            network
-          });
           signersKeyExpressions = Object.values(expansionMap).map(
             keyExpression => keyExpression.pubkey.toString('hex')
           );
@@ -739,13 +720,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           signature: Buffer.alloc(64, 0)
         }));
         const { nLockTime, nSequence } = satisfyMiniscript({
-          miniscript,
-          isSegwit,
+          expandedMiniscript,
+          expansionMap,
           signatures: fakeSignatures,
-          preimages,
-          network
+          preimages
         });
-
         return { nLockTime, nSequence };
       }
       return undefined;
@@ -764,31 +743,31 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       return this.#payment.output;
     }
     getScriptSatisfaction(signatures: PartialSig[]): Buffer {
-      if (!this.#miniscript)
+      const miniscript = this.#miniscript;
+      const expandedMiniscript = this.#expandedMiniscript;
+      const expansionMap = this.#expansionMap;
+      if (
+        miniscript === undefined ||
+        expandedMiniscript === undefined ||
+        expansionMap === undefined
+      )
         throw new Error(
-          `Error: this descriptor does not have a miniscript expression`
+          `Error: cannot get satisfaction from not expanded miniscript ${miniscript}`
         );
-      if (this.#isSegwit === undefined)
-        throw new Error(
-          `Error: could not determine whether miniscript ${
-            this.#miniscript
-          } is segwit`
-        );
-      //Note that we pass the original nLockTime and nSequence that were
-      //used to compute the signatures as constraings.
+      //Note that we pass the nLockTime and nSequence that is deduced
+      //using preimages and signersKeyExpressions.
       //satisfyMiniscript will make sure
-      //that the solution given, still meets the nLockTime and nSequence
-      //conditions
+      //that the actual solution given, using real signatures, still meets the
+      //same nLockTime and nSequence constraints
       const satisfaction = satisfyMiniscript({
-        miniscript: this.#miniscript,
-        isSegwit: this.#isSegwit,
+        expandedMiniscript,
+        expansionMap,
         signatures,
         preimages: this.#preimages,
         timeConstraints: {
           nLockTime: this.getLockTime(),
           nSequence: this.getSequence()
-        },
-        network: this.#network
+        }
       }).scriptSatisfaction;
 
       if (!satisfaction)
