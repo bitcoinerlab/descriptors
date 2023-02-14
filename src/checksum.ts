@@ -1,8 +1,8 @@
 // Converted to Javascript by Jose-Luis Landabaso, 2023 - https://bitcoinerlab.com
 // Source: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 // Distributed under the MIT software license
-const PolyMod = (c: any, val: any) => {
-  let c0 = c >> 35n;
+const PolyMod = (c: bigint, val: bigint): bigint => {
+  let c0: bigint = c >> 35n;
   c = ((c & 0x7ffffffffn) << 5n) ^ val;
   if (c0 & 1n) c ^= 0xf5dee51989n;
   if (c0 & 2n) c ^= 0xa9fdca3312n;
@@ -13,7 +13,7 @@ const PolyMod = (c: any, val: any) => {
 };
 
 export const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-export const DescriptorChecksum = (span: any) => {
+export const DescriptorChecksum = (span: string): string => {
   const INPUT_CHARSET =
     '0123456789()[],\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\ ';
 
