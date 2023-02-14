@@ -1,5 +1,6 @@
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
+import type { Network } from 'bitcoinjs-lib';
 export interface Preimage {
   digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
   //Accepted functions: sha256, hash256, ripemd160, hash160
@@ -23,9 +24,17 @@ export type KeyInfo = {
   path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
 };
 
-export interface ExpansionMap {
+export type ExpansionMap = {
   //key will have this format: @i, where i is an integer
   [key: string]: KeyInfo;
+};
+
+export interface ParseKeyExpression {
+  (params: {
+    keyExpression: string;
+    isSegwit: boolean;
+    network?: Network;
+  }): KeyInfo;
 }
 
 interface XOnlyPointAddTweakResult {

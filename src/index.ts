@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+//TODO set the witnessScript and the redeemScript to all the other types
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
 //TODO: test calling from typescript to make sure all relevant types are
 //exported
@@ -16,29 +17,28 @@ import {
   PsbtTxInput,
   Psbt
 } from 'bitcoinjs-lib';
-import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
+import type {
+  PsbtInput,
+  Bip32Derivation,
+  PartialSig
+} from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import { BIP32Factory, BIP32API } from 'bip32';
+import { ECPairFactory, ECPairAPI } from 'ecpair';
 
 import type {
   TinySecp256k1Interface,
   Preimage,
   TimeConstraints,
   ExpansionMap,
-  KeyInfo
+  KeyInfo,
+  ParseKeyExpression
 } from './types';
 
 import { finalScriptsFuncFactory } from './psbt';
-
-import { BIP32Factory, BIP32API } from 'bip32';
-import { ECPairFactory, ECPairAPI } from 'ecpair';
-
 import { DescriptorChecksum } from './checksum';
-
 import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
-
 import * as RE from './re';
-
 import {
   expandMiniscript as globalExpandMiniscript,
   miniscript2Script,
@@ -53,7 +53,6 @@ const MAX_SCRIPT_ELEMENT_SIZE = 520;
 const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
 const MAX_OPS_PER_SCRIPT = 201;
 
-//TODO: refactor - move from here
 function countNonPushOnlyOPs(script: Buffer): number {
   const decompile = bscript.decompile(script);
   if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
@@ -108,14 +107,6 @@ function evaluate({
   return evaluatedExpression;
 }
 
-interface ParseKeyExpression {
-  (params: {
-    keyExpression: string;
-    network?: Network;
-    isSegwit?: boolean;
-  }): KeyInfo;
-}
-
 //TODO: Do a proper declaration interface DescriptorInterface or API...
 export interface DescriptorInterface {
   //getPayment(): any;
@@ -143,15 +134,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   /*
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
    */
-  function parseKeyExpression({
+  const parseKeyExpression: ParseKeyExpression = ({
     keyExpression,
-    network = networks.bitcoin,
-    isSegwit = true
-  }: {
-    keyExpression: string;
-    network?: Network;
-    isSegwit?: boolean;
-  }): KeyInfo {
+    isSegwit,
+    network = networks.bitcoin
+  }) => {
     return globalParseKeyExpression({
       keyExpression,
       network,
@@ -159,7 +146,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       ECPair,
       BIP32
     });
-  }
+  };
 
   /**
    * Expand a miniscript to a generalized form using variables instead of key
@@ -190,23 +177,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   }
 
   class Descriptor implements DescriptorInterface {
-    #payment: Payment;
-    #preimages: Preimage[] = [];
-    #miniscript: string | undefined;
-    #witnessScript: Buffer | undefined;
-    #isSegwit?: boolean;
-    #expandedExpression?: string;
-    #expandedMiniscript?: string;
-    #expansionMap?: ExpansionMap;
-    #network: Network;
-    #signersKeyExpressions?: string[];
+    readonly #payment: Payment;
+    readonly #preimages: Preimage[] = [];
+    readonly #miniscript?: string;
+    readonly #witnessScript?: Buffer;
+    readonly #redeemScript?: Buffer;
+    readonly #isSegwit?: boolean;
+    readonly #expandedExpression?: string;
+    readonly #expandedMiniscript?: string;
+    readonly #expansionMap?: ExpansionMap;
+    readonly #network: Network;
+    readonly #signersKeyExpressions: string[] | undefined; //Default value is undefined which means assume that all keyExpression are signers
     /**
-     * Parses a `descriptor`.
-     *
-     * Replaces the wildcard character * in range descriptors with `index`.
-     *
-     * Validates descriptor syntax and checksum.
-     *
      * @param {Object} params
      * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
      * @param {string} params.descriptor - The descriptor.
@@ -223,7 +205,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       allowMiniscriptInP2SH = false,
       network = networks.bitcoin,
       preimages = [],
-      signersKeyExpressions
+      signersKeyExpressions = undefined //Default value is undefined which means assume that all keyExpression are signers
     }: {
       expression: string;
       index?: number;
@@ -231,7 +213,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
       preimages?: Preimage[];
-      signersKeyExpressions?: string[];
+      signersKeyExpressions: string[] | undefined;
     }) {
       this.#network = network;
       this.#preimages = preimages;
@@ -341,6 +323,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         };
         const pubkey = this.#expansionMap['@0']!.pubkey;
         this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
+        //TODO: test this is Ok
+        const redeemScript = this.#payment.redeem?.output;
+        if (!redeemScript)
+          throw new Error(
+            `Error: could not calculate redeemScript for ${expression}`
+          );
+        this.#redeemScript = redeemScript;
       }
       //wpkh(KEY) - native segwit
       else if (evaluatedExpression.match(RE.reWpkhAnchored)) {
@@ -402,6 +391,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
         });
+        //TODO: test this is Ok
+        const redeemScript = this.#payment.redeem?.output;
+        if (!redeemScript)
+          throw new Error(
+            `Error: could not calculate redeemScript for ${expression}`
+          );
+        this.#redeemScript = redeemScript;
       }
       //sh(miniscript)
       else if (evaluatedExpression.match(RE.reShMiniscriptAnchored)) {
@@ -441,7 +437,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           expandedMiniscript: this.#expandedMiniscript,
           expansionMap: this.#expansionMap
         });
-        //TODO: shouldn't this be a this.#redeemScript = stript (or whatever name it has)?
+        this.#redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
@@ -454,6 +450,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           );
         }
         this.#payment = p2sh({ redeem: { output: script, network }, network });
+        if (Buffer.compare(script, this.getRedeemScript()!) !== 0)
+          throw new Error(
+            `Error: redeemScript was not correctly set to the payment in expression ${expression}`
+          );
       }
       //wsh(miniscript)
       else if (evaluatedExpression.match(RE.reWshMiniscriptAnchored)) {
@@ -498,7 +498,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
     }
 
-    //TODO: This should also go to expansions.ts (miniscript.ts)
+    /** Gets the TimeConstraints of the miniscript descriptor as passed in
+     * the constructor, just using the expression and the signersKeyExpressions
+     * and preimages. These TimeConstraints must be kept when the final solution
+     * using final computed signatures is obtained.
+     */
     #getTimeConstraints(): TimeConstraints | undefined {
       const isSegwit = this.#isSegwit;
       const network = this.#network;
@@ -594,9 +598,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     getWitnessScript(): Buffer | undefined {
       return this.#witnessScript;
     }
-    //TODO: test this with sh(miniscript) ?? and possibly other cases
     getRedeemScript(): Buffer | undefined {
-      return this.#payment.redeem?.output;
+      return this.#redeemScript;
     }
     isSegwit(): boolean {
       if (this.#isSegwit === undefined)
@@ -661,11 +664,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (inputSequence !== undefined) input.sequence = inputSequence;
 
       const witnessScript = this.getWitnessScript();
+      const redeemScript = this.getRedeemScript();
       if (witnessScript) input.witnessScript = witnessScript;
+      if (redeemScript) input.redeemScript = redeemScript;
 
       psbt.addInput(input);
       return psbt.data.inputs.length - 1;
     }
+
     finalizePsbtInput(index: number, psbt: Psbt) {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)

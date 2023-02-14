@@ -28,14 +28,14 @@ const derivePath = (node: BIP32Interface, path: string) => {
  */
 export function parseKeyExpression({
   keyExpression,
-  network = networks.bitcoin,
-  isSegwit = true,
+  isSegwit,
   ECPair,
-  BIP32
+  BIP32,
+  network = networks.bitcoin
 }: {
   keyExpression: string;
   network?: Network;
-  isSegwit?: boolean;
+  isSegwit: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
