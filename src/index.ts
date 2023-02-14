@@ -1,7 +1,6 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//TODO set the witnessScript and the redeemScript to all the other types
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
 //TODO: test calling from typescript to make sure all relevant types are
 //exported
@@ -187,7 +186,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     readonly #expandedMiniscript?: string;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
-    readonly #signersKeyExpressions: string[] | undefined; //Default value is undefined which means assume that all keyExpression are signers
+    readonly #signersPubKeys: Buffer[];
     /**
      * @param {Object} params
      * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
@@ -205,7 +204,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       allowMiniscriptInP2SH = false,
       network = networks.bitcoin,
       preimages = [],
-      signersKeyExpressions = undefined //Default value is undefined which means assume that all keyExpression are signers
+      signersPubKeys
     }: {
       expression: string;
       index?: number;
@@ -213,12 +212,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       allowMiniscriptInP2SH?: boolean;
       network?: Network;
       preimages?: Preimage[];
-      signersKeyExpressions: string[] | undefined;
+      signersPubKeys: Buffer[] | undefined;
     }) {
       this.#network = network;
       this.#preimages = preimages;
-      if (signersKeyExpressions)
-        this.#signersKeyExpressions = signersKeyExpressions;
       if (typeof expression !== 'string')
         throw new Error(`Error: invalid descriptor type`);
 
@@ -496,21 +493,37 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       } else {
         throw new Error(`Error: Could not parse descriptor ${expression}`);
       }
+      if (signersPubKeys) {
+        this.#signersPubKeys = signersPubKeys;
+      } else {
+        if (this.#expansionMap) {
+          this.#signersPubKeys = Object.values(this.#expansionMap).map(
+            keyInfo => keyInfo.pubkey
+          );
+        } else {
+          //We only don't have expansionMap for addr() expressions.
+          if (!evaluatedExpression.match(RE.reAddrAnchored)) {
+            throw new Error(
+              `Error: expansionMap not available for expression ${expression} that is not an address`
+            );
+          }
+          this.#signersPubKeys = [this.getScriptPubKey()];
+        }
+      }
     }
 
     /** Gets the TimeConstraints of the miniscript descriptor as passed in
-     * the constructor, just using the expression and the signersKeyExpressions
+     * the constructor, just using the expression and the signersPubKeys
      * and preimages. These TimeConstraints must be kept when the final solution
      * using final computed signatures is obtained.
      */
     #getTimeConstraints(): TimeConstraints | undefined {
       const isSegwit = this.#isSegwit;
-      const network = this.#network;
       const miniscript = this.#miniscript;
       const preimages = this.#preimages;
       const expandedMiniscript = this.#expandedMiniscript;
       const expansionMap = this.#expansionMap;
-      let signersKeyExpressions = this.#signersKeyExpressions;
+      const signersPubKeys = this.#signersPubKeys;
       //Create a method. solvePreimages to solve them.
       if (miniscript) {
         if (
@@ -521,18 +534,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           throw new Error(
             `Error: cannot get time constraints from not expanded miniscript ${miniscript}`
           );
-        if (!signersKeyExpressions) {
-          //signersKeyExpressions can be left unset if all possible signers will
-          //sign, although this is not recommended.
-          signersKeyExpressions = Object.values(expansionMap).map(
-            keyExpression => keyExpression.pubkey.toString('hex')
-          );
-        }
         //We create some fakeSignatures since we don't have them yet.
         //We only want to retrieve the nLockTime and nSequence of the satisfaction
-        const fakeSignatures = signersKeyExpressions.map(keyExpression => ({
-          pubkey: parseKeyExpression({ keyExpression, network, isSegwit })
-            .pubkey,
+        const fakeSignatures = signersPubKeys.map(pubkey => ({
+          pubkey,
           signature: Buffer.alloc(64, 0)
         }));
         const { nLockTime, nSequence } = satisfyMiniscript({
@@ -570,7 +575,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           `Error: cannot get satisfaction from not expanded miniscript ${miniscript}`
         );
       //Note that we pass the nLockTime and nSequence that is deduced
-      //using preimages and signersKeyExpressions.
+      //using preimages and signersPubKeys.
       //satisfyMiniscript will make sure
       //that the actual solution given, using real signatures, still meets the
       //same nLockTime and nSequence constraints
