@@ -4,7 +4,7 @@ import type { BIP32API, BIP32Interface } from 'bip32';
 
 import * as RE from './re';
 
-export type KeyExpression = {
+export type KeyInfo = {
   keyExpression: string;
   pubkey: Buffer;
   ecpair?: ECPairInterface | undefined;
@@ -48,7 +48,7 @@ export function parseKeyExpression({
   isSegwit?: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
-}): KeyExpression {
+}): KeyInfo {
   let pubkey: Buffer;
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
