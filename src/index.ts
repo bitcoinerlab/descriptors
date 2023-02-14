@@ -2,8 +2,9 @@
 // Distributed under the MIT software license
 
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
+//TODO: test calling from typescript to make sure all relevant types are
+//exported
 
-import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import {
   address,
   networks,
@@ -19,7 +20,8 @@ import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 
-import type { TinySecp256k1Interface } from './tinysecp';
+import type { TinySecp256k1Interface } from './tinysecp'; //TODO: Move this one to types
+import type { Preimage, TimeConstraints, ExpansionMap, KeyInfo } from './types';
 
 import { finalScriptsFuncFactory } from './psbt';
 
@@ -28,27 +30,17 @@ import { ECPairFactory, ECPairAPI } from 'ecpair';
 
 import { DescriptorChecksum } from './checksum';
 
-import {
-  parseKeyExpression as globalParseKeyExpression,
-  KeyInfo
-} from './keyExpressions';
+import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
 
 import * as RE from './re';
 
 import {
-  ExpansionMap,
   expandMiniscript as globalExpandMiniscript,
-  substituteAsm
+  miniscript2Script,
+  satisfyMiniscript
 } from './expansions';
 
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
-
-export interface Preimage {
-  digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
-  //Accepted functions: sha256, hash256, ripemd160, hash160
-  // 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160
-  preimage: string; //Preimages are always 32 bytes (64 character in hex)
-}
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -190,123 +182,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       BIP32,
       ECPair
     });
-  }
-
-  //TODO: refactor - move from here
-  function miniscript2Script({
-    expandedMiniscript,
-    expansionMap
-  }: {
-    expandedMiniscript: string;
-    expansionMap: ExpansionMap;
-  }): Buffer {
-    const compiled = compileMiniscript(expandedMiniscript);
-    if (compiled.issane !== true) {
-      throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
-    }
-    return bscript.fromASM(
-      substituteAsm({ expandedAsm: compiled.asm, expansionMap })
-    );
-  }
-
-  //TODO: Move the TimeConstraints definition to the miniscript module
-  type TimeConstraints = {
-    nLockTime: number | undefined;
-    nSequence: number | undefined;
-  };
-  //TODO: refactor - move from here
-  //TODO - also pass expandedMiniscript, and expansionMap
-  //TODO - this is in fact returning  a union of type TimeConstraints with a Buffer
-  /**
-   * Assumptions:
-   * The attacker does not have access to any of the private keys of public keys that participate in the Script.
-   * The attacker only has access to hash preimages that honest users have access to as well.
-   *
-   * Pass timeConstraints to search for the first solution with this nLockTime and nSequence.
-   * Don't pass timeConstraints (this is the default) if you want to get the smallest size solution altogether.
-   *
-   * It a solution is not found this function throws.
-   */
-  function satisfyMiniscript({
-    expandedMiniscript,
-    expansionMap,
-    signatures = [],
-    preimages = [],
-    timeConstraints
-  }: {
-    expandedMiniscript: string;
-    expansionMap: ExpansionMap;
-    signatures?: PartialSig[];
-    preimages?: Preimage[];
-    timeConstraints?: TimeConstraints;
-  }): {
-    scriptSatisfaction: Buffer;
-    nLockTime: number | undefined;
-    nSequence: number | undefined;
-  } {
-    //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
-    let preimageMap: { [key: string]: string } = {};
-    preimages.forEach(preimage => {
-      preimageMap['<' + preimage.digest.replace('(', '_preimage(') + '>'] =
-        '<' + preimage.preimage + '>';
-    });
-
-    //convert the pubkeys in signatures into [{['<sig(@0)>']: '30450221'}, ...]
-    //get the keyExpressions: @0, @1 from the keys in expansionMap
-    let expandedSignatureMap: { [key: string]: string } = {};
-    signatures.forEach(signature => {
-      const pubkeyHex = signature.pubkey.toString('hex');
-      const keyExpression = Object.keys(expansionMap).find(
-        k => expansionMap[k]?.pubkey.toString('hex') === pubkeyHex
-      );
-      expandedSignatureMap['<sig(' + keyExpression + ')>'] =
-        '<' + signature.signature.toString('hex') + '>';
-    });
-    const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
-    const knowns = Object.keys(expandedKnownsMap);
-
-    //TODO: Move the TimeConstraints definition there
-    //TODO: Add a Satisfaction type for : Array<{ asm: string; nLockTime?: number; nSequence?: number; }> in miniscript that is an extension (union type) to TimeConstraints
-    const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
-
-    if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
-      throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
-
-    let sat;
-    if (!timeConstraints) {
-      sat = nonMalleableSats[0];
-    } else {
-      sat = nonMalleableSats.find(
-        nonMalleableSat =>
-          nonMalleableSat.nSequence === timeConstraints.nSequence &&
-          nonMalleableSat.nLockTime === timeConstraints.nLockTime
-      );
-      if (sat === undefined) {
-        throw new Error(
-          `Error: unresolvable miniscript ${expandedMiniscript}. Could not find solutions for sequence ${timeConstraints.nSequence} & locktime=${timeConstraints.nLockTime}. Signatures are applied to a hash that depends on sequence and locktime. Did you provide all the signatures wrt the signers keys declared and include all preimages?`
-        );
-      }
-    }
-
-    //substitute signatures and preimages:
-    let expandedAsm = sat.asm;
-    //replace in expandedAsm all the <sig(@0)> and <sha256_preimage(6c...33)>
-    //to <304...01> and <107...5f> ...
-    for (const search in expandedKnownsMap) {
-      const replace = expandedKnownsMap[search];
-      if (!replace || replace === '<>')
-        throw new Error(`Error: invalid expandedKnownsMap`);
-      expandedAsm = expandedAsm.replaceAll(search, replace);
-    }
-    const scriptSatisfaction = bscript.fromASM(
-      substituteAsm({ expandedAsm, expansionMap })
-    );
-
-    return {
-      scriptSatisfaction,
-      nLockTime: sat.nLockTime,
-      nSequence: sat.nSequence
-    };
   }
 
   class Descriptor implements DescriptorInterface {
@@ -617,6 +492,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         throw new Error(`Error: Could not parse descriptor ${expression}`);
       }
     }
+
+    //TODO: This should also go to expansions.ts (miniscript.ts)
     #getTimeConstraints(): TimeConstraints | undefined {
       const isSegwit = this.#isSegwit;
       const network = this.#network;
@@ -712,6 +589,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     getWitnessScript(): Buffer | undefined {
       return this.#witnessScript;
     }
+    //TODO: test this with sh(miniscript) ?? and possibly other cases
     getRedeemScript(): Buffer | undefined {
       return this.#payment.redeem?.output;
     }

@@ -1,14 +1,14 @@
+//TODO: rename this file miniscript
 import { networks, script as bscript, crypto, Network } from 'bitcoinjs-lib';
 import type { ECPairAPI } from 'ecpair';
 import type { BIP32API } from 'bip32';
-import { parseKeyExpression, KeyInfo } from './keyExpressions';
+import { parseKeyExpression } from './keyExpressions';
 import * as RE from './re';
 import { numberEncodeAsm } from './numberEncodeAsm';
-export interface ExpansionMap {
-  //key will have this format: @i, where i is an integer
-  [key: string]: KeyInfo;
-}
-import { compileMiniscript } from '@bitcoinerlab/miniscript';
+import type { PartialSig } from 'bip174/src/lib/interfaces';
+import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
+import type { Preimage, TimeConstraints, ExpansionMap } from './types';
+
 /**
  * Expand a miniscript to a generalized form using variables instead of key
  * expressions. Variables will be of this form: @0, @1, ...
@@ -72,7 +72,7 @@ export function expandMiniscript({
  * Signatures and preimages are already subsituted by the satisfier calling
  * this function.
  */
-export function substituteAsm({
+function substituteAsm({
   expandedAsm,
   expansionMap
 }: {
@@ -113,7 +113,6 @@ export function substituteAsm({
   return asm;
 }
 
-//TODO: refactor - move from here
 export function miniscript2Script({
   expandedMiniscript,
   expansionMap
@@ -128,4 +127,97 @@ export function miniscript2Script({
   return bscript.fromASM(
     substituteAsm({ expandedAsm: compiled.asm, expansionMap })
   );
+}
+
+//TODO - this is in fact returning  a union of type TimeConstraints with a Buffer
+/**
+ * Assumptions:
+ * The attacker does not have access to any of the private keys of public keys that participate in the Script.
+ * The attacker only has access to hash preimages that honest users have access to as well.
+ *
+ * Pass timeConstraints to search for the first solution with this nLockTime and nSequence.
+ * Don't pass timeConstraints (this is the default) if you want to get the smallest size solution altogether.
+ *
+ * It a solution is not found this function throws.
+ */
+export function satisfyMiniscript({
+  expandedMiniscript,
+  expansionMap,
+  signatures = [],
+  preimages = [],
+  timeConstraints
+}: {
+  expandedMiniscript: string;
+  expansionMap: ExpansionMap;
+  signatures?: PartialSig[];
+  preimages?: Preimage[];
+  timeConstraints?: TimeConstraints;
+}): {
+  scriptSatisfaction: Buffer;
+  nLockTime: number | undefined;
+  nSequence: number | undefined;
+} {
+  //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
+  let preimageMap: { [key: string]: string } = {};
+  preimages.forEach(preimage => {
+    preimageMap['<' + preimage.digest.replace('(', '_preimage(') + '>'] =
+      '<' + preimage.preimage + '>';
+  });
+
+  //convert the pubkeys in signatures into [{['<sig(@0)>']: '30450221'}, ...]
+  //get the keyExpressions: @0, @1 from the keys in expansionMap
+  let expandedSignatureMap: { [key: string]: string } = {};
+  signatures.forEach(signature => {
+    const pubkeyHex = signature.pubkey.toString('hex');
+    const keyExpression = Object.keys(expansionMap).find(
+      k => expansionMap[k]?.pubkey.toString('hex') === pubkeyHex
+    );
+    expandedSignatureMap['<sig(' + keyExpression + ')>'] =
+      '<' + signature.signature.toString('hex') + '>';
+  });
+  const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
+  const knowns = Object.keys(expandedKnownsMap);
+
+  //TODO: Move the TimeConstraints definition there
+  //TODO: Add a Satisfaction type for : Array<{ asm: string; nLockTime?: number; nSequence?: number; }> in miniscript that is an extension (union type) to TimeConstraints
+  const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
+
+  if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
+    throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
+
+  let sat;
+  if (!timeConstraints) {
+    sat = nonMalleableSats[0];
+  } else {
+    sat = nonMalleableSats.find(
+      nonMalleableSat =>
+        nonMalleableSat.nSequence === timeConstraints.nSequence &&
+        nonMalleableSat.nLockTime === timeConstraints.nLockTime
+    );
+    if (sat === undefined) {
+      throw new Error(
+        `Error: unresolvable miniscript ${expandedMiniscript}. Could not find solutions for sequence ${timeConstraints.nSequence} & locktime=${timeConstraints.nLockTime}. Signatures are applied to a hash that depends on sequence and locktime. Did you provide all the signatures wrt the signers keys declared and include all preimages?`
+      );
+    }
+  }
+
+  //substitute signatures and preimages:
+  let expandedAsm = sat.asm;
+  //replace in expandedAsm all the <sig(@0)> and <sha256_preimage(6c...33)>
+  //to <304...01> and <107...5f> ...
+  for (const search in expandedKnownsMap) {
+    const replace = expandedKnownsMap[search];
+    if (!replace || replace === '<>')
+      throw new Error(`Error: invalid expandedKnownsMap`);
+    expandedAsm = expandedAsm.replaceAll(search, replace);
+  }
+  const scriptSatisfaction = bscript.fromASM(
+    substituteAsm({ expandedAsm, expansionMap })
+  );
+
+  return {
+    scriptSatisfaction,
+    nLockTime: sat.nLockTime,
+    nSequence: sat.nSequence
+  };
 }

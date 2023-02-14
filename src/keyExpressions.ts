@@ -1,19 +1,9 @@
 import { networks, Network } from 'bitcoinjs-lib';
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
+import type { KeyInfo } from './types';
 
 import * as RE from './re';
-
-export type KeyInfo = {
-  keyExpression: string;
-  pubkey: Buffer;
-  ecpair?: ECPairInterface;
-  bip32?: BIP32Interface;
-  masterFingerprint?: Buffer;
-  originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
-  keyPath?: string; //The path from the xpub/xprv root
-  path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
-};
 
 const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {
