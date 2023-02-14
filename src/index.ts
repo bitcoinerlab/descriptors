@@ -20,8 +20,13 @@ import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 
-import type { TinySecp256k1Interface } from './tinysecp'; //TODO: Move this one to types
-import type { Preimage, TimeConstraints, ExpansionMap, KeyInfo } from './types';
+import type {
+  TinySecp256k1Interface,
+  Preimage,
+  TimeConstraints,
+  ExpansionMap,
+  KeyInfo
+} from './types';
 
 import { finalScriptsFuncFactory } from './psbt';
 
@@ -38,7 +43,7 @@ import {
   expandMiniscript as globalExpandMiniscript,
   miniscript2Script,
   satisfyMiniscript
-} from './expansions';
+} from './miniscript';
 
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
