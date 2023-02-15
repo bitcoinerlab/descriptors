@@ -1,6 +1,14 @@
-import type { PsbtInput } from 'bip174/src/lib/interfaces';
-import { payments, Network } from 'bitcoinjs-lib';
+import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
+import type { KeyInfo } from './types';
+import {
+  payments,
+  Network,
+  Psbt,
+  Transaction,
+  PsbtTxInput
+} from 'bitcoinjs-lib';
 import * as varuint from 'bip174/src/lib/converter/varint';
+interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
 function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
   let buffer = Buffer.allocUnsafe(0);
@@ -101,4 +109,90 @@ export function finalScriptsFuncFactory(
     };
   };
   return finalScriptsFunc;
+}
+
+export function updatePsbt({
+  psbt,
+  txHex,
+  vout,
+  sequence,
+  locktime,
+  keysInfo,
+  scriptPubKey,
+  isSegwit,
+  witnessScript,
+  redeemScript
+}: {
+  psbt: Psbt;
+  txHex: string;
+  vout: number;
+  sequence: number | undefined;
+  locktime: number | undefined;
+  keysInfo: KeyInfo[];
+  scriptPubKey: Buffer;
+  isSegwit: boolean;
+  witnessScript: Buffer | undefined;
+  redeemScript: Buffer | undefined;
+}): number {
+  const tx = Transaction.fromHex(txHex);
+  const out = tx?.outs?.[vout];
+  const outputScript = out?.script;
+  if (!outputScript)
+    throw new Error(
+      `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
+    );
+  if (Buffer.compare(outputScript, scriptPubKey) !== 0)
+    throw new Error(
+      `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
+    );
+  if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
+  if (locktime !== undefined) {
+    if (psbt.locktime !== 0 && psbt.locktime !== undefined)
+      throw new Error(
+        `Error: transaction locktime has already been set: ${psbt.locktime}`
+      );
+    psbt.setLocktime(locktime);
+  }
+  let inputSequence;
+  if (locktime !== undefined) {
+    if (sequence === undefined) {
+      // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
+      inputSequence = 0xfffffffe;
+    } else if (sequence > 0xfffffffe) {
+      throw new Error(
+        `Error: incompatible sequence: ${inputSequence} and locktime: ${locktime}`
+      );
+    } else {
+      inputSequence = sequence;
+    }
+  } else {
+    inputSequence = sequence;
+  }
+
+  const input: PsbtInputExtended = {
+    hash: tx.getHash(),
+    index: vout,
+    nonWitnessUtxo: tx.toBuffer()
+  };
+  const bip32Derivation = keysInfo
+    .filter(
+      (keyInfo: KeyInfo) =>
+        keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
+    )
+    .map(
+      (keyInfo: KeyInfo): Bip32Derivation => ({
+        masterFingerprint: keyInfo.masterFingerprint!,
+        pubkey: keyInfo.pubkey,
+        path: keyInfo.path!
+      })
+    );
+  if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+  if (isSegwit) input.witnessUtxo = { script: scriptPubKey, value: out.value };
+  if (inputSequence !== undefined) input.sequence = inputSequence;
+
+  if (witnessScript) input.witnessScript = witnessScript;
+  if (redeemScript) input.redeemScript = redeemScript;
+
+  psbt.addInput(input);
+  return psbt.data.inputs.length - 1;
 }

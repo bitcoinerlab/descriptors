@@ -14,15 +14,9 @@ import {
   script as bscript,
   Network,
   Payment,
-  Transaction,
-  PsbtTxInput,
   Psbt
 } from 'bitcoinjs-lib';
-import type {
-  PsbtInput,
-  Bip32Derivation,
-  PartialSig
-} from 'bip174/src/lib/interfaces';
+import type { PartialSig } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
 import { BIP32Factory, BIP32API } from 'bip32';
 import { ECPairFactory, ECPairAPI } from 'ecpair';
@@ -32,11 +26,10 @@ import type {
   Preimage,
   TimeConstraints,
   ExpansionMap,
-  KeyInfo,
   ParseKeyExpression
 } from './types';
 
-import { finalScriptsFuncFactory } from './psbt';
+import { finalScriptsFuncFactory, updatePsbt } from './psbt';
 import { DescriptorChecksum } from './checksum';
 export { DescriptorChecksum as checksum } from './checksum';
 
@@ -47,8 +40,6 @@ import {
   miniscript2Script,
   satisfyMiniscript
 } from './miniscript';
-
-interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -130,9 +121,17 @@ export interface DescriptorInterface {
   getLockTime(): number | undefined;
   getWitnessScript(): Buffer | undefined;
   getRedeemScript(): Buffer | undefined;
-  isSegwit(): boolean;
-  updatePsbt(txHex: string, vout: number, psbt: Psbt): number;
-  finalizePsbtInput(index: number, psbt: Psbt): void;
+  isSegwit(): boolean | undefined;
+  updatePsbt({
+    txHex,
+    vout,
+    psbt
+  }: {
+    txHex: string;
+    vout: number;
+    psbt: Psbt;
+  }): number;
+  finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void;
   expand(): void;
 }
 interface DescriptorInterfaceConstructor {
@@ -206,6 +205,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     readonly #miniscript?: string;
     readonly #witnessScript?: Buffer;
     readonly #redeemScript?: Buffer;
+    //isSegwit true if witnesses are needed to the spend coins sent to this descriptor.
+    //may be unset because we may get addr(P2SH) which we don't know if they have segwit.
     readonly #isSegwit?: boolean;
     readonly #expandedExpression?: string;
     readonly #expandedMiniscript?: string;
@@ -414,6 +415,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
       //sh(miniscript)
       else if (evaluatedExpression.match(RE.reShMiniscriptAnchored)) {
+        //isSegwit false because we know it's a P2SH of a miniscript and not a
+        //P2SH that embeds a witness payment.
         this.#isSegwit = false;
         const miniscript = evaluatedExpression.match(
           RE.reShMiniscriptAnchored
@@ -534,7 +537,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
      * using final computed signatures is obtained.
      */
     #getTimeConstraints(): TimeConstraints | undefined {
-      const isSegwit = this.#isSegwit;
       const miniscript = this.#miniscript;
       const preimages = this.#preimages;
       const expandedMiniscript = this.#expandedMiniscript;
@@ -542,11 +544,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       const signersPubKeys = this.#signersPubKeys;
       //Create a method. solvePreimages to solve them.
       if (miniscript) {
-        if (
-          expandedMiniscript === undefined ||
-          expansionMap === undefined ||
-          isSegwit === undefined
-        )
+        if (expandedMiniscript === undefined || expansionMap === undefined)
           throw new Error(
             `Error: cannot get time constraints from not expanded miniscript ${miniscript}`
           );
@@ -622,87 +620,40 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     getRedeemScript(): Buffer | undefined {
       return this.#redeemScript;
     }
-    isSegwit(): boolean {
-      if (this.#isSegwit === undefined)
+    isSegwit(): boolean | undefined {
+      return this.#isSegwit;
+    }
+    updatePsbt({
+      txHex,
+      vout,
+      psbt
+    }: {
+      txHex: string;
+      vout: number;
+      psbt: Psbt;
+    }): number {
+      const isSegwit = this.isSegwit();
+      if (isSegwit === undefined) {
+        //This may happen when using addr() expressions
         throw new Error(
           `Error: could not determine whether this is a segwit descriptor`
         );
-      return this.#isSegwit;
-    }
-    //TODO throw if the txHex+vout don't correspond to the descriptor described
-    //also check the redeemScript / witnessScript (if exists)?
-    //f.ex. compute the scriptPubKey and assert it's the same.
-    //TODO - refactor - move from here
-    updatePsbt(txHex: string, vout: number, psbt: Psbt): number {
-      //const txLockTime = this.getLockTime();
-      //this.getSequence();
-      //this.#expansionMap
-      //this.getScriptPubKey()
-      //this.isSegwit() - TODO throw if they don't match wrt txHex
-      //this.getWitnessScript()
-      //this.getRedeemScript()
-      //return globalUpdatePsbt({txHex, vout, psbt, nSequence, expansionMap, scriptPubKey, isSegwit, witnessScript, redeemScript});
-      //TODO: Do I need isSegwit?
-      const tx = Transaction.fromHex(txHex);
-      const out = tx?.outs?.[vout];
-      if (!out)
-        throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
-      const txLockTime = this.getLockTime();
-      if (txLockTime !== undefined) {
-        if (psbt.locktime !== 0 && psbt.locktime !== undefined)
-          throw new Error(
-            `Error: transaction locktime has already been set: ${psbt.locktime}`
-          );
-        psbt.setLocktime(txLockTime);
       }
-      let inputSequence = this.getSequence();
-      if (txLockTime !== undefined) {
-        if (inputSequence === undefined) {
-          // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
-          inputSequence = 0xfffffffe;
-        } else if (inputSequence > 0xfffffffe)
-          throw new Error(
-            `Error: incompatible sequence: ${inputSequence} and locktime: ${txLockTime}`
-          );
-      }
-
-      const input: PsbtInputExtended = {
-        hash: tx.getHash(),
-        index: vout,
-        nonWitnessUtxo: tx.toBuffer()
-      };
-      if (this.#expansionMap) {
-        const bip32Derivation = Object.values(this.#expansionMap)
-          .filter(
-            (keyInfo: KeyInfo) =>
-              keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
-          )
-          .map(
-            (keyInfo: KeyInfo): Bip32Derivation => ({
-              masterFingerprint: keyInfo.masterFingerprint!,
-              pubkey: keyInfo.pubkey,
-              path: keyInfo.path!
-            })
-          );
-        if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
-      }
-      if (this.isSegwit())
-        input.witnessUtxo = {
-          script: this.getScriptPubKey(),
-          value: out.value
-        };
-      if (inputSequence !== undefined) input.sequence = inputSequence;
-
-      const witnessScript = this.getWitnessScript();
-      const redeemScript = this.getRedeemScript();
-      if (witnessScript) input.witnessScript = witnessScript;
-      if (redeemScript) input.redeemScript = redeemScript;
-
-      psbt.addInput(input);
-      return psbt.data.inputs.length - 1;
+      return updatePsbt({
+        psbt,
+        txHex,
+        vout,
+        sequence: this.getSequence(),
+        locktime: this.getLockTime(),
+        keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
+        scriptPubKey: this.getScriptPubKey(),
+        isSegwit,
+        witnessScript: this.getWitnessScript(),
+        redeemScript: this.getRedeemScript()
+      });
     }
 
-    finalizePsbtInput(index: number, psbt: Psbt): void {
+    finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
         throw new Error(`Error: cannot finalize without signatures`);
