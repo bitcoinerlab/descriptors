@@ -1,6 +1,7 @@
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { Network } from 'bitcoinjs-lib';
+import type { Network, Payment, Psbt } from 'bitcoinjs-lib';
+import type { PartialSig } from 'bip174/src/lib/interfaces';
 export interface Preimage {
   digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
   //Accepted functions: sha256, hash256, ripemd160, hash160
@@ -66,4 +67,41 @@ export interface TinySecp256k1Interface {
     tweak: Uint8Array
   ): XOnlyPointAddTweakResult | null;
   privateNegate(d: Uint8Array): Uint8Array;
+}
+
+//https://stackoverflow.com/questions/65220834/what-return-type-should-i-define-for-a-function-that-returns-a-class
+//What defines a Descriptor. This is the type needed in the constructor.
+export type DescriptorInfo = {
+  expression: string;
+  index?: number;
+  checksumRequired?: boolean;
+  allowMiniscriptInP2SH?: boolean;
+  network?: Network;
+  preimages?: Preimage[];
+  signersPubKeys?: Buffer[];
+};
+export interface DescriptorInterface {
+  getPayment(): Payment;
+  getAddress(): string;
+  getScriptPubKey(): Buffer;
+  getScriptSatisfaction(signatures: PartialSig[]): Buffer;
+  getSequence(): number | undefined;
+  getLockTime(): number | undefined;
+  getWitnessScript(): Buffer | undefined;
+  getRedeemScript(): Buffer | undefined;
+  isSegwit(): boolean | undefined;
+  updatePsbt({
+    txHex,
+    vout,
+    psbt
+  }: {
+    txHex: string;
+    vout: number;
+    psbt: Psbt;
+  }): number;
+  finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void;
+  expand(): void;
+}
+export interface DescriptorInterfaceConstructor {
+  new (args: DescriptorInfo): DescriptorInterface;
 }
