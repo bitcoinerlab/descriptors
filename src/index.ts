@@ -4,8 +4,6 @@
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
 //TODO: test calling from typescript to make sure all relevant types are
 //TODO: do a createFixtures that uses regtest image.
-//TODO: explain what isSegwit means. Does it have a seg input or what?
-//exported
 
 import {
   address,
@@ -634,7 +632,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     }): number {
       const isSegwit = this.isSegwit();
       if (isSegwit === undefined) {
-        //This may happen when using addr() expressions
+        //This should only happen when using addr() expressions
         throw new Error(
           `Error: could not determine whether this is a segwit descriptor`
         );
