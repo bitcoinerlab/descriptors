@@ -3,6 +3,8 @@
 
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
 //TODO: test calling from typescript to make sure all relevant types are
+//TODO: do a createFixtures that uses regtest image.
+//TODO: explain what isSegwit means. Does it have a seg input or what?
 //exported
 
 import {
@@ -36,6 +38,8 @@ import type {
 
 import { finalScriptsFuncFactory } from './psbt';
 import { DescriptorChecksum } from './checksum';
+export { DescriptorChecksum as checksum } from './checksum';
+
 import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
 import * as RE from './re';
 import {
@@ -106,13 +110,32 @@ function evaluate({
   return evaluatedExpression;
 }
 
-//TODO: Do a proper declaration interface DescriptorInterface or API...
+//https://stackoverflow.com/questions/65220834/what-return-type-should-i-define-for-a-function-that-returns-a-class
+type DescriptorInfo = {
+  expression: string;
+  index?: number;
+  checksumRequired?: boolean;
+  allowMiniscriptInP2SH?: boolean;
+  network?: Network;
+  preimages?: Preimage[];
+  signersPubKeys: Buffer[] | undefined;
+};
 export interface DescriptorInterface {
-  //getPayment(): any;
-  //getAddress(): string;
-  //getScriptPubKey(): any;
-  //getScriptSatisfaction(signatures: any[]): Buffer;
-  // ... add the rest of the methods and properties as required
+  getPayment(): Payment;
+  getAddress(): string;
+  getScriptPubKey(): Buffer;
+  getScriptSatisfaction(signatures: PartialSig[]): Buffer;
+  getSequence(): number | undefined;
+  getLockTime(): number | undefined;
+  getWitnessScript(): Buffer | undefined;
+  getRedeemScript(): Buffer | undefined;
+  isSegwit(): boolean;
+  updatePsbt(txHex: string, vout: number, psbt: Psbt): number;
+  finalizePsbtInput(index: number, psbt: Psbt): void;
+  expand(): void;
+}
+interface DescriptorInterfaceConstructor {
+  new (args: DescriptorInfo): DescriptorInterface;
 }
 
 /**
@@ -122,7 +145,7 @@ export interface DescriptorInterface {
  * @namespace
  */
 export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
-  Descriptor: DescriptorInterface;
+  Descriptor: DescriptorInterfaceConstructor;
   ECPair: ECPairAPI;
   parseKeyExpression: ParseKeyExpression;
   BIP32: BIP32API;
@@ -205,15 +228,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       network = networks.bitcoin,
       preimages = [],
       signersPubKeys
-    }: {
-      expression: string;
-      index?: number;
-      checksumRequired?: boolean;
-      allowMiniscriptInP2SH?: boolean;
-      network?: Network;
-      preimages?: Preimage[];
-      signersPubKeys: Buffer[] | undefined;
-    }) {
+    }: DescriptorInfo) {
       this.#network = network;
       this.#preimages = preimages;
       if (typeof expression !== 'string')
@@ -388,7 +403,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
         });
-        //TODO: test this is Ok
+        //TODO: test that this is Ok
         const redeemScript = this.#payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
@@ -617,7 +632,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     //also check the redeemScript / witnessScript (if exists)?
     //f.ex. compute the scriptPubKey and assert it's the same.
     //TODO - refactor - move from here
-    updatePsbt(txHex: string, vout: number, psbt: Psbt) {
+    updatePsbt(txHex: string, vout: number, psbt: Psbt): number {
+      //const txLockTime = this.getLockTime();
+      //this.getSequence();
+      //this.#expansionMap
+      //this.getScriptPubKey()
+      //this.isSegwit() - TODO throw if they don't match wrt txHex
+      //this.getWitnessScript()
+      //this.getRedeemScript()
+      //return globalUpdatePsbt({txHex, vout, psbt, nSequence, expansionMap, scriptPubKey, isSegwit, witnessScript, redeemScript});
+      //TODO: Do I need isSegwit?
       const tx = Transaction.fromHex(txHex);
       const out = tx?.outs?.[vout];
       if (!out)
@@ -677,7 +701,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       return psbt.data.inputs.length - 1;
     }
 
-    finalizePsbtInput(index: number, psbt: Psbt) {
+    finalizePsbtInput(index: number, psbt: Psbt): void {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
         throw new Error(`Error: cannot finalize without signatures`);
@@ -712,18 +736,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           ? { expansionMap: this.#expansionMap }
           : {})
       };
-    }
-
-    //TODO: move as an external export method
-    /**
-     * Computes the checksum of a descriptor.
-     *
-     * @Function
-     * @param {string} descriptor - The descriptor.
-     * @returns {string} - The checksum.
-     */
-    static checksum(expression: string): string {
-      return DescriptorChecksum(expression);
     }
   }
 
