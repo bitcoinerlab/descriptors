@@ -111,6 +111,7 @@ function evaluate({
 }
 
 //https://stackoverflow.com/questions/65220834/what-return-type-should-i-define-for-a-function-that-returns-a-class
+//What defines a Descriptor. This is the type needed in the constructor.
 type DescriptorInfo = {
   expression: string;
   index?: number;
@@ -118,7 +119,7 @@ type DescriptorInfo = {
   allowMiniscriptInP2SH?: boolean;
   network?: Network;
   preimages?: Preimage[];
-  signersPubKeys: Buffer[] | undefined;
+  signersPubKeys?: Buffer[];
 };
 export interface DescriptorInterface {
   getPayment(): Payment;
@@ -201,6 +202,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   class Descriptor implements DescriptorInterface {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
+    readonly #signersPubKeys: Buffer[];
     readonly #miniscript?: string;
     readonly #witnessScript?: Buffer;
     readonly #redeemScript?: Buffer;
@@ -209,7 +211,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     readonly #expandedMiniscript?: string;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
-    readonly #signersPubKeys: Buffer[];
     /**
      * @param {Object} params
      * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
@@ -516,7 +517,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
             keyInfo => keyInfo.pubkey
           );
         } else {
-          //We only don't have expansionMap for addr() expressions.
+          //We should only miss expansionMap in addr() expressions:
           if (!evaluatedExpression.match(RE.reAddrAnchored)) {
             throw new Error(
               `Error: expansionMap not available for expression ${expression} that is not an address`
