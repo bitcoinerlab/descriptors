@@ -130,7 +130,6 @@ export function miniscript2Script({
   );
 }
 
-//TODO - this is in fact returning  a union of type TimeConstraints with a Buffer
 /**
  * Assumptions:
  * The attacker does not have access to any of the private keys of public keys that participate in the Script.
@@ -179,8 +178,6 @@ export function satisfyMiniscript({
   const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
   const knowns = Object.keys(expandedKnownsMap);
 
-  //TODO: Move the TimeConstraints definition to miniscript module?
-  //TODO: Add a Satisfaction type for : Array<{ asm: string; nLockTime?: number; nSequence?: number; }> in miniscript that is an extension (union type) to TimeConstraints
   const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])

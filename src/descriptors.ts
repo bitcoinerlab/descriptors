@@ -1,15 +1,10 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
 //TODO: in finalizePsbtInput add a flag {verify: boolean} so that it can verify signatures
 //TODO: when using WIF or xprv, the signing should be automatic when calling the finalizer. Pending to be done.
 //TODO: test without xpub & miniscript
-//TODO: test sh/wsh/sh(wsh
-//TODO: test multipath - what happens when 2 paths with different sequence / locktime
-//docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server
 //TODO: test example1To1Segwit after all these recent changes
-//TODO: test psbt using p2wpkh, p2pkh, p2sh(p2wpkh)
 
 import {
   address,
@@ -306,7 +301,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         };
         const pubkey = this.#expansionMap['@0']!.pubkey;
         this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
-        //TODO: test this is Ok
         const redeemScript = this.#payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
@@ -374,7 +368,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
         });
-        //TODO: test that this is Ok
         const redeemScript = this.#payment.redeem?.output;
         if (!redeemScript)
           throw new Error(

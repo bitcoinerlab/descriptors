@@ -12,7 +12,6 @@ export interface Preimage {
   // 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160
   preimage: string; //Preimages are always 32 bytes (64 character in hex)
 }
-//TODO: Move the TimeConstraints definition to the miniscript module
 export type TimeConstraints = {
   nLockTime: number | undefined;
   nSequence: number | undefined;
