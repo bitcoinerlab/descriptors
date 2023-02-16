@@ -1,9 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//TODO: in finalizePsbtInput add a flag {verify: boolean} so that it can verify signatures
-//TODO: when using WIF or xprv, the signing should be automatic when calling the finalizer. Pending to be done.
-//TODO: test without xpub & miniscript
+//TODO: ledger integration test
 //TODO: test example1To1Segwit after all these recent changes
 
 import {
@@ -493,10 +491,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
     }
 
-    /** Gets the TimeConstraints of the miniscript descriptor as passed in
-     * the constructor, just using the expression and the signersPubKeys
-     * and preimages. These TimeConstraints must be kept when the final solution
-     * using final computed signatures is obtained.
+    /**
+     * Gets the TimeConstraints (nSequence and nLockTime) of the miniscript
+     * descriptor as passed in the constructor, just using the expression,
+     * the signersPubKeys and preimages.
+     *
+     * We just need to know which will be the signatures that will be
+     * used (signersPubKeys) but final signatures are not necessary for
+     * obtaning nLockTime and nSequence.
+     *
+     * Remember: nSequence and nLockTime are part of the hash that is signed.
+     * Thus, they must not change after computing the signatures.
+     * When running getScriptSatisfaction, using the final signatures,
+     * satisfyMiniscript verifies that the time constraints did not change.
      */
     #getTimeConstraints(): TimeConstraints | undefined {
       const miniscript = this.#miniscript;
@@ -510,8 +517,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           throw new Error(
             `Error: cannot get time constraints from not expanded miniscript ${miniscript}`
           );
-        //We create some fakeSignatures since we don't have them yet.
-        //We only want to retrieve the nLockTime and nSequence of the satisfaction
+        //We create some fakeSignatures since we may not have them yet.
+        //We only want to retrieve the nLockTime and nSequence of the satisfaction and
+        //signatures don't matter
         const fakeSignatures = signersPubKeys.map(pubkey => ({
           pubkey,
           signature: Buffer.alloc(64, 0)
@@ -560,6 +568,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         expansionMap,
         signatures,
         preimages: this.#preimages,
+        //Here we pass the TimeConstraints obtained using signersPubKeys to
+        //verify that the solutions found using the final signatures have not
+        //changed
         timeConstraints: {
           nLockTime: this.getLockTime(),
           nSequence: this.getSequence()
@@ -614,7 +625,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         redeemScript: this.getRedeemScript()
       });
     }
-
     finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)

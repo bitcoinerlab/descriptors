@@ -132,13 +132,19 @@ export function miniscript2Script({
 
 /**
  * Assumptions:
- * The attacker does not have access to any of the private keys of public keys that participate in the Script.
- * The attacker only has access to hash preimages that honest users have access to as well.
+ * The attacker does not have access to any of the private keys of public keys
+ * that participate in the Script.
  *
- * Pass timeConstraints to search for the first solution with this nLockTime and nSequence.
- * Don't pass timeConstraints (this is the default) if you want to get the smallest size solution altogether.
+ * The attacker only has access to hash preimages that honest users have access
+ * to as well.
  *
- * It a solution is not found this function throws.
+ * Pass timeConstraints to search for the first solution with this nLockTime and
+ * nSequence. Throw if no solution is possible using these constraints.
+ *
+ * Don't pass timeConstraints (this is the default) if you want to get the
+ * smallest size solution altogether.
+ *
+ * If a solution is not found this function throws.
  */
 export function satisfyMiniscript({
   expandedMiniscript,
@@ -178,6 +184,7 @@ export function satisfyMiniscript({
   const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
   const knowns = Object.keys(expandedKnownsMap);
 
+  //satisfier verifies again internally whether expandedKnownsMap with given knowns is sane
   const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
