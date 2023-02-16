@@ -49,6 +49,11 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
   const currentBlockHeight = await regtestUtils.height();
   const AFTER = afterEncode({ blocks: currentBlockHeight + BLOCKS });
   const OLDER = olderEncode({ blocks: BLOCKS }); //relative locktime (sequence)
+  //The policy below has been selected for the tests because it has 2 spending
+  //branches: the "after" and the "older" branch.
+  //Note that the hash to be signed depends on the nSequence and nLockTime
+  //values, which is different on each branch.
+  //This makes it an interesting test scenario.
   const POLICY = `or(and(pk(@olderKey),older(${OLDER})),and(pk(@afterKey),after(${AFTER})))`;
   const { miniscript: expandedMiniscript, issane } = compilePolicy(POLICY);
   if (!issane)
@@ -56,6 +61,9 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
       `Error: miniscript ${expandedMiniscript} from policy ${POLICY} is not sane`
     );
 
+  //The 3 for loops below test all possible combinations of
+  //signer type (BIP32 or ECPair), top-level scripts (sh, wsh, sh-wsh) and
+  //who is spending the tx: the "older" or the "after" branch
   for (const keyExpressionType of ['BIP32', 'ECPair']) {
     for (const template of templates) {
       for (const spendingBranch of Object.keys(keys)) {
@@ -103,6 +111,8 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         const expression = template.replace('SCRIPT', miniscript);
         const descriptor = new Descriptor({
           expression,
+          //Use signersPubKeys to mark which spending path will be used
+          //(which pubkey must be used)
           signersPubKeys: [keys[spendingBranch]?.pubkey!],
           allowMiniscriptInP2SH: true,
           network: NETWORK
@@ -121,6 +131,7 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         descriptor.finalizePsbtInput({ index, psbt });
         const spendTx = psbt.extractTransaction();
         await regtestUtils.mine(BLOCKS);
+        //TODO: Mine BLOCKS -1 and see that it throws because is not final
         await regtestUtils.broadcast(spendTx.toHex());
         await regtestUtils.verify({
           txId: spendTx.getId(),
@@ -128,8 +139,13 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           vout: 0,
           value: FINAL_VALUE
         });
+        //TODO verify the locking and sequence depending on the branch
         console.log(
-          `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${psbt.locktime}, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(16)}, ${expression}: OK`
+          `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
+            psbt.locktime
+          }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
+            16
+          )}, ${expression}: OK`
         );
       }
     }
