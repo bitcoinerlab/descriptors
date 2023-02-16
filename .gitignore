@@ -3,6 +3,5 @@
 node_modules/
 dist/
 docs/
-API.js
 example.js
 example1To1Segwit.js
