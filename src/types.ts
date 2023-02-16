@@ -1,7 +1,11 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { Network, Payment, Psbt } from 'bitcoinjs-lib';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
+
 export interface Preimage {
   digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
   //Accepted functions: sha256, hash256, ripemd160, hash160
@@ -33,7 +37,7 @@ export type ExpansionMap = {
 export interface ParseKeyExpression {
   (params: {
     keyExpression: string;
-    isSegwit: boolean;
+    isSegwit?: boolean;
     network?: Network;
   }): KeyInfo;
 }
@@ -42,6 +46,7 @@ interface XOnlyPointAddTweakResult {
   parity: 1 | 0;
   xOnlyPubkey: Uint8Array;
 }
+
 export interface TinySecp256k1Interface {
   isPoint(p: Uint8Array): boolean;
   pointCompress(p: Uint8Array, compressed?: boolean): Uint8Array;
@@ -80,6 +85,7 @@ export type DescriptorInfo = {
   preimages?: Preimage[];
   signersPubKeys?: Buffer[];
 };
+
 export interface DescriptorInterface {
   getPayment(): Payment;
   getAddress(): string;
@@ -102,6 +108,7 @@ export interface DescriptorInterface {
   finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void;
   expand(): void;
 }
+
 export interface DescriptorInterfaceConstructor {
   new (args: DescriptorInfo): DescriptorInterface;
 }

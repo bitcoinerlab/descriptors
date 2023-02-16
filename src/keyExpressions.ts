@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import { networks, Network } from 'bitcoinjs-lib';
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
@@ -35,7 +38,7 @@ export function parseKeyExpression({
 }: {
   keyExpression: string;
   network?: Network;
-  isSegwit: boolean;
+  isSegwit?: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
@@ -84,8 +87,15 @@ export function parseKeyExpression({
     //Validate the pubkey (compressed or uncompressed)
     if (
       !ECPair.isPoint(pubkey) ||
-      (isSegwit && pubkey.length !== 33) || //Inside wpkh and wsh, only compressed public keys are permitted.
       !(pubkey.length === 33 || pubkey.length === 65)
+    ) {
+      throw new Error(`Error: invalid pubkey`);
+    }
+    //Do an extra check in case we know this pubkey refers to a segwit input
+    if (
+      typeof isSegwit === 'boolean' &&
+      isSegwit &&
+      pubkey.length !== 33 //Inside wpkh and wsh, only compressed public keys are permitted.
     ) {
       throw new Error(`Error: invalid pubkey`);
     }
@@ -144,8 +154,8 @@ export function parseKeyExpression({
     ...(ecpair !== undefined ? { ecpair } : {}),
     ...(bip32 !== undefined ? { bip32 } : {}),
     ...(masterFingerprint !== undefined ? { masterFingerprint } : {}),
-    ...(originPath !== undefined ? { originPath } : {}),
-    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(originPath !== undefined && originPath !== '' ? { originPath } : {}),
+    ...(keyPath !== undefined && keyPath !== '' ? { keyPath } : {}),
     ...(path !== undefined ? { path } : {})
   };
 }

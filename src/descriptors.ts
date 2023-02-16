@@ -2,8 +2,14 @@
 // Distributed under the MIT software license
 
 //TODO: test p2sh, p2sh(p2wsh()), p2wpkh, ... without Ledger. Make integration test
-//TODO: test calling from typescript to make sure all relevant types are
-//TODO: do a createFixtures that uses regtest image.
+//TODO: in finalizePsbtInput add a flag {verify: boolean} so that it can verify signatures
+//TODO: when using WIF or xprv, the signing should be automatic when calling the finalizer. Pending to be done.
+//TODO: test without xpub & miniscript
+//TODO: test sh/wsh/sh(wsh
+//TODO: test multipath - what happens when 2 paths with different sequence / locktime
+//docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server
+//TODO: test example1To1Segwit after all these recent changes
+//TODO: test psbt using p2wpkh, p2pkh, p2sh(p2wpkh)
 
 import {
   address,
@@ -127,7 +133,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     return globalParseKeyExpression({
       keyExpression,
       network,
-      isSegwit,
+      ...(typeof isSegwit === 'boolean' ? { isSegwit } : {}),
       ECPair,
       BIP32
     });
@@ -620,11 +626,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
         throw new Error(`Error: cannot finalize without signatures`);
-      const scriptSatisfaction = this.getScriptSatisfaction(signatures);
-      if (!scriptSatisfaction) {
+      if (!this.#miniscript) {
         //Use standard finalizers
         psbt.finalizeInput(index);
       } else {
+        const scriptSatisfaction = this.getScriptSatisfaction(signatures);
         psbt.finalizeInput(
           index,
           finalScriptsFuncFactory(scriptSatisfaction, this.#network)
