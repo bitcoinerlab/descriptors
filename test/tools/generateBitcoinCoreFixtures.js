@@ -147,7 +147,7 @@ fs.readFile(filePath, 'utf8', (err, data) => {
 //This file is generated automatically. Do not edit it!
 
 export const fixtures = ${JSON.stringify(fixtures, null, 2)};`;
-  const fullPath = path.join(__dirname, './fixtures', 'bitcoinCore.js');
+  const fullPath = path.join(__dirname, '../fixtures', 'bitcoinCore.js');
   fs.writeFile(fullPath, contents, err => {
     if (err) throw err;
     console.log('Bitcoin Core fixtures file created.');
