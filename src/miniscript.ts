@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import { networks, script as bscript, crypto, Network } from 'bitcoinjs-lib';
 import type { ECPairAPI } from 'ecpair';
 import type { BIP32API } from 'bip32';

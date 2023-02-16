@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
 import type { KeyInfo } from './types';
 import {

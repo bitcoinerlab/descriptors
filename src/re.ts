@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import { CHECKSUM_CHARSET } from './checksum';
 //Regular expressions cheat sheet:
 //https://www.keycdn.com/support/regex-cheat-sheet
