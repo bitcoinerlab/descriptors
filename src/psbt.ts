@@ -49,7 +49,7 @@ function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
  *   ie. `Can not finalize input #${inputIndex}`
  * 2. Create the finalScriptSig and finalScriptWitness Buffers.
  */
-export type FinalScriptsFunc = (
+type FinalScriptsFunc = (
   inputIndex: number, // Which input is it?
   input: PsbtInput, // The PSBT input contents
   script: Buffer, // The "meaningful" locking script Buffer (redeemScript for P2SH etc.)
