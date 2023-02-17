@@ -191,12 +191,16 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           spendTx.ins[0]?.sequence !== OLDER
         )
           throw new Error(`Error: final sequence was not correct`);
+        console.log(`\nDescriptor: ${expression}`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
             psbt.locktime
           }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
             16
-          )}, ${expression}: OK`
+          )}, ${descriptor
+            .expand()
+            .expandedExpression?.replace('@0', '@olderKey')
+            .replace('@1', '@afterKey')}: OK`
         );
       }
     }
