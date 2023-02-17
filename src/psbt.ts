@@ -226,7 +226,7 @@ export function updatePsbt({
     hash: reverseBuffer(Buffer.from(txId, 'hex')),
     index: vout
   };
-  if (txHex) {
+  if (txHex !== undefined) {
     input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
   }
 
@@ -243,7 +243,10 @@ export function updatePsbt({
       })
     );
   if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
-  if (isSegwit) input.witnessUtxo = { script: scriptPubKey, value };
+  if (isSegwit && txHex !== undefined) {
+    //There's no need to put both witnessUtxo and nonWitnessUtxo
+    input.witnessUtxo = { script: scriptPubKey, value };
+  }
   if (inputSequence !== undefined) input.sequence = inputSequence;
 
   if (witnessScript) input.witnessScript = witnessScript;

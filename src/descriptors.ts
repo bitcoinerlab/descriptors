@@ -3,8 +3,6 @@
 
 //TODO: ledger integration test: Use 3 standard inputs + miniscript - Test using value instead of txHex. Does it work? I believe not.
 //TODO: alternatively pass vout and value instead of txHex with Segwit - adapt the integration tests
-//TODO: do the TODOS in the miniscript integration test. check for mine(BLOCKS-1) and
-//also assert that the locktime and sequence match the branch. throw if not.
 //TODO: Ledger guide showing how to receive and spend with 4 inputs: 3 standard + 1 miniscript
 //TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
 
@@ -602,19 +600,20 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     }
     /**
      * Updates the tx locktime if needed.
-     * It also adds a new input based on txHex (or txId + value).
+     * It also adds a new input based on txHex.
      * It returns the number of the input that is added.
-     * NOTE: psbt and vout are mandatory.
-     * Also pass txHex.
+     * psbt and vout are mandatory. Also pass txHex.
      *
-     * Alternatively, although not recommened, ONLY for Segwit inputs, you can pass
-     * both txId and value, instead of txHex.
-     * If you do so, it is your responsibility to make sure that the value is correct to avoid the fee vulnerability attack:
+     * The following is not recommended but, alternatively, ONLY for Segwit inputs,
+     * you can pass txId and value, instead of txHex.
+     * If you do so, it is your responsibility to make sure that `value` is
+     * correct to avoid possible fee vulnerability attacks:
      * https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625
-     * Note that HW wallets require the full txHex also for Segwit anyway:
+     * Note that HW wallets require the full txHex also for Segwit anyways:
      * https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd
      *
-     * In doubt, simply pass txHex (and you can skip passing txId and value) and you shall be fine.
+     * In doubt, simply pass txHex (and you can skip passing txId and value) and
+     * you shall be fine.
      */
     updatePsbt({
       psbt,
