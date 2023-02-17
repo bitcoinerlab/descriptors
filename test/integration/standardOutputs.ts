@@ -60,7 +60,9 @@ const masterFingerprint = masterNode.fingerprint;
     const index = descriptorBIP32.updatePsbt({ psbt, vout, txHex });
     if (descriptorBIP32.isSegwit()) {
       //Do some additional tests. Create a tmp psbt using txId and value instead
-      //of txHex using Segwit
+      //of txHex using Segwit. Passing the value instead of the txHex is not
+      //recommended anyway. It's the user's responsibility to make sure that
+      //the value is correct to avoid possible fee attacks.
       const psbtSegwit = new Psbt();
       const indexSegwit = descriptorBIP32.updatePsbt({
         psbt: psbtSegwit,

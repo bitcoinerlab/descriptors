@@ -605,11 +605,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
      * It also adds a new input based on txHex (or txId + value).
      * It returns the number of the input that is added.
      * NOTE: psbt and vout are mandatory.
-     * Also pass txHex or, alternatively, ONLY for Segwit inputs, you can pass
-     * both txId and value, instead.
-     * Note that Ledger and other HW wallets may require a Psbt with the full
-     * txHex also for Segwit:
+     * Also pass txHex.
+     *
+     * Alternatively, although not recommened, ONLY for Segwit inputs, you can pass
+     * both txId and value, instead of txHex.
+     * If you do so, it is your responsibility to make sure that the value is correct to avoid the fee vulnerability attack:
+     * https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625
+     * Note that HW wallets require the full txHex also for Segwit anyway:
      * https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd
+     *
      * In doubt, simply pass txHex (and you can skip passing txId and value) and you shall be fine.
      */
     updatePsbt({

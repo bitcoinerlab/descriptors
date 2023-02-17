@@ -154,13 +154,13 @@ export function updatePsbt({
 }): number {
   //Some data-sanity checks:
   if (!isSegwit && txHex === undefined)
-    throw new Error(`Error: txHex and vout mandatory for Non-Segwit inputs`);
+    throw new Error(`Error: txHex is mandatory for Non-Segwit inputs`);
   if (
     isSegwit &&
     (txHex === undefined) &&
     (txId === undefined || value === undefined)
   )
-    throw new Error(`Error: pass txHex+vout or txId+value for Segwit inputs`);
+    throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
     const tx = Transaction.fromHex(txHex);
     const out = tx?.outs?.[vout];

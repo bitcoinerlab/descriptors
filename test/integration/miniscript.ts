@@ -127,7 +127,9 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         const index = descriptor.updatePsbt({ psbt, vout, txHex });
         if (descriptor.isSegwit()) {
           //Do some additional tests. Create a tmp psbt using txId and value instead
-          //of txHex using Segwit
+          //of txHex using Segwit. Passing the value instead of the txHex is not
+          //recommended anyway. It's the user's responsibility to make sure that
+          //the value is correct to avoid possible fee attacks.
           const psbtSegwit = new Psbt();
           const indexSegwit = descriptor.updatePsbt({
             psbt: psbtSegwit,
