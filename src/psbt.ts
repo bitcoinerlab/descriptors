@@ -125,6 +125,9 @@ export function finalScriptsFuncFactory(
   return finalScriptsFunc;
 }
 
+/**
+ * Important: Read comments on descriptor.updatePsbt regarding not passing txHex
+ */
 export function updatePsbt({
   psbt,
   vout,
@@ -157,7 +160,7 @@ export function updatePsbt({
     throw new Error(`Error: txHex is mandatory for Non-Segwit inputs`);
   if (
     isSegwit &&
-    (txHex === undefined) &&
+    txHex === undefined &&
     (txId === undefined || value === undefined)
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);

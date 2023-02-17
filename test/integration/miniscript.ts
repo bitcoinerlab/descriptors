@@ -131,18 +131,23 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           //recommended anyway. It's the user's responsibility to make sure that
           //the value is correct to avoid possible fee attacks.
           const psbtSegwit = new Psbt();
+          const originalWarn = console.warn;
+          let capturedOutput = '';
+          console.warn = (message: string) => {
+            capturedOutput += message;
+          };
           const indexSegwit = descriptor.updatePsbt({
             psbt: psbtSegwit,
             vout,
             txId,
             value: INITIAL_VALUE
           });
+          if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
+            throw new Error(`Error: did not warn about fee attacks`);
+          console.warn = originalWarn;
           const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
           const nonFinalSegwitTxHex = (psbtSegwit as any).__CACHE.__TX.toHex();
-          if (
-            indexSegwit !== index ||
-            nonFinalTxHex !== nonFinalSegwitTxHex
-          )
+          if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
             throw new Error(
               `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
             );

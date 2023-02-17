@@ -629,6 +629,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       txId?: string;
       value?: number;
     }): number {
+      if (txHex === undefined) {
+        console.warn(
+          `Warning: missing txHex may allow fee attacks`
+        );
+      }
       const isSegwit = this.isSegwit();
       if (isSegwit === undefined) {
         //This should only happen when using addr() expressions
@@ -640,7 +645,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
-        ...(txId !== undefined? { txId } : {}),
+        ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
