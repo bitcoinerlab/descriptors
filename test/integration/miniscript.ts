@@ -46,27 +46,28 @@ const keys: {
 const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
 
 (async () => {
-  const currentBlockHeight = await regtestUtils.height();
-  const AFTER = afterEncode({ blocks: currentBlockHeight + BLOCKS });
-  const OLDER = olderEncode({ blocks: BLOCKS }); //relative locktime (sequence)
-  //The policy below has been selected for the tests because it has 2 spending
-  //branches: the "after" and the "older" branch.
-  //Note that the hash to be signed depends on the nSequence and nLockTime
-  //values, which is different on each branch.
-  //This makes it an interesting test scenario.
-  const POLICY = `or(and(pk(@olderKey),older(${OLDER})),and(pk(@afterKey),after(${AFTER})))`;
-  const { miniscript: expandedMiniscript, issane } = compilePolicy(POLICY);
-  if (!issane)
-    throw new Error(
-      `Error: miniscript ${expandedMiniscript} from policy ${POLICY} is not sane`
-    );
-
   //The 3 for loops below test all possible combinations of
   //signer type (BIP32 or ECPair), top-level scripts (sh, wsh, sh-wsh) and
   //who is spending the tx: the "older" or the "after" branch
   for (const keyExpressionType of ['BIP32', 'ECPair']) {
     for (const template of templates) {
       for (const spendingBranch of Object.keys(keys)) {
+        const currentBlockHeight = await regtestUtils.height();
+        const AFTER = afterEncode({ blocks: currentBlockHeight + BLOCKS });
+        const OLDER = olderEncode({ blocks: BLOCKS }); //relative locktime (sequence)
+        //The policy below has been selected for the tests because it has 2 spending
+        //branches: the "after" and the "older" branch.
+        //Note that the hash to be signed depends on the nSequence and nLockTime
+        //values, which is different on each branch.
+        //This makes it an interesting test scenario.
+        const POLICY = `or(and(pk(@olderKey),older(${OLDER})),and(pk(@afterKey),after(${AFTER})))`;
+        const { miniscript: expandedMiniscript, issane } =
+          compilePolicy(POLICY);
+        if (!issane)
+          throw new Error(
+            `Error: miniscript ${expandedMiniscript} from policy ${POLICY} is not sane`
+          );
+
         //Note that the hash to be signed is different depending on how we decide
         //to spend the script.
         //Here we decide how are we going to spend the script.
@@ -157,8 +158,24 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         else psbt.signInput(index, keys[spendingBranch]?.ecpair!);
         descriptor.finalizePsbtInput({ index, psbt });
         const spendTx = psbt.extractTransaction();
-        await regtestUtils.mine(BLOCKS);
-        //TODO: Mine BLOCKS -1 and see that it throws because is not final
+        //Now let's mine BLOCKS - 1 and see how the node complains about
+        //trying to broadcast it now.
+        await regtestUtils.mine(BLOCKS - 1);
+        try {
+          await regtestUtils.broadcast(spendTx.toHex());
+          throw new Error(`Error: mining BLOCKS - 1 did not fail`);
+        } catch (error) {
+          const expectedErrorMessage =
+            spendingBranch === '@olderKey' ? 'non-BIP68-final' : 'non-final';
+          if (
+            error instanceof Error &&
+            error.message !== expectedErrorMessage
+          ) {
+            throw new Error(error.message);
+          }
+        }
+        //Mine the last block needed
+        await regtestUtils.mine(1);
         await regtestUtils.broadcast(spendTx.toHex());
         await regtestUtils.verify({
           txId: spendTx.getId(),
@@ -166,7 +183,14 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           vout: 0,
           value: FINAL_VALUE
         });
-        //TODO verify the locking and sequence depending on the branch
+        //Verify the final locking and sequence depending on the branch
+        if (spendingBranch === '@afterKey' && spendTx.locktime !== AFTER)
+          throw new Error(`Error: final locktime was not correct`);
+        if (
+          spendingBranch === '@olderKey' &&
+          spendTx.ins[0]?.sequence !== OLDER
+        )
+          throw new Error(`Error: final sequence was not correct`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
             psbt.locktime
