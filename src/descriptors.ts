@@ -1,8 +1,12 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//TODO: ledger integration test
-//TODO: test example1To1Segwit after all these recent changes
+//TODO: ledger integration test: Use 3 standard inputs + miniscript - Test using value instead of txHex. Does it work? I believe not.
+//TODO: alternatively pass vout and value instead of txHex with Segwit - adapt the integration tests
+//TODO: do the TODOS in the miniscript integration test. check for mine(BLOCKS-1) and
+//also assert that the locktime and sequence match the branch. throw if not.
+//TODO: Ledger guide showing how to receive and spend with 4 inputs: 3 standard + 1 miniscript
+//TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
 
 import {
   address,
@@ -596,14 +600,30 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
     }
+    /**
+     * Updates the tx locktime if needed.
+     * It also adds a new input based on txHex (or txId + value).
+     * It returns the number of the input that is added.
+     * NOTE: psbt and vout are mandatory.
+     * Also pass txHex or, alternatively, ONLY for Segwit inputs, you can pass
+     * both txId and value, instead.
+     * Note that Ledger and other HW wallets may require a Psbt with the full
+     * txHex also for Segwit:
+     * https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd
+     * In doubt, simply pass txHex (and you can skip passing txId and value) and you shall be fine.
+     */
     updatePsbt({
-      txHex,
+      psbt,
       vout,
-      psbt
+      txHex,
+      txId,
+      value
     }: {
-      txHex: string;
-      vout: number;
       psbt: Psbt;
+      vout: number;
+      txHex?: string;
+      txId?: string;
+      value?: number;
     }): number {
       const isSegwit = this.isSegwit();
       if (isSegwit === undefined) {
@@ -614,8 +634,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
       return updatePsbt({
         psbt,
-        txHex,
         vout,
+        ...(txHex !== undefined ? { txHex } : {}),
+        ...(txId !== undefined? { txId } : {}),
+        ...(value !== undefined ? { value } : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],

@@ -124,7 +124,27 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         );
         let { txHex } = await regtestUtils.fetch(txId);
         const psbt = new Psbt();
-        const index = descriptor.updatePsbt({ txHex, vout, psbt });
+        const index = descriptor.updatePsbt({ psbt, vout, txHex });
+        if (descriptor.isSegwit()) {
+          //Do some additional tests. Create a tmp psbt using txId and value instead
+          //of txHex using Segwit
+          const psbtSegwit = new Psbt();
+          const indexSegwit = descriptor.updatePsbt({
+            psbt: psbtSegwit,
+            vout,
+            txId,
+            value: INITIAL_VALUE
+          });
+          const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
+          const nonFinalSegwitTxHex = (psbtSegwit as any).__CACHE.__TX.toHex();
+          if (
+            indexSegwit !== index ||
+            nonFinalTxHex !== nonFinalSegwitTxHex
+          )
+            throw new Error(
+              `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
+            );
+        }
         psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
         if (keyExpressionType === 'BIP32') psbt.signInputHD(index, masterNode);
         else psbt.signInput(index, keys[spendingBranch]?.ecpair!);

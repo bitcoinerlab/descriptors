@@ -96,14 +96,18 @@ export interface DescriptorInterface {
   getRedeemScript(): Buffer | undefined;
   isSegwit(): boolean | undefined;
   updatePsbt({
-    txHex,
-    vout,
-    psbt
-  }: {
-    txHex: string;
-    vout: number;
-    psbt: Psbt;
-  }): number;
+      psbt,
+      vout,
+      txHex,
+      txId,
+      value
+    }: {
+      psbt: Psbt;
+      vout: number;
+      txHex?: string;
+      txId?: string;
+      value?: number;
+    }): number;
   finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void;
   expand(): void;
 }

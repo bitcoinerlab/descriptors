@@ -57,7 +57,24 @@ const masterFingerprint = masterNode.fingerprint;
     );
     let { txHex } = await regtestUtils.fetch(txId);
     const psbt = new Psbt();
-    const index = descriptorBIP32.updatePsbt({ txHex, vout, psbt });
+    const index = descriptorBIP32.updatePsbt({ psbt, vout, txHex });
+    if (descriptorBIP32.isSegwit()) {
+      //Do some additional tests. Create a tmp psbt using txId and value instead
+      //of txHex using Segwit
+      const psbtSegwit = new Psbt();
+      const indexSegwit = descriptorBIP32.updatePsbt({
+        psbt: psbtSegwit,
+        vout,
+        txId,
+        value: INITIAL_VALUE
+      });
+      const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
+      const nonFinalSegwitTxHex = (psbtSegwit as any).__CACHE.__TX.toHex();
+      if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
+        throw new Error(
+          `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
+        );
+    }
     psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
     psbt.signInputHD(index, masterNode);
     descriptorBIP32.finalizePsbtInput({ index, psbt });
@@ -81,7 +98,7 @@ const masterFingerprint = masterNode.fingerprint;
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
-    descriptorBIP32.updatePsbt({ txHex, vout, psbt: psbtLarge });
+    descriptorBIP32.updatePsbt({ psbt: psbtLarge, vout, txHex });
     descriptorsLarge.push(descriptorBIP32);
 
     //
@@ -90,7 +107,7 @@ const masterFingerprint = masterNode.fingerprint;
     //
     //
     const node = masterNode.derivePath(`m${originPath}${keyPath}`);
-    const ecpair : ECPairInterface = ECPair.fromPrivateKey(node.privateKey!);
+    const ecpair: ECPairInterface = ECPair.fromPrivateKey(node.privateKey!);
     const expressionECPair = template.replace(
       '@key',
       ecpair.publicKey.toString('hex')
@@ -107,9 +124,9 @@ const masterFingerprint = masterNode.fingerprint;
     ({ txHex } = await regtestUtils.fetch(txId));
     const psbtECPair = new Psbt();
     const indexECPair = descriptorECPair.updatePsbt({
-      txHex,
+      psbt: psbtECPair,
       vout,
-      psbt: psbtECPair
+      txHex
     });
     psbtECPair.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
     psbtECPair.signInput(indexECPair, ecpair);
@@ -138,9 +155,9 @@ const masterFingerprint = masterNode.fingerprint;
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
     const ecpairIndex = descriptorECPair.updatePsbt({
-      txHex,
+      psbt: psbtLarge,
       vout,
-      psbt: psbtLarge
+      txHex
     });
     descriptorsLarge.push(descriptorECPair);
     ecpairs[ecpairIndex] = ecpair;

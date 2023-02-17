@@ -12,7 +12,18 @@ import {
 } from 'bitcoinjs-lib';
 import * as varuint from 'bip174/src/lib/converter/varint';
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
-
+function reverseBuffer(buffer: Buffer): Buffer {
+  if (buffer.length < 1) return buffer;
+  let j = buffer.length - 1;
+  let tmp = 0;
+  for (let i = 0; i < buffer.length / 2; i++) {
+    tmp = buffer[i]!;
+    buffer[i] = buffer[j]!;
+    buffer[j] = tmp;
+    j--;
+  }
+  return buffer;
+}
 function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
   let buffer = Buffer.allocUnsafe(0);
 
@@ -116,8 +127,10 @@ export function finalScriptsFuncFactory(
 
 export function updatePsbt({
   psbt,
-  txHex,
   vout,
+  txHex,
+  txId,
+  value,
   sequence,
   locktime,
   keysInfo,
@@ -127,8 +140,10 @@ export function updatePsbt({
   redeemScript
 }: {
   psbt: Psbt;
-  txHex: string;
   vout: number;
+  txHex?: string;
+  txId?: string;
+  value?: number;
   sequence: number | undefined;
   locktime: number | undefined;
   keysInfo: KeyInfo[];
@@ -137,18 +152,50 @@ export function updatePsbt({
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
 }): number {
-  const tx = Transaction.fromHex(txHex);
-  const out = tx?.outs?.[vout];
-  const outputScript = out?.script;
-  if (!outputScript)
+  //Some data-sanity checks:
+  if (!isSegwit && txHex === undefined)
+    throw new Error(`Error: txHex and vout mandatory for Non-Segwit inputs`);
+  if (
+    isSegwit &&
+    (txHex === undefined) &&
+    (txId === undefined || value === undefined)
+  )
+    throw new Error(`Error: pass txHex+vout or txId+value for Segwit inputs`);
+  if (txHex !== undefined) {
+    const tx = Transaction.fromHex(txHex);
+    const out = tx?.outs?.[vout];
+    if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
+    const outputScript = out.script;
+    if (!outputScript)
+      throw new Error(
+        `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
+      );
+    if (Buffer.compare(outputScript, scriptPubKey) !== 0)
+      throw new Error(
+        `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
+      );
+    if (txId !== undefined) {
+      if (tx.getId() !== txId)
+        throw new Error(
+          `Error: txId for ${txHex} and vout ${vout} does not correspond to ${txId}`
+        );
+    } else {
+      txId = tx.getId();
+    }
+    if (value !== undefined) {
+      if (out.value !== value)
+        throw new Error(
+          `Error: value for ${txHex} and vout ${vout} does not correspond to ${value}`
+        );
+    } else {
+      value = out.value;
+    }
+  }
+  if (txId === undefined || !value)
     throw new Error(
-      `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
+      `Error: txHex+vout required. Alternatively, but ONLY for Segwit inputs, txId+value can also be passed.`
     );
-  if (Buffer.compare(outputScript, scriptPubKey) !== 0)
-    throw new Error(
-      `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
-    );
-  if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
+
   if (locktime !== undefined) {
     if (psbt.locktime !== 0 && psbt.locktime !== undefined)
       throw new Error(
@@ -173,10 +220,13 @@ export function updatePsbt({
   }
 
   const input: PsbtInputExtended = {
-    hash: tx.getHash(),
-    index: vout,
-    nonWitnessUtxo: tx.toBuffer()
+    hash: reverseBuffer(Buffer.from(txId, 'hex')),
+    index: vout
   };
+  if (txHex) {
+    input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
+  }
+
   const bip32Derivation = keysInfo
     .filter(
       (keyInfo: KeyInfo) =>
@@ -190,7 +240,7 @@ export function updatePsbt({
       })
     );
   if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
-  if (isSegwit) input.witnessUtxo = { script: scriptPubKey, value: out.value };
+  if (isSegwit) input.witnessUtxo = { script: scriptPubKey, value };
   if (inputSequence !== undefined) input.sequence = inputSequence;
 
   if (witnessScript) input.witnessScript = witnessScript;
