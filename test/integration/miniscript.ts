@@ -39,7 +39,7 @@ const keys: {
     ecpair?: ECPairInterface;
   };
 } = {
-  '@olderKey': { originPath: "/0'/0'/0'", keyPath: '/0' },
+  '@olderKey': { originPath: "/0'/1'/0'", keyPath: '/0' },
   '@afterKey': { originPath: "/0'/1'/1'", keyPath: '/1' }
 };
 

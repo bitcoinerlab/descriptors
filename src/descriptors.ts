@@ -2,7 +2,6 @@
 // Distributed under the MIT software license
 
 //TODO: ledger integration test: Use 3 standard inputs + miniscript - Test using value instead of txHex. Does it work? I believe not.
-//TODO: alternatively pass vout and value instead of txHex with Segwit - adapt the integration tests
 //TODO: Ledger guide showing how to receive and spend with 4 inputs: 3 standard + 1 miniscript
 //TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
 
