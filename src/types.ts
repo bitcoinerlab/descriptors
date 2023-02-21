@@ -94,6 +94,7 @@ export interface DescriptorInterface {
   getLockTime(): number | undefined;
   getWitnessScript(): Buffer | undefined;
   getRedeemScript(): Buffer | undefined;
+  getNetwork(): Network;
   isSegwit(): boolean | undefined;
   updatePsbt({
     psbt,

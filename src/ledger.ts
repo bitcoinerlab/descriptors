@@ -1,18 +1,35 @@
 import type { DescriptorInterface } from './types';
 import { AppClient, WalletPolicy } from 'ledger';
+import { Network, networks } from 'bitcoinjs-lib';
+import { reOriginPath } from './re';
 
-export type DefaultDescriptorTemplate =
-  | 'pkh(@0/**)'
-  | 'sh(wpkh(@0/**))'
-  | 'wpkh(@0/**)'
-  | 'tr(@0/**)';
-
-function isDefaultDescriptorTemplate(
-  str: string
-): str is DefaultDescriptorTemplate {
-  return ['pkh(@0/**)', 'sh(wpkh(@0/**))', 'wpkh(@0/**)', 'tr(@0/**)'].includes(
-    str
-  );
+function isLedgerStandard({
+  ledgerTemplate,
+  keyRoots,
+  network = networks.bitcoin
+}: {
+  ledgerTemplate: string;
+  keyRoots: string[];
+  network?: Network;
+}): boolean {
+  if (keyRoots.length !== 1) return false;
+  const originPath = keyRoots[0]?.match(reOriginPath)?.[1];
+  if (!originPath) return false;
+  //Network is the 6th character: /44'/0'
+  if (originPath[5] !== (network === networks.bitcoin ? '0' : '1'))
+    return false;
+  if (
+    (ledgerTemplate === 'pkh(@0/**)' &&
+      originPath.match(/^\/44'\/[01]'\/(\d+)'$/)) ||
+    (ledgerTemplate === 'wpkh(@0/**)' &&
+      originPath.match(/^\/84'\/[01]'\/(\d+)'$/)) ||
+    (ledgerTemplate === 'sh(wpkh(@0/**))' &&
+      originPath.match(/^\/49'\/[01]'\/(\d+)'$/)) ||
+    (ledgerTemplate === 'tr(@0/**)' &&
+      originPath.match(/^\/86'\/[01]'\/(\d+)'$/))
+  )
+    return true;
+  return false;
 }
 
 //Standard key expressions don't have name, id or hmac:
@@ -77,7 +94,7 @@ export async function getLedgerXpub({
  * keyRoots and template are a generalization of a descriptor and serve to
  * describe internal and external addresses and any index.
  *
- * So, this function starts from a descriptor and obtains generalized Ledger 
+ * So, this function starts from a descriptor and obtains generalized Ledger
  * wallet policy.
  *
  * keyRoots is an array of strings, encoding xpub-type key expressions up to the origin.
@@ -167,6 +184,7 @@ export async function descriptorToLedgerFormat({
  * It registers a policy based on a descriptor. It stores it in ledgerState.
  *
  * If the policy was already registered, it does not register it.
+ * If the policy is standard, it does not register it.
  *
  **/
 export async function registerLedgerPolicy({
@@ -185,6 +203,8 @@ export async function registerLedgerPolicy({
     ledgerClient,
     ledgerState
   });
+  if (await ledgerPolicyFromStandard({ descriptor, ledgerClient, ledgerState }))
+    return;
   if (!result)
     throw new Error(`Error: descriptor does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
@@ -236,16 +256,14 @@ export async function ledgerPolicyFromStandard({
   if (!result)
     throw new Error(`Error: descriptor does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
-
-  if (isDefaultDescriptorTemplate(ledgerTemplate)) {
-    if (keyRoots.length !== 1)
-      throw new Error(
-        `Error: there should be only 1 key roots for a standard policy`
-      );
-    //TODO: This should now assert that the originPath follows the standard convention 44/84/49
-    //wrt the default descriptor & network. Get the network from the descriptor
+  if (
+    isLedgerStandard({
+      ledgerTemplate,
+      keyRoots,
+      network: descriptor.getNetwork()
+    })
+  )
     return { ledgerTemplate, keyRoots };
-  }
   return null;
 }
 

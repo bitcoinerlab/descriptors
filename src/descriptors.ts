@@ -596,6 +596,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     getRedeemScript(): Buffer | undefined {
       return this.#redeemScript;
     }
+    getNetwork(): Network {
+      return this.#network;
+    }
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
     }
