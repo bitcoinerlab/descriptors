@@ -3,12 +3,12 @@
 
 //npm run test:integration
 
-console.log('Miniscript integration tests');
+//TODO: use standard signers
+//TODO: explain the test and the branch things.
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 const { encode: afterEncode } = require('bip65');
 const { encode: olderEncode } = require('bip68');
-import type { ECPairInterface } from 'ecpair';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
@@ -20,52 +20,56 @@ const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
 const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const POLICY = (older: number, after: number) =>
+  `or(and(pk(@olderKey),older(${older})),and(pk(@afterKey),after(${after})))`;
+
+console.log(
+  `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
+);
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory } from '../../src/';
+//TODO: This should be imported from 'src'
+import { keyExpressionBIP32 } from '../../src/keyExpressions';
 
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 
 const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
-const masterFingerprint = masterNode.fingerprint;
+const ecpair = ECPair.makeRandom();
 
 const keys: {
   [key: string]: {
     originPath: string;
     keyPath: string;
-    pubkey?: Buffer;
-    ecpair?: ECPairInterface;
   };
 } = {
   '@olderKey': { originPath: "/0'/1'/0'", keyPath: '/0' },
   '@afterKey': { originPath: "/0'/1'/1'", keyPath: '/1' }
 };
 
-const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
-
 (async () => {
   //The 3 for loops below test all possible combinations of
   //signer type (BIP32 or ECPair), top-level scripts (sh, wsh, sh-wsh) and
   //who is spending the tx: the "older" or the "after" branch
   for (const keyExpressionType of ['BIP32', 'ECPair']) {
-    for (const template of templates) {
+    for (const template of [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`]) {
       for (const spendingBranch of Object.keys(keys)) {
         const currentBlockHeight = await regtestUtils.height();
-        const AFTER = afterEncode({ blocks: currentBlockHeight + BLOCKS });
-        const OLDER = olderEncode({ blocks: BLOCKS }); //relative locktime (sequence)
+        const after = afterEncode({ blocks: currentBlockHeight + BLOCKS });
+        const older = olderEncode({ blocks: BLOCKS }); //relative locktime (sequence)
         //The policy below has been selected for the tests because it has 2 spending
         //branches: the "after" and the "older" branch.
         //Note that the hash to be signed depends on the nSequence and nLockTime
         //values, which is different on each branch.
         //This makes it an interesting test scenario.
-        const POLICY = `or(and(pk(@olderKey),older(${OLDER})),and(pk(@afterKey),after(${AFTER})))`;
+        const policy = POLICY(older, after);
         const { miniscript: expandedMiniscript, issane } =
-          compilePolicy(POLICY);
+          compilePolicy(policy);
         if (!issane)
           throw new Error(
-            `Error: miniscript ${expandedMiniscript} from policy ${POLICY} is not sane`
+            `Error: miniscript ${expandedMiniscript} from policy ${policy} is not sane`
           );
 
         //Note that the hash to be signed is different depending on how we decide
@@ -74,39 +78,32 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         //spendingBranch is either @olderKey or @afterKey.
         //Use signersPubKeys in Descriptor's constructor to account for this
         let miniscript = expandedMiniscript;
+        const signersPubKeys: Buffer[] = [];
         for (const key in keys) {
           const keyValue = keys[key];
           if (!keyValue) throw new Error();
           const { originPath, keyPath } = keyValue;
-          const xpub = masterNode
-            .derivePath(`m${originPath}`)
-            .neutered()
-            .toBase58()
-            .toString();
-          const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-          const keyRoot = `${origin}${xpub}`;
-          const keyExpression = `${keyRoot}${keyPath}`;
+          const keyExpression = keyExpressionBIP32({
+            masterNode,
+            originPath,
+            keyPath
+          });
           const node = masterNode.derivePath(`m${originPath}${keyPath}`);
-          keyValue.pubkey = node.publicKey;
-          if (keyExpressionType === 'BIP32') {
-            //Here we will only provide bip32 keyExpressions to the keys that
-            //must be signed. Providing bip32 to all keyExpressions would also work
-            //but we use a pubkey as keyExpression to make sure that a valid
-            //tx is created just using the strictly necessary signatures.
-            if (key === spendingBranch)
+          const pubkey = node.publicKey;
+          if (key === spendingBranch) {
+            if (keyExpressionType === 'BIP32') {
               miniscript = miniscript.replaceAll(key, keyExpression);
-            else
+              signersPubKeys.push(pubkey);
+            } else {
               miniscript = miniscript.replaceAll(
                 key,
-                keyValue.pubkey.toString('hex')
+                ecpair.publicKey.toString('hex')
               );
+              signersPubKeys.push(ecpair.publicKey);
+            }
           } else {
-            miniscript = miniscript.replaceAll(
-              key,
-              keyValue.pubkey.toString('hex')
-            );
-            if (key === spendingBranch)
-              keyValue.ecpair = ECPair.fromPrivateKey(node.privateKey!);
+            //For the non spending branch we can simply use the pubKey as key expressions
+            miniscript = miniscript.replaceAll(key, pubkey.toString('hex'));
           }
         }
         const expression = template.replace('SCRIPT', miniscript);
@@ -114,8 +111,8 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           expression,
           //Use signersPubKeys to mark which spending path will be used
           //(which pubkey must be used)
-          signersPubKeys: [keys[spendingBranch]?.pubkey!],
-          allowMiniscriptInP2SH: true,
+          signersPubKeys,
+          allowMiniscriptInP2SH: true, //Default is false. Activated to test sh(SCRIPT).
           network: NETWORK
         });
 
@@ -126,36 +123,9 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
         let { txHex } = await regtestUtils.fetch(txId);
         const psbt = new Psbt();
         const index = descriptor.updatePsbt({ psbt, vout, txHex });
-        if (descriptor.isSegwit()) {
-          //Do some additional tests. Create a tmp psbt using txId and value instead
-          //of txHex using Segwit. Passing the value instead of the txHex is not
-          //recommended anyway. It's the user's responsibility to make sure that
-          //the value is correct to avoid possible fee attacks.
-          const psbtSegwit = new Psbt();
-          const originalWarn = console.warn;
-          let capturedOutput = '';
-          console.warn = (message: string) => {
-            capturedOutput += message;
-          };
-          const indexSegwit = descriptor.updatePsbt({
-            psbt: psbtSegwit,
-            vout,
-            txId,
-            value: INITIAL_VALUE
-          });
-          if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
-            throw new Error(`Error: did not warn about fee attacks`);
-          console.warn = originalWarn;
-          const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
-          const nonFinalSegwitTxHex = (psbtSegwit as any).__CACHE.__TX.toHex();
-          if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
-            throw new Error(
-              `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
-            );
-        }
         psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-        if (keyExpressionType === 'BIP32') psbt.signInputHD(index, masterNode);
-        else psbt.signInput(index, keys[spendingBranch]?.ecpair!);
+        if (keyExpressionType === 'BIP32') psbt.signAllInputsHD(masterNode);
+        else psbt.signAllInputs(ecpair);
         descriptor.finalizePsbtInput({ index, psbt });
         const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
@@ -184,11 +154,11 @@ const templates = [`sh(SCRIPT)`, `wsh(SCRIPT)`, `sh(wsh(SCRIPT))`];
           value: FINAL_VALUE
         });
         //Verify the final locking and sequence depending on the branch
-        if (spendingBranch === '@afterKey' && spendTx.locktime !== AFTER)
+        if (spendingBranch === '@afterKey' && spendTx.locktime !== after)
           throw new Error(`Error: final locktime was not correct`);
         if (
           spendingBranch === '@olderKey' &&
-          spendTx.ins[0]?.sequence !== OLDER
+          spendTx.ins[0]?.sequence !== older
         )
           throw new Error(`Error: final sequence was not correct`);
         console.log(`\nDescriptor: ${expression}`);

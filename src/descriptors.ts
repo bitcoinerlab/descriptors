@@ -4,6 +4,8 @@
 //TODO: ledger integration test: Use 3 standard inputs + miniscript - Test using value instead of txHex. Does it work? I believe not.
 //TODO: Ledger guide showing how to receive and spend with 4 inputs: 3 standard + 1 miniscript
 //TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
+//TODO: export a finalizePsbt function
+//TODO: wpkhBIP32 -> wpkhExpressionBIP32
 
 import {
   address,
@@ -598,8 +600,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       return this.#isSegwit;
     }
     /**
-     * Updates the tx locktime if needed.
-     * It also adds a new input based on txHex.
+     * Updates a Psbt where the descriptor describes an utxo.
+     * The txHex (nonWitnessUtxo) and vout of the utxo must be passed.
+     *
+     * updatePsbt adds an input to the psbt and updates the tx locktime if needed.
+     * It also adds a new input to the Psbt based on txHex
      * It returns the number of the input that is added.
      * psbt and vout are mandatory. Also pass txHex.
      *
@@ -616,21 +621,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
      */
     updatePsbt({
       psbt,
-      vout,
       txHex,
       txId,
-      value
+      value,
+      vout //vector output index
     }: {
       psbt: Psbt;
-      vout: number;
       txHex?: string;
       txId?: string;
       value?: number;
+      vout: number;
     }): number {
       if (txHex === undefined) {
-        console.warn(
-          `Warning: missing txHex may allow fee attacks`
-        );
+        console.warn(`Warning: missing txHex may allow fee attacks`);
       }
       const isSegwit = this.isSegwit();
       if (isSegwit === undefined) {
@@ -655,6 +658,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       });
     }
     finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void {
+      //An index must be passed since finding the index in the psbt cannot be
+      //done:
+      //Imagine the case where you received money twice to
+      //the same miniscript-based address. You would have the same scriptPubKey,
+      //same sequences, ... The descriptor does not store the hash of the previous
+      //transaction since it is a general Descriptor object. Indices must be kept
+      //out of the scope of this class and then passed.
+
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
         throw new Error(`Error: cannot finalize without signatures`);

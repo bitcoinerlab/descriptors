@@ -3,6 +3,7 @@
 
 //npm run test:integration
 
+//TODO: use standard signers
 console.log('Standard output integration tests');
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
@@ -19,37 +20,49 @@ const SOFT_MNEMONIC =
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, DescriptorInterface } from '../../src/';
-import type { ECPairInterface } from 'ecpair';
+//TODO: This should be imported from 'src'
+import {
+  keyExpressionBIP32,
+  wpkhBIP32,
+  shWpkhBIP32,
+  pkhBIP32
+} from '../../src/keyExpressions';
 
 const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
 
-const templates = [
-  { template: 'pk(@key)', originPath: "/0'/1'/0'", keyPath: '/0/0' },
-  { template: 'pkh(@key)', originPath: "/44'/1'/0'", keyPath: '/0/0' },
-  { template: 'wpkh(@key)', originPath: "/84'/1'/0'", keyPath: '/0/0' },
-  { template: 'sh(wpkh(@key))', originPath: "/49'/1'/0'", keyPath: '/0/0' }
+const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
+//masterNode will be able to sign all the expressions below:
+const expressionsBIP32 = [
+  `pk(${keyExpressionBIP32({
+    masterNode,
+    originPath: "/0'/1'/0'",
+    change: 0,
+    index: 0
+  })})`,
+  pkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 }),
+  wpkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 }),
+  shWpkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 })
+];
+if (
+  pkhBIP32({ masterNode, network: NETWORK, account: 0, keyPath: '/0/0' }) !==
+  pkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 })
+)
+  throw new Error(`Error: cannot use keyPath <-> change, index, indistinctly`);
+
+const ecpair = ECPair.makeRandom();
+//The same ecpair will be able to sign all the expressions below:
+const expressionsECPair = [
+  `pk(${ecpair.publicKey.toString('hex')})`,
+  `pkh(${ecpair.publicKey.toString('hex')})`,
+  `wpkh(${ecpair.publicKey.toString('hex')})`,
+  `sh(wpkh(${ecpair.publicKey.toString('hex')}))`
 ];
 
-const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
-const masterFingerprint = masterNode.fingerprint;
-
 (async () => {
-  const psbtLarge = new Psbt();
-  const descriptorsLarge: DescriptorInterface[] = [];
-  const ecpairs: ECPairInterface[] = [];
-  for (const { originPath, keyPath, template } of templates) {
-    //console.log({ originPath, keyPath, template });
-    const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-    const xpub = masterNode
-      .derivePath(`m${originPath}`)
-      .neutered()
-      .toBase58()
-      .toString();
-    const keyRoot = `${origin}${xpub}`;
-    const keyExpression = `${keyRoot}${keyPath}`;
-    const expression = template.replace('@key', keyExpression);
+  const psbtMultiInputs = new Psbt();
+  const multiInputsDescriptors: DescriptorInterface[] = [];
+  for (const expression of expressionsBIP32) {
     const descriptorBIP32 = new Descriptor({ expression, network: NETWORK });
-    //console.log({ expression }, 'Expansion:', descriptorBIP32.expand());
 
     let { txId, vout } = await regtestUtils.faucetComplex(
       descriptorBIP32.getScriptPubKey(),
@@ -57,20 +70,23 @@ const masterFingerprint = masterNode.fingerprint;
     );
     let { txHex } = await regtestUtils.fetch(txId);
     const psbt = new Psbt();
+    //Add an input and update timelock (if necessary):
     const index = descriptorBIP32.updatePsbt({ psbt, vout, txHex });
     if (descriptorBIP32.isSegwit()) {
       //Do some additional tests. Create a tmp psbt using txId and value instead
       //of txHex using Segwit. Passing the value instead of the txHex is not
       //recommended anyway. It's the user's responsibility to make sure that
       //the value is correct to avoid possible fee attacks.
-      const psbtSegwit = new Psbt();
+      //updatePsbt should output a Warning message.
+      const tmpPsbtSegwit = new Psbt();
       const originalWarn = console.warn;
       let capturedOutput = '';
       console.warn = (message: string) => {
         capturedOutput += message;
       };
+      //Add an input and update timelock (if necessary):
       const indexSegwit = descriptorBIP32.updatePsbt({
-        psbt: psbtSegwit,
+        psbt: tmpPsbtSegwit,
         vout,
         txId,
         value: INITIAL_VALUE
@@ -79,14 +95,14 @@ const masterFingerprint = masterNode.fingerprint;
         throw new Error(`Error: did not warn about fee attacks`);
       console.warn = originalWarn;
       const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
-      const nonFinalSegwitTxHex = (psbtSegwit as any).__CACHE.__TX.toHex();
+      const nonFinalSegwitTxHex = (tmpPsbtSegwit as any).__CACHE.__TX.toHex();
       if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
         throw new Error(
           `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
         );
     }
     psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-    psbt.signInputHD(index, masterNode);
+    psbt.signAllInputsHD(masterNode);
     descriptorBIP32.finalizePsbtInput({ index, psbt });
     const spendTx = psbt.extractTransaction();
     await regtestUtils.broadcast(spendTx.toHex());
@@ -98,48 +114,40 @@ const masterFingerprint = masterNode.fingerprint;
     });
     console.log(`${expression}: OK`);
 
-    //
-    //
-    ///Update large PSBT with the BIP32 input
-    //
-    //
+    ///Update multiInputs PSBT with a similar BIP32 input
     ({ txId, vout } = await regtestUtils.faucetComplex(
       descriptorBIP32.getScriptPubKey(),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
-    descriptorBIP32.updatePsbt({ psbt: psbtLarge, vout, txHex });
-    descriptorsLarge.push(descriptorBIP32);
+    //Adds an input and updates timelock (if necessary):
+    const bip32Index = descriptorBIP32.updatePsbt({
+      psbt: psbtMultiInputs,
+      vout,
+      txHex
+    });
+    multiInputsDescriptors[bip32Index] = descriptorBIP32;
+  }
 
-    //
-    //
-    //Using ECPAIR
-    //
-    //
-    const node = masterNode.derivePath(`m${originPath}${keyPath}`);
-    const ecpair: ECPairInterface = ECPair.fromPrivateKey(node.privateKey!);
-    const expressionECPair = template.replace(
-      '@key',
-      ecpair.publicKey.toString('hex')
-    );
+  for (const expression of expressionsECPair) {
     const descriptorECPair = new Descriptor({
-      expression: expressionECPair,
+      expression,
       network: NETWORK
     });
-    //console.log({ expressionECPair }, 'Expansion:', descriptorECPair.expand());
-    ({ txId, vout } = await regtestUtils.faucetComplex(
+    let { txId, vout } = await regtestUtils.faucetComplex(
       descriptorECPair.getScriptPubKey(),
       INITIAL_VALUE
-    ));
-    ({ txHex } = await regtestUtils.fetch(txId));
+    );
+    let { txHex } = await regtestUtils.fetch(txId);
     const psbtECPair = new Psbt();
+    //Adds an input and updates timelock (if necessary):
     const indexECPair = descriptorECPair.updatePsbt({
       psbt: psbtECPair,
       vout,
       txHex
     });
     psbtECPair.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-    psbtECPair.signInput(indexECPair, ecpair);
+    psbtECPair.signAllInputs(ecpair);
     descriptorECPair.finalizePsbtInput({
       index: indexECPair,
       psbt: psbtECPair
@@ -152,48 +160,40 @@ const masterFingerprint = masterNode.fingerprint;
       vout: 0,
       value: FINAL_VALUE
     });
-    console.log(`${expressionECPair}: OK`);
+    console.log(`${expression}: OK`);
 
-    //
-    //
-    ///Update large PSBT with the ECPair input
-    //
-    //
+    ///Update multiInputs PSBT with a similar ECPair input
     ({ txId, vout } = await regtestUtils.faucetComplex(
       descriptorECPair.getScriptPubKey(),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
+    //Add an input and update timelock (if necessary):
     const ecpairIndex = descriptorECPair.updatePsbt({
-      psbt: psbtLarge,
+      psbt: psbtMultiInputs,
       vout,
       txHex
     });
-    descriptorsLarge.push(descriptorECPair);
-    ecpairs[ecpairIndex] = ecpair;
+    multiInputsDescriptors[ecpairIndex] = descriptorECPair;
   }
 
-  //
-  //
-  //Sign and finish psbtLarge
-  //
-  //
-  psbtLarge.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-  descriptorsLarge.map((descriptor, index) => {
-    if (ecpairs[index]) {
-      psbtLarge.signInput(index, ecpairs[index]!);
-    } else {
-      psbtLarge.signInputHD(index, masterNode);
-    }
-    descriptor.finalizePsbtInput({ index, psbt: psbtLarge });
-  });
-  const spendTxLarge = psbtLarge.extractTransaction();
-  await regtestUtils.broadcast(spendTxLarge.toHex());
+  psbtMultiInputs.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+  //Sign and finish psbtMultiInputs
+  psbtMultiInputs.signAllInputs(ecpair);
+  psbtMultiInputs.signAllInputsHD(masterNode);
+  multiInputsDescriptors.forEach((descriptor, index) =>
+    descriptor.finalizePsbtInput({ index, psbt: psbtMultiInputs })
+  );
+
+  const spendTxMultiInputs = psbtMultiInputs.extractTransaction();
+  await regtestUtils.broadcast(spendTxMultiInputs.toHex());
   await regtestUtils.verify({
-    txId: spendTxLarge.getId(),
+    txId: spendTxMultiInputs.getId(),
     address: FINAL_ADDRESS,
     vout: 0,
     value: FINAL_VALUE
   });
-  console.log(`Spend Psbt using all previous inputs: OK`);
+  console.log(
+    `Spend Psbt with BIP32 & ECPair signers from multiple standard inputs: OK`
+  );
 })();
