@@ -53,7 +53,7 @@ const SHA256_DIGEST =
 
 let POLICY = `and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST}))`;
 //Ledger Btc App will require an extra click on "non-standard" paths.
-const ORIGIN_PATH = `/0'/1'/0'`;
+const ORIGIN_PATH = `/69420'/1'/0'`;
 const RECEIVE_INDEX = 0;
 
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -154,7 +154,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //Create a ranged key expression (note the index: *) using the software wallet on a non-standard origin path.
   //We could have also created a non-ranged key expression by providing a number to index.
   //softKeyExpression will be something like this:
-  //[73c5da0a/0'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*
+  //[73c5da0a/69420'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*
   const softKeyExpression: string = keyExpressionBIP32({
     masterNode,
     originPath: ORIGIN_PATH,
@@ -163,7 +163,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   });
   //Create the equivalent ranged key expression using the Ledger wallet.
   //ledgerKeyExpression will be something like this:
-  //[1597be92/0'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
+  //[1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
   //Since this is a non-standard origin path, the Ledger will warn the user about this.
   const ledgerKeyExpression: string = await keyExpressionLedger({
     ledgerClient,
@@ -174,7 +174,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   });
   //Now, we prepare the ranged miniscript descriptor expression for external addresses (change = 0).
   //expression will be something like this:
-  //wsh(and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk([1597be92/0'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*),v:pk([73c5da0a/0'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*)),older(5))))
+  //wsh(and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk([1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*),v:pk([73c5da0a/69420'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*)),older(5))))
   const expression = `wsh(${miniscript
     .replace('@ledger', ledgerKeyExpression)
     .replace('@soft', softKeyExpression)})`;
