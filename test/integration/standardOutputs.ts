@@ -3,7 +3,6 @@
 
 //npm run test:integration
 
-//TODO: use standard signers
 console.log('Standard output integration tests');
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
@@ -19,14 +18,15 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory, DescriptorInterface } from '../../src/';
-//TODO: This should be imported from 'src'
 import {
+  DescriptorsFactory,
+  DescriptorInterface,
+  scriptExpressions,
   keyExpressionBIP32,
-  wpkhBIP32,
-  shWpkhBIP32,
-  pkhBIP32
-} from '../../src/keyExpressions';
+  signers
+} from '../../src/';
+const { wpkhBIP32, shWpkhBIP32, pkhBIP32 } = scriptExpressions;
+const { signBIP32, signECPair } = signers;
 
 const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
 
@@ -102,7 +102,7 @@ const expressionsECPair = [
         );
     }
     psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-    psbt.signAllInputsHD(masterNode);
+    signBIP32({ psbt, masterNode });
     descriptorBIP32.finalizePsbtInput({ index, psbt });
     const spendTx = psbt.extractTransaction();
     await regtestUtils.broadcast(spendTx.toHex());
@@ -147,7 +147,7 @@ const expressionsECPair = [
       txHex
     });
     psbtECPair.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-    psbtECPair.signAllInputs(ecpair);
+    signECPair({ psbt: psbtECPair, ecpair });
     descriptorECPair.finalizePsbtInput({
       index: indexECPair,
       psbt: psbtECPair
@@ -179,8 +179,8 @@ const expressionsECPair = [
 
   psbtMultiInputs.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
   //Sign and finish psbtMultiInputs
-  psbtMultiInputs.signAllInputs(ecpair);
-  psbtMultiInputs.signAllInputsHD(masterNode);
+  signECPair({ psbt: psbtMultiInputs, ecpair });
+  signBIP32({ psbt: psbtMultiInputs, masterNode });
   multiInputsDescriptors.forEach((descriptor, index) =>
     descriptor.finalizePsbtInput({ index, psbt: psbtMultiInputs })
   );

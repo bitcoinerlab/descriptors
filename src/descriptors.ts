@@ -4,8 +4,11 @@
 //TODO: ledger integration test: Use 3 standard inputs + miniscript - Test using value instead of txHex. Does it work? I believe not.
 //TODO: Ledger guide showing how to receive and spend with 4 inputs: 3 standard + 1 miniscript
 //TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
-//TODO: export a finalizePsbt function
+//TODO: expose a finalizePsbt function
 //TODO: wpkhBIP32 -> wpkhExpressionBIP32
+//TODO: in tests have a USB + app detection for ledger. Test only if connected, otherwise console.warn
+//TODO: in tests use signers
+//TODO: registerLedgerPolicy -> registerLedgerWallet
 
 import {
   address,

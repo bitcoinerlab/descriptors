@@ -3,8 +3,6 @@
 
 //npm run test:integration
 
-//TODO: use standard signers
-//TODO: explain the test and the branch things.
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 const { encode: afterEncode } = require('bip65');
@@ -28,11 +26,9 @@ console.log(
 );
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory } from '../../src/';
-//TODO: This should be imported from 'src'
-import { keyExpressionBIP32 } from '../../src/keyExpressions';
-
+import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../src/';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
+const { signBIP32, signECPair } = signers;
 
 const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
 
@@ -124,8 +120,8 @@ const keys: {
         const psbt = new Psbt();
         const index = descriptor.updatePsbt({ psbt, vout, txHex });
         psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
-        if (keyExpressionType === 'BIP32') psbt.signAllInputsHD(masterNode);
-        else psbt.signAllInputs(ecpair);
+        if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
+        else signECPair({ ecpair, psbt });
         descriptor.finalizePsbtInput({ index, psbt });
         const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about

@@ -1,3 +1,6 @@
+// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
 import type { DescriptorInterface } from './types';
 import { AppClient, WalletPolicy } from 'ledger';
 import { Network, networks } from 'bitcoinjs-lib';
@@ -187,7 +190,7 @@ export async function descriptorToLedgerFormat({
  * If the policy is standard, it does not register it.
  *
  **/
-export async function registerLedgerPolicy({
+export async function registerLedgerWallet({
   descriptor,
   ledgerClient,
   ledgerState,

@@ -55,12 +55,12 @@ export function signInputBIP32({
 }
 export function signBIP32({
   psbt,
-  node
+  masterNode
 }: {
   psbt: Psbt;
-  node: BIP32Interface;
+  masterNode: BIP32Interface;
 }): void {
-  psbt.signAllInputsHD(node);
+  psbt.signAllInputsHD(masterNode);
 }
 
 const ledgerSignaturesForInputIndex = (
