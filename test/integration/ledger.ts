@@ -1,20 +1,29 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//You can run it from the root folder of the project using:
-//npm install
-//npx ts-node test/integration/ledger.ts
-//You must have connected an unlocked ledger running the Bitcoin Testnet 2.1 App
+/*
+You can run it from the root folder of the project by:
+
+npm install
+
+#You must be running a regtest server. Install docker and then run this docker image:
+docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server
+
+#You must connect a Ledger, unlock it and run the Bitcoin Testnet 2.1 App
+
+#You are ready to run the test:
+npx ts-node test/integration/ledger.ts
+*/
 
 /**
- * This test will create a set of utxos for a ledger wallet:
+ * This test will create a set of utxos for a Ledger wallet:
  * * 1 pkh output on an internal address in account 0, index 0
  * * 1 pkh output on an external address in account 0, index 0
  * * 1 wsh output corresponding to a script like this: and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
- *   which means it can be spent by co-sigining with a ledger and a software wallet
+ *   which means it can be spent by co-sigining with a Ledger and a software wallet
  *   after BLOCKS blocks since it was mined and providing a preimage for a certain SHA256_DIGEST
  * In the test below, the utxos are created, they are funded (each one with INITIAL_VALUE)
- * and then they are finally spent (signed and finalizedd) using the ledger wallet and the software wallet
+ * and then they are finally spent (signed and finalizedd) using the Ledger wallet and the software wallet
  **/
 
 console.log(
@@ -85,10 +94,10 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
 (async () => {
   const transport = await Transport.create();
   const ledgerClient = new AppClient(transport);
-  //The ledger is stateless. We keep state externally.
+  //The Ledger is stateless. We keep state externally.
   const ledgerState: LedgerState = {};
 
-  //Let's create the utxos. First create a descriptor expression using a ledger.
+  //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalExpression will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
   const pkhExternalExpression: string = await pkhLedger({
@@ -152,10 +161,10 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
     change: 0,
     index: '*'
   });
-  //Create the equivalent ranged key expression using the ledger wallet.
+  //Create the equivalent ranged key expression using the Ledger wallet.
   //ledgerKeyExpression will be something like this:
   //[1597be92/0'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
-  //Since this is a non-standard origin path, the ledger will warn the user about this.
+  //Since this is a non-standard origin path, the Ledger will warn the user about this.
   const ledgerKeyExpression: string = await keyExpressionLedger({
     ledgerClient,
     ledgerState,
@@ -193,11 +202,11 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
 
   //=============
-  //Register ledger policies of non-standard descriptors.
+  //Register Ledger policies of non-standard descriptors.
   //Registration is stored in ledgerState and is a necessary step before
   //signing with non-standard policies.
   //registerLedgerWallet internally takes all the necessary stepts to register
-  //the generalized ledger format: a policy template finished with /** and its keyRoots
+  //the generalized Ledger format: a policy template finished with /** and its keyRoots
   //The same registered policy can be used for internal addresses
   await registerLedgerWallet({
     descriptor: miniscriptDescriptor,
