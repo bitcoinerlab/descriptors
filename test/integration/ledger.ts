@@ -4,12 +4,17 @@
 /*
 You can run it from the root folder of the project by:
 
+git clone https://github.com/bitcoinerlab/descriptors.git
+cd descriptors
 npm install
 
-#You must be running a regtest server. Install docker and then run this docker image:
-docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server
+#In order to proceed, it is required that you are running a Bitcoin node and
+#have set up an Express regtest-server (https://github.com/bitcoinjs/regtest-server)
+#The easiest way to run the above is to install docker and then install and run this docker image:
+docker pull junderw/bitcoinjs-regtest-server
+docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
 
-#You must connect a Ledger, unlock it and run the Bitcoin Testnet 2.1 App
+#You must also connect a Ledger, unlock it and run the Bitcoin Testnet 2.1 App
 
 #You are ready to run the test:
 npx ts-node test/integration/ledger.ts
@@ -29,8 +34,8 @@ npx ts-node test/integration/ledger.ts
 console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (cosigned with a software wallet) -> 1 output'
 );
-const Transport = require('@ledgerhq/hw-transport-node-hid').default;
-import { AppClient } from 'ledger';
+//const Transport = require('@ledgerhq/hw-transport-node-hid').default;
+import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 const { encode: olderEncode } = require('bip68');
@@ -70,7 +75,7 @@ import {
 } from '../../src/';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
-const { registerLedgerWallet } = ledger;
+const { registerLedgerWallet, AppClient, assertLedgerApp } = ledger;
 const { Descriptor, BIP32 } = DescriptorsFactory(ecc);
 
 import { compilePolicy } from '@bitcoinerlab/miniscript';
@@ -91,8 +96,19 @@ let vout: number;
 let inputIndex: number;
 const psbtInputDescriptors: DescriptorInterface[] = [];
 
+
 (async () => {
-  const transport = await Transport.create();
+  let transport;
+  try {
+    transport = await Transport.create(3000, 3000);
+  } catch (err) {
+    console.warn(
+      `Warning: a Ledger device has not been detected. Ledger integration will not be tested.`
+    );
+    return;
+  }
+  await assertLedgerApp({transport, name: 'Bitcoin Test', minVersion: '2.1.0'});
+
   const ledgerClient = new AppClient(transport);
   //The Ledger is stateless. We keep state externally.
   const ledgerState: LedgerState = {};
@@ -150,7 +166,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 
   //Let's start preparing the wsh output. First create the keyExpressions of
-  //the keys that will be used to sign the wsh outout.
+  //the keys that will be used to sign the wsh output.
   //Create a ranged key expression (note the index: *) using the software wallet on a non-standard origin path.
   //We could have also created a non-ranged key expression by providing a number to index.
   //softKeyExpression will be something like this:
@@ -193,7 +209,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   txHex = (await regtestUtils.fetch(txId)).txHex;
 
   //Now add a new input (including bip32 & sequence) & set the tx timelock, if needed.
-  //In this case this is not necessary since it is using a relative-timelock (using sequence in the input)
+  //In this case the timelock is not set since this is a relative-timelock script (it sets sequence in the input)
   inputIndex = miniscriptDescriptor.updatePsbt({ txHex, vout, psbt });
   //It is important that they are indexed wrt its psbt input number
   psbtInputDescriptors[inputIndex] = miniscriptDescriptor;
@@ -207,7 +223,8 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //signing with non-standard policies.
   //registerLedgerWallet internally takes all the necessary stepts to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots
-  //The same registered policy can be used for internal addresses
+  //The same registered policy will be used for internal addresses. There will be no
+  //need to register it again.
   await registerLedgerWallet({
     descriptor: miniscriptDescriptor,
     policyName: 'BitcoinerLab',
@@ -218,7 +235,8 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //=============
   //Sign the psbt with the Ledger. The relevant wallet policy is automatically
   //retrieved from state by parsing the descriptors of each input and retrieving
-  //the wallet policy that can sign it.
+  //the wallet policy that can sign it. ALso a Default Policy is automatically
+  //constructed when the input is a BIP44,49,84 or 86 type.
   await signLedger({
     psbt,
     descriptors: psbtInputDescriptors,
@@ -238,9 +256,12 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   const spendTx = psbt.extractTransaction();
   //We need to mine BLOCKS in order to be accepted
   await regtestUtils.mine(BLOCKS);
+  //Broadcast it
   const resultSpend = await regtestUtils.broadcast(spendTx.toHex());
 
-  //Verify that the tx was mined. This will throw if not ok
+  //Mine it
+  await regtestUtils.mine(1);
+  //Verify that the tx was accepted. This will throw if not ok
   await regtestUtils.verify({
     txId: spendTx.getId(),
     address: FINAL_ADDRESS,
@@ -249,8 +270,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   });
 
   console.log({
-    miniscript,
-    spendTx: spendTx.toHex(),
-    resultSpend: resultSpend === null ? 'success' : resultSpend
+    result: resultSpend === null ? 'success' : resultSpend,
+    tx: spendTx.toHex()
   });
 })();

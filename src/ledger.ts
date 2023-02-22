@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 /*
- * Notes on Ledger implemantation:
+ * Notes on Ledger implementation:
  *
  * Ledger assumes as external all keyRoots that do not have origin information.
  *
@@ -16,9 +16,10 @@
  * 2) All elements in the keyRoot vector must be xpub-type (no xprv-type, no pubkey-type, ...)
  *
  * 3) All originPaths of the expressions in the keyRoot vector must be the same.
+ * On the other hand, an empty originPath is permitted for external keys.
  *
- * 4) Since all originPaths must be the same, the Ledger can only sign at most
- * 1 key per policy.
+ * 4) Since all originPaths must be the same and originPaths for the Ledger are
+ * necessary, a Ledger device can only sign at most 1 key per policy and input.
  *
  * All the conditions above are checked in function descriptorToLedgerFormat.
  */
@@ -27,6 +28,52 @@ import type { DescriptorInterface } from './types';
 import { AppClient, WalletPolicy } from 'ledger';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
+
+async function ledgerAppInfo(transport: any) {
+  const r = await transport.send(0xb0, 0x01, 0x00, 0x00);
+  let i = 0;
+  const format = r[i++];
+  const nameLength = r[i++];
+  const name = r.slice(i, (i += nameLength!)).toString('ascii');
+  const versionLength = r[i++];
+  const version = r.slice(i, (i += versionLength!)).toString('ascii');
+  const flagLength = r[i++];
+  const flags = r.slice(i, (i += flagLength!));
+  return { name, version, flags, format };
+}
+
+export async function assertLedgerApp({
+  transport,
+  name,
+  minVersion
+}: {
+  transport: any;
+  name: string;
+  minVersion: string;
+}): Promise<void> {
+  const { name: openName, version } = await ledgerAppInfo(transport);
+  if (openName !== name) {
+    throw new Error(`Open the ${name} app and try again`);
+  } else {
+    const [mVmajor, mVminor, mVpatch] = minVersion.split('.').map(Number);
+    const [major, minor, patch] = version.split('.').map(Number);
+    if (
+      mVmajor === undefined ||
+      mVminor === undefined ||
+      mVpatch === undefined
+    ) {
+      throw new Error(
+        `Pass a minVersion using semver notation: major.minor.patch`
+      );
+    }
+    if (
+      major < mVmajor ||
+      (major === mVmajor && minor < mVminor) ||
+      (major === mVmajor && minor === mVminor && patch < mVpatch)
+    )
+      throw new Error(`Error: please upgrade ${name} to version ${minVersion}`);
+  }
+}
 
 function isLedgerStandard({
   ledgerTemplate,
@@ -132,6 +179,9 @@ export async function getLedgerXpub({
  *
  * If this descriptor does not contain any key that can be signed with the ledger
  * (non-matching masterFingerprint), then this function returns null.
+ *
+ * This function takes into account all the considerations regarding Ledger
+ * policy implementation details expressed in the header of this file.
  */
 export async function descriptorToLedgerFormat({
   descriptor,

@@ -30,16 +30,20 @@ export { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import * as scriptExpressions from './scriptExpressions';
 export { scriptExpressions };
 
+import { AppClient } from 'ledger';
 import {
   LedgerState,
   getLedgerMasterFingerPrint,
   getLedgerXpub,
-  registerLedgerWallet
+  registerLedgerWallet,
+  assertLedgerApp
 } from './ledger';
 export const ledger = {
   getLedgerMasterFingerPrint,
   getLedgerXpub,
-  registerLedgerWallet
+  registerLedgerWallet,
+  assertLedgerApp,
+  AppClient
 };
 
 export type { LedgerState };
