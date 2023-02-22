@@ -45,7 +45,7 @@ console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (cosigned with a software wallet) -> 1 output'
 );
 import Transport from '@ledgerhq/hw-transport-node-hid';
-import { networks, Psbt, address } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
@@ -56,7 +56,6 @@ const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const OLDER = olderEncode({ blocks: BLOCKS });
@@ -105,7 +104,6 @@ let vout: number;
 let inputIndex: number;
 const psbtInputDescriptors: DescriptorInterface[] = [];
 
-
 (async () => {
   let transport;
   try {
@@ -116,7 +114,11 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
     );
     return;
   }
-  await assertLedgerApp({transport, name: 'Bitcoin Test', minVersion: '2.1.0'});
+  await assertLedgerApp({
+    transport,
+    name: 'Bitcoin Test',
+    minVersion: '2.1.0'
+  });
 
   const ledgerClient = new AppClient(transport);
   //The Ledger is stateless. We keep state externally.
@@ -168,7 +170,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
   inputIndex = pkhChangeDescriptor.updatePsbt({ txHex, vout, psbt });
-  //It is important that they are indexed wrt its psbt input number
+  //Save the descriptor, indexed by input index, for later
   psbtInputDescriptors[inputIndex] = pkhChangeDescriptor;
 
   //Here we create a BIP32 software wallet that we will use to cosign:
@@ -212,19 +214,22 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
     preimages: [{ digest: `sha256(${SHA256_DIGEST})`, preimage: PREIMAGE }],
     network: NETWORK
   });
-  const receiveAddress = miniscriptDescriptor.getAddress();
-  //Send some BTC to the wsh script address
-  ({ txId, vout } = await regtestUtils.faucet(receiveAddress, INITIAL_VALUE));
+  //Fund the wsh utxo
+  ({ txId, vout } = await regtestUtils.faucet(
+    miniscriptDescriptor.getAddress(),
+    INITIAL_VALUE
+  ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
 
   //Now add a new input (including bip32 & sequence) & set the tx timelock, if needed.
   //In this case the timelock is not set since this is a relative-timelock script (it sets sequence in the input)
   inputIndex = miniscriptDescriptor.updatePsbt({ txHex, vout, psbt });
-  //It is important that they are indexed wrt its psbt input number
+  //Save the descriptor, indexed by input index, for later
   psbtInputDescriptors[inputIndex] = miniscriptDescriptor;
 
-  //This is where we'll send the funds. Just some random address.
-  psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+  //Now add an ouput. This is where we'll send the funds. We'll send them to 
+  //some random address that we don't care about.
+  psbt.addOutput({ address: FINAL_ADDRESS, value: FINAL_VALUE });
 
   //=============
   //Register Ledger policies of non-standard descriptors.
@@ -232,8 +237,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //signing with non-standard policies.
   //registerLedgerWallet internally takes all the necessary stepts to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots
-  //The same registered policy will be used for internal addresses. There will be no
-  //need to register it again.
+  //This registered policy will be shared with with internal addresses.
   await registerLedgerWallet({
     descriptor: miniscriptDescriptor,
     policyName: 'BitcoinerLab',
