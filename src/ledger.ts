@@ -1,6 +1,28 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+/*
+ * Notes on Ledger implemantation:
+ *
+ * Ledger assumes as external all keyRoots that do not have origin information.
+ *
+ * Some known Ledger Limitations (based on my tests as of Febr 2023):
+ *
+ * 1) All keyExpressions must be expanded into @i. In other words,
+ * this template is not valid:
+ * wsh(and_v(v:pk(03ed0b41d808b012b3a77dd7f6a30c4180dfbcab604133d90ce7593ec7f3e4037b),and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk(@0/**),v:pk(@1/**)),older(5)))))
+ * (note the fixed 03ed0b41d808b012b3a77dd7f6a30c4180dfbcab604133d90ce7593ec7f3e4037b pubkey)
+ *
+ * 2) All elements in the keyRoot vector must be xpub-type (no xprv-type, no pubkey-type, ...)
+ *
+ * 3) All originPaths of the expressions in the keyRoot vector must be the same.
+ *
+ * 4) Since all originPaths must be the same, the Ledger can only sign at most
+ * 1 key per policy.
+ *
+ * All the conditions above are checked in function descriptorToLedgerFormat.
+ */
+
 import type { DescriptorInterface } from './types';
 import { AppClient, WalletPolicy } from 'ledger';
 import { Network, networks } from 'bitcoinjs-lib';
@@ -110,7 +132,6 @@ export async function getLedgerXpub({
  *
  * If this descriptor does not contain any key that can be signed with the ledger
  * (non-matching masterFingerprint), then this function returns null.
- *
  */
 export async function descriptorToLedgerFormat({
   descriptor,
@@ -131,7 +152,13 @@ export async function descriptorToLedgerFormat({
     ledgerState
   });
 
-  const ledgerKeys = Object.keys(expansionMap).filter(key => {
+  //It's important to have keys sorted in ascii order. keys
+  //are of this type: @0, @1, @2, ....  and they also appear in the expandedExpression
+  //in ascending ascii order. Note that Object.keys(expansionMap ) does not ensure
+  //that the order is respected and so we force it.
+  const allKeys = Object.keys(expansionMap).sort();
+
+  const ledgerKeys = allKeys.filter(key => {
     const masterFingerprint = expansionMap[key]?.masterFingerprint;
     return (
       masterFingerprint &&
@@ -143,41 +170,53 @@ export async function descriptorToLedgerFormat({
     throw new Error(
       `Error: descriptor ${expandedExpression} does not contain exactly 1 ledger key`
     );
-
-  const ledgerKey = ledgerKeys[0];
-  if (!ledgerKey) throw new Error(`Error: invalid ledger key ${ledgerKey}`);
-  const ledgerKeyInfo = expansionMap[ledgerKey];
-  if (!ledgerKeyInfo?.originPath)
-    throw new Error(`Error: invalid ledger originPath`);
-  if (!ledgerKeyInfo?.keyPath || !/^\/[01]\/\d+$/.test(ledgerKeyInfo?.keyPath))
+  const ledgerKey = ledgerKeys[0]!;
+  const masterFingerprint = expansionMap[ledgerKey]!.masterFingerprint;
+  const originPath = expansionMap[ledgerKey]!.originPath;
+  const keyPath = expansionMap[ledgerKey]!.keyPath;
+  const bip32 = expansionMap[ledgerKey]!.bip32;
+  if (!masterFingerprint || !originPath || !keyPath || !bip32) {
+    throw new Error(
+      `Error: Ledger key expression must have a valid masterFingerprint: ${masterFingerprint}, originPath: ${originPath}, keyPath: ${keyPath} and a valid bip32 node`
+    );
+  }
+  if (!/^\/[01]\/\d+$/.test(keyPath))
     throw new Error(
       `Error: key paths must be /<1;0>/index, where change is 1 or 0 and index >= 0`
     );
 
-  const otherKeys = Object.keys(expansionMap).filter(
-    key =>
-      expansionMap[key]?.originPath === ledgerKeyInfo.originPath &&
-      expansionMap[key]?.keyPath === ledgerKeyInfo.keyPath
-  );
-
   const keyRoots: string[] = [];
   let ledgerTemplate = expandedExpression;
 
-  Object.keys(expansionMap).forEach(key => {
-    if (key === ledgerKey || otherKeys.includes(key)) {
-      ledgerTemplate = ledgerTemplate.replaceAll(key, `@${keyRoots.length}/**`);
-      const keyInfo = expansionMap[key]!;
+  allKeys.forEach(key => {
+    if (key !== ledgerKey) {
+      //This block here only does data integrity assertions:
+      const otherKeyInfo = expansionMap[key]!;
+      if (!otherKeyInfo.bip32) {
+        throw new Error(`Error: ledger only allows xpub-type key expressions`);
+      }
+      if (otherKeyInfo.originPath) {
+        if (otherKeyInfo.originPath !== originPath) {
+          throw new Error(
+            `Error: all originPaths must be the same for Ledger being able to sign. On the other hand, you can leave the origin info empty for external keys: ${otherKeyInfo.originPath} !== ${originPath}`
+          );
+        }
+      }
+      if (otherKeyInfo.keyPath !== keyPath) {
+        throw new Error(
+          `Error: all keyPaths must be the same for Ledger being able to sign: ${otherKeyInfo.keyPath} !== ${keyPath}`
+        );
+      }
+    }
+    ledgerTemplate = ledgerTemplate.replaceAll(key, `@${keyRoots.length}/**`);
+    const keyInfo = expansionMap[key]!;
+    if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
         `[${keyInfo.masterFingerprint?.toString('hex')}${
           keyInfo.originPath
         }]${keyInfo?.bip32?.neutered().toBase58()}`
       );
-    } else {
-      ledgerTemplate = ledgerTemplate.replaceAll(
-        key,
-        expansionMap[key]!.keyExpression
-      );
-    }
+    else keyRoots.push(`${keyInfo?.bip32?.neutered().toBase58()}`);
   });
 
   return { ledgerTemplate, keyRoots };
