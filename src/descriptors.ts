@@ -1,9 +1,6 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//TODO: In tests documentation explain the tools folder -> generate bitcoinCore fixtures
-//TODO: Pull Request to Ledger exporting DefaultDescriptorTemplate
-
 import {
   address,
   networks,
