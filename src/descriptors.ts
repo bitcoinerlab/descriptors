@@ -10,6 +10,7 @@ import {
   payments,
   script as bscript,
   Network,
+  Transaction,
   Payment,
   Psbt
 } from 'bitcoinjs-lib';
@@ -657,6 +658,38 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         redeemScript: this.getRedeemScript()
       });
     }
+    #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
+      const input = psbt.data.inputs[index];
+      const txInput = psbt.txInputs[index];
+      if (!input || !txInput)
+        throw new Error(`Error: invalid input or txInput`);
+      const { sequence: inputSequence, index: vout } = txInput;
+      let scriptPubKey;
+      if (input.witnessUtxo) scriptPubKey = input.witnessUtxo.script;
+      else {
+        if (!input.nonWitnessUtxo)
+          throw new Error(
+            `Error: input should have either witnessUtxo or nonWitnessUtxo`
+          );
+        const tx = Transaction.fromBuffer(input.nonWitnessUtxo);
+        const out = tx.outs[vout];
+        if (!out) throw new Error(`Error: utxo should exist`);
+        scriptPubKey = out.script;
+      }
+      const locktime = this.getLockTime() || 0;
+      let sequence = this.getSequence();
+      if (sequence === undefined && locktime !== 0) sequence = 0xfffffffe;
+      if (sequence === undefined && locktime === 0) sequence = 0xffffffff;
+      if (
+        Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
+        sequence !== inputSequence ||
+        locktime !== psbt.locktime ||
+        this.getWitnessScript() !== input.witnessScript ||
+        this.getRedeemScript() !== input.redeemScript
+      ) {
+        throw new Error(`Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`);
+      }
+    }
     finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void {
       //An index must be passed since finding the index in the psbt cannot be
       //done:
@@ -669,6 +702,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       const signatures = psbt.data.inputs[index]?.partialSig;
       if (!signatures)
         throw new Error(`Error: cannot finalize without signatures`);
+      this.#assertPsbtInput({ index, psbt });
       if (!this.#miniscript) {
         //Use standard finalizers
         psbt.finalizeInput(index);
