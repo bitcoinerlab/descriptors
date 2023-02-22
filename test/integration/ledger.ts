@@ -2,34 +2,40 @@
 // Distributed under the MIT software license
 
 /*
-You can run it from the root folder of the project by:
+To run this test, follow these steps:
 
-git clone https://github.com/bitcoinerlab/descriptors.git
-cd descriptors
-npm install
+1. Clone the `descriptors` repository by running
+   `git clone https://github.com/bitcoinerlab/descriptors.git`.
 
-#In order to proceed, it is required that you are running a Bitcoin node and
-#have set up an Express regtest-server (https://github.com/bitcoinjs/regtest-server)
-#The easiest way to run the above is to install docker and then install and run this docker image:
-docker pull junderw/bitcoinjs-regtest-server
-docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
+2. Install the necessary dependencies by running `npm install`.
 
-#You must also connect a Ledger, unlock it and run the Bitcoin Testnet 2.1 App
+3. Ensure that you are running a Bitcoin regtest node and have set up an Express
+   regtest-server (https://github.com/bitcoinjs/regtest-server).
+   If you haven't already done so, you can use the following steps
+   to install and run a Docker image that has already configured a Bitcoin
+   regtest node and the required Express server:
 
-#You are ready to run the test:
-npx ts-node test/integration/ledger.ts
+   docker pull junderw/bitcoinjs-regtest-server
+   docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
+
+4. Connect your Ledger device, unlock it, and open the Bitcoin Testnet 2.1 App.
+
+5. You are now ready to run the test.
+   Run `npx ts-node test/integration/ledger.ts` to execute the test.
+
+================================================================================
+
+This test will create a set of utxos for a Ledger wallet:
+  * 1 pkh output on an internal address in account 0, index 0
+  * 1 pkh output on an external address in account 0, index 0
+  * 1 wsh output corresponding to a script like this:
+    and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
+    which means it can be spent by co-sigining with a Ledger and a software wallet
+    after BLOCKS blocks since it was mined and providing a preimage for a certain SHA256_DIGEST
+  In the test, the utxos are created, they are funded (each one with INITIAL_VALUE)
+  and then they are finally spent (signed and finalizedd) using the Ledger wallet
+  and the software wallet
 */
-
-/**
- * This test will create a set of utxos for a Ledger wallet:
- * * 1 pkh output on an internal address in account 0, index 0
- * * 1 pkh output on an external address in account 0, index 0
- * * 1 wsh output corresponding to a script like this: and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
- *   which means it can be spent by co-sigining with a Ledger and a software wallet
- *   after BLOCKS blocks since it was mined and providing a preimage for a certain SHA256_DIGEST
- * In the test below, the utxos are created, they are funded (each one with INITIAL_VALUE)
- * and then they are finally spent (signed and finalizedd) using the Ledger wallet and the software wallet
- **/
 
 console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (cosigned with a software wallet) -> 1 output'
