@@ -50,7 +50,7 @@
     "dist"
   ],
   "dependencies": {
-    "@bitcoinerlab/ledger": "^0.1.3",
+    "@bitcoinerlab/ledger": "^0.1.6",
     "@bitcoinerlab/miniscript": "^1.2.1",
     "@bitcoinerlab/secp256k1": "^1.0.2",
     "bip32": "^3.1.0",
