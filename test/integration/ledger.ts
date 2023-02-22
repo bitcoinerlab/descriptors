@@ -51,7 +51,7 @@ const PREIMAGE =
 const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
-let POLICY = `and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST}))`;
+const POLICY = `and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST}))`;
 //Ledger Btc App will require an extra click on "non-standard" paths.
 const ORIGIN_PATH = `/69420'/1'/0'`;
 const RECEIVE_INDEX = 0;
