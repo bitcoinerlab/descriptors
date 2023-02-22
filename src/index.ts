@@ -32,7 +32,7 @@ export { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import * as scriptExpressions from './scriptExpressions';
 export { scriptExpressions };
 
-import { AppClient } from 'ledger';
+import { AppClient } from '@bitcoinerlab/ledger';
 import {
   LedgerState,
   getLedgerMasterFingerPrint,

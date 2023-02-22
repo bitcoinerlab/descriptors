@@ -10,7 +10,7 @@ import {
   AppClient,
   WalletPolicy,
   DefaultDescriptorTemplate
-} from 'ledger';
+} from '@bitcoinerlab/ledger';
 import type { DescriptorInterface } from './types';
 import {
   comparePolicies,
