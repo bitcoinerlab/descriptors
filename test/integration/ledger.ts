@@ -2,6 +2,22 @@
 // Distributed under the MIT software license
 
 /*
+This test will create a set of UTXOs for a Ledger wallet:
+  * 1 P2PKH output on an internal address in account 0, index 0
+  * 1 P2PKH output on an external address in account 0, index 0
+  * 1 P2WSH output corresponding to a script like this:
+    and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
+    which means it can be spent by co-signing with a Ledger and a Software
+    wallet after BLOCKS blocks since it was mined and providing a preimage for
+    a certain SHA256_DIGEST.
+
+In the test, the UTXOs are created, funded (each one with INITIAL_VALUE),
+and finally spent using the Ledger and Software wallet by signing a
+partially-signed Bitcoin Transaction (PSBT), finalizing it and broadcasting
+it to the network.
+
+================================================================================
+
 To run this test, follow these steps:
 
 1. Clone the `descriptors` repository by running
@@ -23,24 +39,11 @@ To run this test, follow these steps:
 5. You are now ready to run the test.
    Run `npx ts-node test/integration/ledger.ts` to execute the test.
 
-================================================================================
-
-This test will create a set of utxos for a Ledger wallet:
-  * 1 pkh output on an internal address in account 0, index 0
-  * 1 pkh output on an external address in account 0, index 0
-  * 1 wsh output corresponding to a script like this:
-    and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
-    which means it can be spent by co-sigining with a Ledger and a software wallet
-    after BLOCKS blocks since it was mined and providing a preimage for a certain SHA256_DIGEST
-  In the test, the utxos are created, they are funded (each one with INITIAL_VALUE)
-  and then they are finally spent (signed and finalizedd) using the Ledger wallet
-  and the software wallet
 */
 
 console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (cosigned with a software wallet) -> 1 output'
 );
-//const Transport = require('@ledgerhq/hw-transport-node-hid').default;
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks, Psbt, address } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
