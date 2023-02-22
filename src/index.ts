@@ -16,13 +16,15 @@ export { signers };
 
 export function finalizePsbt({
   psbt,
-  descriptors
+  descriptors,
+  validate = true
 }: {
   psbt: Psbt;
   descriptors: DescriptorInterface[];
+  validate?: boolean | undefined;
 }) {
   descriptors.forEach((descriptor, inputIndex) =>
-    descriptor.finalizePsbtInput({ index: inputIndex, psbt })
+    descriptor.finalizePsbtInput({ index: inputIndex, psbt, validate })
   );
 }
 

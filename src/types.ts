@@ -109,7 +109,15 @@ export interface DescriptorInterface {
     txId?: string;
     value?: number;
   }): number;
-  finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void;
+  finalizePsbtInput({
+    index,
+    psbt,
+    validate = true
+  }: {
+    index: number;
+    psbt: Psbt;
+    validate?: boolean | undefined;
+  }): void;
   expand(): {
     expandedExpression?: string;
     miniscript?: string;

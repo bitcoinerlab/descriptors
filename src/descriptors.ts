@@ -115,6 +115,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
 } {
   const BIP32: BIP32API = BIP32Factory(ecc);
   const ECPair: ECPairAPI = ECPairFactory(ecc);
+  const signatureValidator = (
+    pubkey: Buffer,
+    msghash: Buffer,
+    signature: Buffer
+  ): boolean => ECPair.fromPublicKey(pubkey).verify(msghash, signature);
 
   /*
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
@@ -687,10 +692,26 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         this.getWitnessScript() !== input.witnessScript ||
         this.getRedeemScript() !== input.redeemScript
       ) {
-        throw new Error(`Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`);
+        throw new Error(
+          `Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`
+        );
       }
     }
-    finalizePsbtInput({ index, psbt }: { index: number; psbt: Psbt }): void {
+    finalizePsbtInput({
+      index,
+      psbt,
+      validate = true
+    }: {
+      index: number;
+      psbt: Psbt;
+      validate?: boolean | undefined;
+    }): void {
+      if (
+        validate &&
+        !psbt.validateSignaturesOfInput(index, signatureValidator)
+      ) {
+        throw new Error(`Error: invalid signatures on input ${index}`);
+      }
       //An index must be passed since finding the index in the psbt cannot be
       //done:
       //Imagine the case where you received money twice to
