@@ -12,7 +12,7 @@ This test will create a set of UTXOs for a Ledger wallet:
     a certain SHA256_DIGEST.
 
 In the test, the UTXOs are created, funded (each one with INITIAL_VALUE),
-and finally spent using the Ledger and Software wallet by signing a
+and finally spent using the Ledger and Software wallet by co-signing a
 partially-signed Bitcoin Transaction (PSBT), finalizing it and broadcasting
 it to the network.
 
@@ -25,11 +25,11 @@ To run this test, follow these steps:
 
 2. Install the necessary dependencies by running `npm install`.
 
-3. Ensure that you are running a Bitcoin regtest node and have set up an Express
-   regtest-server (https://github.com/bitcoinjs/regtest-server).
+3. Ensure that you are running a Bitcoin regtest node and have set up an
+   Express-based bitcoind manager (https://github.com/bitcoinjs/regtest-server).
    If you haven't already done so, you can use the following steps
    to install and run a Docker image that has already configured a Bitcoin
-   regtest node and the required Express server:
+   regtest node and the required Express-based bitcoind manager:
 
    docker pull junderw/bitcoinjs-regtest-server
    docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
