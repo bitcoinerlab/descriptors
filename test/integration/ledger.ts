@@ -3,18 +3,17 @@
 
 /*
 This test will create a set of UTXOs for a Ledger wallet:
-  * 1 P2PKH output on an internal address in account 0, index 0
-  * 1 P2PKH output on an external address in account 0, index 0
-  * 1 P2WSH output corresponding to a script like this:
+  * 1 P2PKH output on an internal address, change 1, in account 0, index 0
+  * 1 P2PKH output on an external address, change 0, in account 0, index 0
+  * 1 P2WSH output corresponding to a script based on this policy:
     and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST})),
     which means it can be spent by co-signing with a Ledger and a Software
     wallet after BLOCKS blocks since it was mined and providing a preimage for
     a certain SHA256_DIGEST.
 
-In the test, the UTXOs are created, funded (each one with INITIAL_VALUE),
-and finally spent using the Ledger and Software wallet by co-signing a
-partially-signed Bitcoin Transaction (PSBT), finalizing it and broadcasting
-it to the network.
+In the test, the UTXOs are created, funded (each one with UTXO_VALUE),
+and finally spent by co-signing (Ledger + Soft) a partially-signed Bitcoin
+Transaction (PSBT), finalizing it and broadcasting it to the network.
 
 ================================================================================
 
@@ -25,19 +24,19 @@ To run this test, follow these steps:
 
 2. Install the necessary dependencies by running `npm install`.
 
-3. Ensure that you are running a Bitcoin regtest node and have set up an
-   Express-based bitcoind manager (https://github.com/bitcoinjs/regtest-server).
-   If you haven't already done so, you can use the following steps
-   to install and run a Docker image that has already configured a Bitcoin
-   regtest node and the required Express-based bitcoind manager:
+3. Ensure that you are running a Bitcoin regtest node and have set up this
+   Express-based bitcoind manager: https://github.com/bitcoinjs/regtest-server
+   running on 127.0.0.1:8080.
+   You can use the following steps to install and run a Docker image already
+   configured with the mentioned services:
 
    docker pull junderw/bitcoinjs-regtest-server
    docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
 
 4. Connect your Ledger device, unlock it, and open the Bitcoin Testnet 2.1 App.
 
-5. You are now ready to run the test.
-   Run `npx ts-node test/integration/ledger.ts` to execute the test.
+5. You are now ready to run the test:
+   npx ts-node test/integration/ledger.ts
 
 */
 
@@ -51,13 +50,12 @@ const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
 
-const BLOCKS = 5;
 const NETWORK = networks.regtest;
-const INITIAL_VALUE = 2e4;
-const FINAL_VALUE = INITIAL_VALUE - 1000;
+
+const UTXO_VALUE = 2e4;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const SOFT_MNEMONIC =
-  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const FEE = 1000;
+const BLOCKS = 5;
 const OLDER = olderEncode({ blocks: BLOCKS });
 const PREIMAGE =
   '107661134f21fc7c02223d50ab9eb3600bc3ffc3712423a1e47bb1f9a9dbf55f';
@@ -65,9 +63,13 @@ const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
 const POLICY = `and(and(and(pk(@ledger),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST}))`;
-//Ledger Btc App will require an extra click on "non-standard" paths.
-const ORIGIN_PATH = `/69420'/1'/0'`;
-const RECEIVE_INDEX = 0;
+
+
+const WSH_ORIGIN_PATH = `/69420'/1'/0'`; //Ledger will show a warning for non-standardness
+const WSH_RECEIVE_INDEX = 0;
+
+const SOFT_MNEMONIC =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import {
@@ -142,7 +144,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //Fund this address. regtestUtils is communicating with a real regtest node.
   ({ txId, vout } = await regtestUtils.faucet(
     pkhExternalDescriptor.getAddress(),
-    INITIAL_VALUE
+    UTXO_VALUE
   ));
   //Retrieve the tx from the mempool:
   txHex = (await regtestUtils.fetch(txId)).txHex;
@@ -166,7 +168,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   });
   ({ txId, vout } = await regtestUtils.faucet(
     pkhChangeDescriptor.getAddress(),
-    INITIAL_VALUE
+    UTXO_VALUE
   ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
   inputIndex = pkhChangeDescriptor.updatePsbt({ txHex, vout, psbt });
@@ -184,7 +186,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //[73c5da0a/69420'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*
   const softKeyExpression: string = keyExpressionBIP32({
     masterNode,
-    originPath: ORIGIN_PATH,
+    originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
   });
@@ -195,7 +197,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   const ledgerKeyExpression: string = await keyExpressionLedger({
     ledgerClient,
     ledgerState,
-    originPath: ORIGIN_PATH,
+    originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
   });
@@ -205,19 +207,19 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   const expression = `wsh(${miniscript
     .replace('@ledger', ledgerKeyExpression)
     .replace('@soft', softKeyExpression)})`;
-  //Get the descriptor for index RECEIVE_INDEX. Here we need to pass the index because
+  //Get the descriptor for index WSH_RECEIVE_INDEX. Here we need to pass the index because
   //we used a range key expressions above
   //We also pass the PREIMAGE so that miniscriptDescriptor will be able to finalize the tx (create the scriptWitness)
   const miniscriptDescriptor = new Descriptor({
     expression,
-    index: RECEIVE_INDEX,
+    index: WSH_RECEIVE_INDEX,
     preimages: [{ digest: `sha256(${SHA256_DIGEST})`, preimage: PREIMAGE }],
     network: NETWORK
   });
   //Fund the wsh utxo
   ({ txId, vout } = await regtestUtils.faucet(
     miniscriptDescriptor.getAddress(),
-    INITIAL_VALUE
+    UTXO_VALUE
   ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
 
@@ -227,9 +229,9 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //Save the descriptor, indexed by input index, for later
   psbtInputDescriptors[inputIndex] = miniscriptDescriptor;
 
-  //Now add an ouput. This is where we'll send the funds. We'll send them to 
+  //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about.
-  psbt.addOutput({ address: FINAL_ADDRESS, value: FINAL_VALUE });
+  psbt.addOutput({ address: FINAL_ADDRESS, value: UTXO_VALUE * 3 - FEE });
 
   //=============
   //Register Ledger policies of non-standard descriptors.
@@ -262,7 +264,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //=============
   //Finalize the psbt:
   //descriptors are indexed wrt its psbt input number:
-  //This uses the miniscript satisfier from @bitcoinerlab/miniscript to
+  //finalizePsbt uses the miniscript satisfier from @bitcoinerlab/miniscript to
   //create the scriptWitness among other things.
   finalizePsbt({ psbt, descriptors: psbtInputDescriptors });
 
@@ -279,7 +281,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
     txId: spendTx.getId(),
     address: FINAL_ADDRESS,
     vout: 0,
-    value: FINAL_VALUE
+    value: UTXO_VALUE * 3 - FEE
   });
 
   console.log({
