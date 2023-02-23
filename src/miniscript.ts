@@ -89,7 +89,7 @@ function substituteAsm({
     return accAsm
       .replaceAll(`<${key}>`, `<${pubkey.toString('hex')}>`)
       .replaceAll(
-        `<HASH160\(${key}\)>`,
+        `<HASH160(${key})>`,
         `<${crypto.hash160(pubkey).toString('hex')}>`
       );
   }, expandedAsm);
@@ -164,7 +164,7 @@ export function satisfyMiniscript({
   nSequence: number | undefined;
 } {
   //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
-  let preimageMap: { [key: string]: string } = {};
+  const preimageMap: { [key: string]: string } = {};
   preimages.forEach(preimage => {
     preimageMap['<' + preimage.digest.replace('(', '_preimage(') + '>'] =
       '<' + preimage.preimage + '>';
@@ -172,7 +172,7 @@ export function satisfyMiniscript({
 
   //convert the pubkeys in signatures into [{['<sig(@0)>']: '30450221'}, ...]
   //get the keyExpressions: @0, @1 from the keys in expansionMap
-  let expandedSignatureMap: { [key: string]: string } = {};
+  const expandedSignatureMap: { [key: string]: string } = {};
   signatures.forEach(signature => {
     const pubkeyHex = signature.pubkey.toString('hex');
     const keyExpression = Object.keys(expansionMap).find(
@@ -281,7 +281,7 @@ export function satisfyMiniscript({
  * @param {number} number An integer.
  * @returns {string} Returns `"OP_0"` for `number === 0` and a hex string representing other numbers in Little Endian encoding.
  */
-export function numberEncodeAsm(number: any) {
+export function numberEncodeAsm(number: number) {
   if (Number.isSafeInteger(number) === false) {
     throw new Error(`Error: invalid number ${number}`);
   }

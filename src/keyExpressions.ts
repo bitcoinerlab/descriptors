@@ -65,7 +65,7 @@ export function parseKeyExpression({
   const reOriginAnchoredStart = RegExp(String.raw`^(${RE.reOrigin})?`); //starts with ^origin
   const mOrigin = keyExpression.match(reOriginAnchoredStart);
   if (mOrigin) {
-    const bareOrigin = mOrigin[0].replace(/[\[\]]/g, ''); //strip the "[" and "]" in [origin]
+    const bareOrigin = mOrigin[0].replace(/[[\]]/g, ''); //strip the "[" and "]" in [origin]
     const reMasterFingerprintAnchoredStart = String.raw`^(${RE.reMasterFingerprint})`;
     const mMasterFingerprint = bareOrigin.match(
       reMasterFingerprintAnchoredStart

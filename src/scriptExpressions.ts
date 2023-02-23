@@ -53,10 +53,7 @@ function standardExpressionsBIP32Maker(
   return standardKeyExpressionBIP32;
 }
 
-export const pkhBIP32 = standardExpressionsBIP32Maker(
-  44,
-  'pkh(KEYEXPRESSION)'
-);
+export const pkhBIP32 = standardExpressionsBIP32Maker(44, 'pkh(KEYEXPRESSION)');
 export const shWpkhBIP32 = standardExpressionsBIP32Maker(
   49,
   'sh(wpkh(KEYEXPRESSION))'

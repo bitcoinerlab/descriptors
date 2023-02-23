@@ -94,7 +94,9 @@ const expressionsECPair = [
       if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
         throw new Error(`Error: did not warn about fee attacks`);
       console.warn = originalWarn;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nonFinalSegwitTxHex = (tmpPsbtSegwit as any).__CACHE.__TX.toHex();
       if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
         throw new Error(

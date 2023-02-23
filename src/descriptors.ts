@@ -79,7 +79,7 @@ function evaluate({
       throw new Error(`Error: invalid descriptor checksum for ${expression}`);
     }
   }
-  let mWildcard = evaluatedExpression.match(/\*/g);
+  const mWildcard = evaluatedExpression.match(/\*/g);
   if (mWildcard && mWildcard.length > 0) {
     if (index === undefined)
       throw new Error(`Error: index was not provided for ranged descriptor`);

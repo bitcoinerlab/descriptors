@@ -29,6 +29,7 @@ import { AppClient, WalletPolicy } from '@bitcoinerlab/ledger';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function ledgerAppInfo(transport: any) {
   const r = await transport.send(0xb0, 0x01, 0x00, 0x00);
   let i = 0;
@@ -47,6 +48,7 @@ export async function assertLedgerApp({
   name,
   minVersion
 }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   transport: any;
   name: string;
   minVersion: string;

@@ -20,8 +20,8 @@ export const DescriptorChecksum = (span: string): string => {
   let c: bigint = 1n;
   let cls: bigint = 0n;
   let clscount: bigint = 0n;
-  for (let ch of span as string) {
-    let pos: bigint = BigInt(INPUT_CHARSET.indexOf(ch));
+  for (const ch of span as string) {
+    const pos: bigint = BigInt(INPUT_CHARSET.indexOf(ch));
     if (pos === -1n) return '';
     c = PolyMod(c, pos & 31n);
     cls = cls * 3n + (pos >> 5n);

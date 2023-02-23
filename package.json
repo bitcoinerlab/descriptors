@@ -12,7 +12,9 @@
     "regtest-docker": "docker ps | grep bitcoinjs-regtest-server > /dev/null || (docker pull junderw/bitcoinjs-regtest-server && docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server && sleep 5)",
     "test:integration": "npm run regtest-docker && npx ts-node test/integration/standardOutputs.ts && echo && npx ts-node test/integration/miniscript.ts && npx ts-node test/integration/ledger.ts",
     "test:unit": "npm run build && node test/tools/generateBitcoinCoreFixtures.js && jest",
-    "test": "npm run test:unit && npm run test:integration"
+    "test": "npm run lint && npm run lint:test && npm run test:unit && npm run test:integration",
+    "lint": "eslint --ignore-path .gitignore --ext .js,.ts src/",
+    "lint:test": "eslint --ignore-path .gitignore --ext .js,.ts test/"
   },
   "COMMENT_babel": "Babel plugins are are only needed for the jest testing environment. Jest needs to use commonjs. Also, jest cannot handle ESM converted code, since it uses 'import.meta.url'. See src/bindings.js. babel-plugin-transform-import-meta fixes it.",
   "babel": {
@@ -66,10 +68,14 @@
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-plugin-jest": "^27.2.1",
+    "eslint-plugin-prettier": "^4.2.1",
     "fs": "^0.0.1-security",
     "jest": "^29.4.3",
     "jsdoc": "^4.0.0",
     "path": "^0.12.7",
+    "prettier": "^2.8.4",
     "regtest-client": "^0.2.0",
     "ts-node-dev": "^2.0.0"
   }

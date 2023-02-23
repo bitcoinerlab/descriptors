@@ -112,11 +112,11 @@ const keys: {
           network: NETWORK
         });
 
-        let { txId, vout } = await regtestUtils.faucetComplex(
+        const { txId, vout } = await regtestUtils.faucetComplex(
           descriptor.getScriptPubKey(),
           INITIAL_VALUE
         );
-        let { txHex } = await regtestUtils.fetch(txId);
+        const { txHex } = await regtestUtils.fetch(txId);
         const psbt = new Psbt();
         const index = descriptor.updatePsbt({ psbt, vout, txHex });
         psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
