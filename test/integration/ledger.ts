@@ -41,7 +41,7 @@ To run this test, follow these steps:
 */
 
 console.log(
-  'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (cosigned with a software wallet) -> 1 output'
+  'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (co-signed with a software wallet) -> 1 output'
 );
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks, Psbt } from 'bitcoinjs-lib';
@@ -175,12 +175,12 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   inputIndex = pkhChangeDescriptor.updatePsbt({ psbt, txHex, vout });
   psbtInputDescriptors[inputIndex] = pkhChangeDescriptor;
 
-  //Here we create the BIP32 software wallet that will be used to cosign the 3rd utxo of this test:
+  //Here we create the BIP32 software wallet that will be used to co-sign the 3rd utxo of this test:
   const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 
-  //Let' prepare the wsh utxo. First create the Ledger and Soft key expressions
-  //that will be used to sign the wsh output.
-  //First, Create a ranged key expression (index: '*') using the software wallet
+  //Let's prepare the wsh utxo. First create the Ledger and Soft key expressions
+  //that will be used to co-sign the wsh output.
+  //First, create a ranged key expression (index: '*') using the software wallet
   //on the WSH_ORIGIN_PATH origin path.
   //We could have also created a non-ranged key expression by providing a number
   //to index.
@@ -242,7 +242,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //Register Ledger policies of non-standard descriptors.
   //Registration is stored in ledgerState and is a necessary step before
   //signing with non-standard policies when using a Ledger wallet.
-  //registerLedgerWallet internally takes all the necessary stepts to register
+  //registerLedgerWallet internally takes all the necessary steps to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots.
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
@@ -258,7 +258,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   //Sign the psbt with the Ledger. The relevant wallet policy is automatically
   //retrieved from state by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
-  //constructed when the input is of BIP44,49,84 or 86 type.
+  //constructed when the input is of BIP 44, 49, 84 or 86 type.
   await signLedger({
     ledgerClient,
     ledgerState,
@@ -276,14 +276,14 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   finalizePsbt({ psbt, descriptors: psbtInputDescriptors });
 
   //Since the miniscript uses a relative-timelock, we need to mine BLOCKS before
-  //broadcasting the tx so that it can be accepted
+  //broadcasting the tx so that it can be accepted by the network
   await regtestUtils.mine(BLOCKS);
   //Broadcast the tx:
   const spendTx = psbt.extractTransaction();
   const resultSpend = await regtestUtils.broadcast(spendTx.toHex());
   //Mine it
   await regtestUtils.mine(1);
-  //Verify that the tx was accepted. This will throw if not ok
+  //Verify that the tx was accepted. This will throw if not ok:
   await regtestUtils.verify({
     txId: spendTx.getId(),
     address: FINAL_ADDRESS,
