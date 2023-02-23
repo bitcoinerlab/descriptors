@@ -74,8 +74,8 @@ function standardExpressionsLedgerMaker(
     ledgerClient,
     ledgerState,
     network = networks.bitcoin,
-    keyPath,
     account,
+    keyPath,
     change,
     index
   }: {
@@ -83,9 +83,9 @@ function standardExpressionsLedgerMaker(
     ledgerState: LedgerState;
     network?: Network;
     account: number;
+    keyPath?: string;
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
-    keyPath?: string;
   }) {
     const originPath = `/${purpose}'/${
       network === networks.bitcoin ? 0 : 1
