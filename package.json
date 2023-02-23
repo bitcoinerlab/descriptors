@@ -60,6 +60,8 @@
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.20.11",
     "@ledgerhq/hw-transport-node-hid": "^6.27.12",
+    "@typescript-eslint/eslint-plugin": "^5.53.0",
+    "@typescript-eslint/parser": "^5.53.0",
     "babel-plugin-transform-import-meta": "^2.2.0",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
