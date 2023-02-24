@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { DescriptorsFactory } from '../dist/src/index';
+import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';

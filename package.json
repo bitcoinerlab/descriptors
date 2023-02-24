@@ -1,18 +1,19 @@
 {
   "name": "@bitcoinerlab/descriptors",
-  "homepage": "https://bitcoinerlab.com/descriptors",
-  "version": "0.1.0",
-  "description": "A JavaScript library for parsing and interpreting Bitcoin descriptors, including those based on the Miniscript language.",
+  "homepage": "https://github.com/bitcoinerlab/descriptors",
+  "version": "0.2.1",
+  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "npx tsc",
-    "prepublishOnly": "npm run build && npm test",
+    "prepublishOnly": "npm run build && npm test && echo \"\\n\\n\" && npm run test:integration:ledger",
     "docs": "jsdoc -c jsdoc.json",
     "regtest-docker": "docker ps | grep bitcoinjs-regtest-server > /dev/null || (docker pull junderw/bitcoinjs-regtest-server && docker run -d -p 8080:8080 junderw/bitcoinjs-regtest-server && sleep 5)",
-    "test:integration": "npm run regtest-docker && npx ts-node test/integration/standardOutputs.ts && echo && npx ts-node test/integration/miniscript.ts && npx ts-node test/integration/ledger.ts",
+    "test:integration:soft": "npm run regtest-docker && npx ts-node test/integration/standardOutputs.ts && echo \"\\n\\n\" && npx ts-node test/integration/miniscript.ts",
+    "test:integration:ledger": "npm run regtest-docker && npx ts-node test/integration/ledger.ts",
     "test:unit": "npm run build && node test/tools/generateBitcoinCoreFixtures.js && jest",
-    "test": "npm run lint && npm run lint:test && npm run test:unit && npm run test:integration",
+    "test": "npm run lint && npm run lint:test && npm run test:unit && npm run test:integration:soft",
     "lint": "eslint --ignore-path .gitignore --ext .js,.ts src/",
     "lint:test": "eslint --ignore-path .gitignore --ext .js,.ts test/"
   },
@@ -52,7 +53,7 @@
     "dist"
   ],
   "dependencies": {
-    "@bitcoinerlab/ledger": "^0.1.6",
+    "@bitcoinerlab/ledger": "^0.1.7",
     "@bitcoinerlab/miniscript": "^1.2.1",
     "@bitcoinerlab/secp256k1": "^1.0.2",
     "bip32": "^3.1.0",

@@ -111,10 +111,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
   try {
     transport = await Transport.create(3000, 3000);
   } catch (err) {
-    console.warn(
-      `Warning: a Ledger device has not been detected. Ledger integration will not be tested.`
-    );
-    return;
+    throw new Error(`Error: Ledger device not detected`);
   }
   //Throw if not running Bitcoin Test >= 2.1.0
   await assertLedgerApp({
