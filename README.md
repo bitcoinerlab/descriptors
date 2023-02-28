@@ -64,7 +64,7 @@ const wpkhDescriptor = new Descriptor({
 });
 ```
 
-Refer to the [documentation](#documentation), [guides](https://bitcoinerlab.com/guides) and [integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration) for more information on the other options for creating a new `Descriptor`.
+Refer to the [documentation](#documentation), [guides](https://bitcoinerlab.com/guides) and [integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration) for more information on the the rest of available for creating a new `Descriptor`.
 
 The Descriptor class provides several useful methods such as `getAddress()`, `getScriptPubKey()`, `updatePsbt()`, `finalizePsbt()` or `expand()`, which decomposes a descriptor into its elemental parts. These methods can be used to extract information from the descriptor for further processing. For more information about these and other methods, please refer to the [documentation](#documentation).
 
