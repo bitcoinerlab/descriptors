@@ -5,14 +5,39 @@
   "source": {
     "include": ["./src"],
     "exclude": ["node_modules"],
-    "includePattern": ".+\\.js(doc)?$"
+    "includePattern": "\\.(jsx|js|ts|tsx)$"
   },
-  "plugins": ["plugins/markdown"],
+  "plugins": [
+    "node_modules/better-docs/typescript",
+    "plugins/markdown",
+    "node_modules/better-docs/category"
+  ],
   "templates": {
     "cleverLinks": false,
-    "monospaceLinks": false
+    "monospaceLinks": false,
+    "search": true
+    //,"better-docs": {
+    //  "name": "BitcoinerLab Descriptors",
+    //  //"logo": "https://bitcoinerlab.com/favicon.svg",
+    //  "title": "Descriptors - BitcoinerLab", // HTML title
+    //  "hideGenerator": false,
+    //  "navLinks": [
+    //    {
+    //      "label": "Github",
+    //      "href": "https://github.com/bitcoinerlab/descriptors"
+    //    },
+    //    {
+    //      "label": "Home",
+    //      "href": "https://bitcoinerlab.com/modules/descriptors"
+    //    }
+    //  ]
+    //}
   },
   "opts": {
-    "destination": "./docs"
+    "template": "node_modules/better-docs",
+    "readme": "README.md",
+    "destination": "./docs",
+    "recurse": true,
+    "verbose": true
   }
 }
