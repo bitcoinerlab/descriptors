@@ -4,7 +4,7 @@ This library is designed to parse and create Bitcoin Descriptors, including Mini
 
 ## Features
 
-- Parses and creates Bitcoin Descriptors (including those based on the Miniscript language).
+- Parses and creates [Bitcoin Descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) (including those based on the [Miniscript language](https://bitcoinerlab.com/modules/miniscript)).
 - Generates Partially Signed Bitcoin Transactions (PSBTs).
 - Provides PSBT finalizers and signers for single-signature, BIP32, and Hardware Wallets (currently supports Ledger devices; more devices are planned).
 
