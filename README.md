@@ -176,20 +176,20 @@ You can then use the following code to assert that the Ledger app is running Bit
 
 ```javascript
 //Throws if not running Bitcoin Test >= 2.1.0
-await descriptors.ledger.assertLedgerApp({
+await ledger.assertLedgerApp({
   transport,
   name: 'Bitcoin Test',
   minVersion: '2.1.0'
 });
 
-const ledgerClient = new descriptors.ledger.AppClient(transport);
+const ledgerClient = new ledger.AppClient(transport);
 ```
 Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).
 
 To register the policies of non-standard descriptors on the Ledger device, you can use the following code:
 
 ```javascript
-await descriptors.ledger.registerLedgerWallet({
+await ledger.registerLedgerWallet({
   ledgerClient,
   ledgerState,
   descriptor: wshDescriptor,
