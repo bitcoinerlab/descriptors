@@ -181,7 +181,7 @@ function assertChangeIndexKeyPath({
       (change !== undefined && index !== undefined)
     )
   )
-    throw new Error(`Error: Pass change, index and network or neither`);
+    throw new Error(`Error: Pass change and index or neither`);
   if ((change !== undefined) === (keyPath !== undefined))
     throw new Error(`Error: Pass either change and index or a keyPath`);
 }
