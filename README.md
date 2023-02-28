@@ -78,13 +78,13 @@ const inputIndex = descriptor.updatePsbt({ psbt, txHex, vout });
 
 Here, `psbt` is an instance of a [bitconjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib), `txHex` is the hex string that serializes the previous transaction, and `vout` is an integer corresponding to the output index of the descriptor in the previous transaction. The method returns a number that corresponds to the input number that this descriptor will take in the `psbt`.
 
-The `finalizePsbt()` method is used to add the unlocking script (scriptWitness or scriptSig) that satisfies the spending condition to the transaction, effectively finalizing the Psbt. This method is called with the following syntax:
+The `finalizePsbt()` method is the final step in adding the unlocking script (scriptWitness or scriptSig) that satisfies the spending condition to the transaction, effectively finalizing the Psbt. It should be called after all necessary signing operations have been completed. The syntax for calling this method is as follows:
 
 ```javascript
 descriptor.finalizePsbt({ index, psbt });
 ```
 
-Here, index is the inputIndex obtained from the updatePsbt() method and psbt is an instance of a bitcoinjs-lib Psbt object.
+Here, `index` is the `inputIndex` obtained from the `updatePsbt()` method and `psbt` is an instance of a bitcoinjs-lib `Psbt` object.
 
 ### keyExpressions and scriptExpressions
 
