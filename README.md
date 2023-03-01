@@ -35,9 +35,11 @@ PSBTs come in handy when working with descriptors, especially when using scripts
 
 ## Usage
 
+Before we dive in, please note that we have some guides available that cover different aspects of the library. These guides are still being developed, but you can already try some real-time code in the playgrounds that are provided. <a href="https://bitcoinerlab.com/guides">Check out the available guides here</a>.
+
 To use this library (and accompanying libraries), you can install them using:
 
-```
+```bash
 npm install @bitcoinerlab/descriptors
 npm install @bitcoinerlab/miniscript
 npm install @bitcoinerlab/secp256k1
@@ -226,11 +228,12 @@ This code will auto-skip the policy registration process if it already exists. P
 Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored.
 
 <a name="documentation"></a>
+
 ## Documentation
 
 To generate the API documentation for this package, follow these steps:
 
-```
+```bash
 git clone https://github.com/bitcoinerlab/descriptors
 cd descriptors/
 npm run docs
@@ -252,19 +255,19 @@ To download the source code and build the project, follow these steps:
 
 1. Clone the repository:
 
-```
+```bash
 git clone https://github.com/bitcoinerlab/descriptors.git
 ```
 
 2. Install the dependencies:
 
-```
+```bash
 npm install
 ```
 
 3. Build the project:
 
-```
+```bash
 npm run build
 ```
 
@@ -283,13 +286,13 @@ docker run -d -p 127.0.0.1:8080:8080 junderw/bitcoinjs-regtest-server
 
 This will start a container running a Bitcoin regtest node and the bitcoind manager on your machine. Once you have your node and manager set up, you can run the tests using the following command:
 
-```
+```bash
 npm run test
 ```
 
 And, in case you have a Ledger device:
 
-```
+```bash
 npm run test:integration:ledger
 ```
 
