@@ -10,7 +10,12 @@ This library is designed to parse and create Bitcoin Descriptors, including Mini
 
 ## Concepts
 
-Before we dive into the Bitcoin Descriptors Library, let's briefly explain some key concepts related to Bitcoin descriptors and partially signed Bitcoin transactions (PSBTs).
+This library has two main capabilities related to Bitcoin descriptors. Firstly, it can generate addresses and scriptPubKeys from descriptors. These addresses and scriptPubKeys can be used to receive funds from other parties. Secondly, the library is able to sign and spend unspent outputs described by those same descriptors. In order to do this, the descriptors must first be set into a PSBT.
+
+If you are not familiar with *Bitcoin descriptors* and *partially signed Bitcoin transactions (PSBTs)*, click on the section below to expand and read more about these concepts.
+
+<details>
+  <summary>Concepts</summary>
 
 ### Descriptors
 
@@ -26,7 +31,7 @@ A PSBT (Partially Signed Bitcoin Transaction) is a format for sharing Bitcoin tr
 
 PSBTs come in handy when working with descriptors, especially when using scripts, because they allow multiple parties to collaborate in the signing process. This is especially useful when using hardware wallets or other devices that require separate signatures or authorizations.
 
-This library is able to generate addresses and scriptPubKeys from descriptors, which can be used to receive funds from others, and it is also able to sign and spend unspent outputs described by those same descriptors.
+</details>
 
 ## Usage
 
