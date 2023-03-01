@@ -64,7 +64,21 @@ const wpkhDescriptor = new Descriptor({
 });
 ```
 
-Refer to the [documentation](#documentation), [guides](https://bitcoinerlab.com/guides) and [integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration) for more information on the the rest of available for creating a new `Descriptor`.
+Here are the parameters that can be used to create a `new Descriptor`:
+
+```javascript
+constructor({
+  expression, //The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index
+  index, //The descriptor's index in the case of a range descriptor (must be an interger >=0)
+  checksumRequired = false, //A flag indicating whether the descriptor is required to include a checksum
+  allowMiniscriptInP2SH = false, //A flag indicating whether this instance can parse and generate script satisfactions for sh(miniscript) top-level expressions of miniscripts. This is not recommended
+  network = networks.bitcoin, //One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface)
+  preimages = [], //An array of preimages of type `Preimage`: `Preimage[]`. This info is necessary to finalize Psbts
+  signersPubKeys //An array of public keys that will be used to sign the output described by this descriptor. If all the keys in the descriptor's `expression` will sign the transaction, you can leave this parameter `undefined`. This parameter is useful in miniscript-based expressions where there are different spending paths depending on the keys that are known. In that case, set this parameter to an array of the public keys that will be used to sign the output
+}: DescriptorInfo);
+```
+
+Refer to the [documentation](#documentation), [guides](https://bitcoinerlab.com/guides) and [integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration) for more information.
 
 The Descriptor class provides several useful methods such as `getAddress()`, `getScriptPubKey()`, `updatePsbt()`, `finalizePsbt()` or `expand()`, which decomposes a descriptor into its elemental parts. These methods can be used to extract information from the descriptor for further processing. For more information about these and other methods, please refer to the [documentation](#documentation).
 
@@ -94,12 +108,12 @@ This library includes a set of function helpers that facilitate the generation o
 import { scriptExpressions } from '@bitcoinerlab/descriptors';
 ```
 
-`scriptExpressions` includes functions that generate script expressions for commonly used script expressions. Some of the available functions are `pkhLedger()`, `shWpkhLedger`, `wpkhLedger`, `pkhLedger()`, `shWpkhLedger` and `wpkhLedger`.
+`scriptExpressions` includes functions that generate script expressions for commonly used script expressions. Some of the available functions are `pkhBIP32()`, `shWpkhBIP32`, `wpkhBIP32`, `pkhLedger()`, `shWpkhLedger` and `wpkhLedger`.
 
 When using BIP32-based descriptors, the following parameters are required for the `scriptExpressions` functions:
 
 ```javascript
-{
+pkhBIP32(params: {
   masterNode: BIP32Interface; //A bitcoinjs-lib instance of a BIP32 object.
   network?: Network; //A bitcoinjs-lib network
   account: number;
@@ -107,7 +121,7 @@ When using BIP32-based descriptors, the following parameters are required for th
   index?: number | undefined | '*';
   keyPath?: string; //You can use change & index or a keyPath such as "/0/0"
   isPublic?: boolean; //Whether to use xpub or xprv
-}
+})
 ```
 
 For Ledger, `ledgerClient` and `ledgerState` are used instead of `masterNode`. These will be explained later when we discuss Ledger integration.
@@ -117,7 +131,10 @@ The `keyExpressions` category includes functions that generate string representa
 This library includes the following `keyExpressions`: `keyExpressionBIP32` and `keyExpressionLedger`. They can be imported as follows:
 
 ```javascript
-import { keyExpressionBIP32, keyExpressionLedger } from '@bitcoinerlab/descriptors';
+import {
+  keyExpressionBIP32,
+  keyExpressionLedger
+} from '@bitcoinerlab/descriptors';
 ```
 
 The parameters required for these functions are:
@@ -132,6 +149,7 @@ function keyExpressionBIP32({
   isPublic?: boolean;
 });
 ```
+
 For Ledger, `ledgerClient` and `ledgerState` are used instead of `masterNode`.
 
 Both functions will generate strings that fully define BIP32 keys. For example: `[d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*`. Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) to learn more about Key Expressions.
@@ -184,6 +202,7 @@ await ledger.assertLedgerApp({
 
 const ledgerClient = new ledger.AppClient(transport);
 ```
+
 Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).
 
 To register the policies of non-standard descriptors on the Ledger device, you can use the following code:
@@ -196,6 +215,7 @@ await ledger.registerLedgerWallet({
   policyName: 'BitcoinerLab'
 });
 ```
+
 This code will auto-skip the policy registration process if it already exists. Please refer to [Ledger documentation](https://github.com/LedgerHQ/app-bitcoin-new/blob/develop/doc/wallet.md) to learn more about their Wallet Policies registration procedures.
 
 Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored.
@@ -209,6 +229,7 @@ git clone https://github.com/bitcoinerlab/descriptors
 cd descriptors/
 npm run docs
 ```
+
 This will generate the API documentation in the docs/ directory. Open the index.html file located in the docs/ directory to view the documentation.
 
 Please note that not all the functions have been fully documented yet. However, you can easily understand their usage by reading the source code or by checking the integration tests or playgrounds.
