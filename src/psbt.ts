@@ -207,7 +207,7 @@ export function updatePsbt({
     psbt.setLocktime(locktime);
   }
   let inputSequence;
-  if (locktime !== undefined) {
+  if (locktime !== undefined || psbt.locktime !== 0) {
     if (sequence === undefined) {
       // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
       inputSequence = 0xfffffffe;

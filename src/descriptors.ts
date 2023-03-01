@@ -654,14 +654,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           `Error: could not determine whether this is a segwit descriptor`
         );
       }
+
+      const locktime =
+        psbt.locktime !== this.getLockTime() ? this.getLockTime() : undefined;
+
       return updatePsbt({
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
+        locktime,
         sequence: this.getSequence(),
-        locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
         scriptPubKey: this.getScriptPubKey(),
         isSegwit,
