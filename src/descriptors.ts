@@ -101,7 +101,6 @@ function evaluate({
 /**
  * Builds the functions needed to operate with descriptors using an external elliptic curve (ecc) library.
  * @param {Object} ecc - an object containing elliptic curve operations, such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
- * @returns {Object} an object containing functions, `parse` and `checksum`.
  * @namespace
  */
 export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
@@ -178,13 +177,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
-     * @param {Object} params
+     * @param {DescriptorInfo} params
+     * @param {string} params.expression - The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index.
      * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
-     * @param {string} params.descriptor - The descriptor.
      * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
+     * @param {boolean} [params.allowMiniscriptInP2SH=false] - A flag indicating whether this instance can parse and generate script satisfactions for sh(miniscript) top-level expressions of miniscripts. This is not recommended.
      * @param {object} [params.network=networks.bitcoin] One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
+     * @param {Preimage[]} [params.preimages=[]] An array of preimages. This info is necessary to finalize Psbts.
+     * @param {Buffer[]} [params.signersPubKeys] - An array of public keys that will be used to sign the output described by this descriptor. If all the keys in the descriptor's `expression` will sign the transaction, you can leave this parameter `undefined`. This parameter is useful in miniscript-based expressions where there are different spending paths depending on the keys that are known. In that case, set this parameter to an array of the public keys that will be used to sign the output.
      *
-     * @see {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/payments/index.d.ts}
      * @throws {Error} - when descriptor is invalid
      */
     constructor({
@@ -539,6 +540,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     getPayment(): Payment {
       return this.#payment;
     }
+    /**
+     * Returns the Bitcoin Address
+     */
     getAddress(): string {
       if (!this.#payment.address)
         throw new Error(`Error: could extract an address from the payment`);
@@ -549,6 +553,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
+    /**
+     * Returns the compiled script satisfaction
+     * @param {PartialSig[]} signatures An array of signatures using this format: `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+     * @returns {Buffer}
+     */
     getScriptSatisfaction(signatures: PartialSig[]): Buffer {
       const miniscript = this.#miniscript;
       const expandedMiniscript = this.#expandedMiniscript;

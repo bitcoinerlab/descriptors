@@ -267,7 +267,7 @@ const psbtInputDescriptors: DescriptorInterface[] = [];
 
   //=============
   //Finalize the psbt:
-  //descriptors are indexed wrt its psbt input number.
+  //descriptors must be indexed wrt its psbt input number.
   //finalizePsbt uses the miniscript satisfier from @bitcoinerlab/miniscript to
   //create the scriptWitness among other things.
   finalizePsbt({ psbt, descriptors: psbtInputDescriptors });

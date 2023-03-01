@@ -6,12 +6,23 @@ import type { BIP32Interface } from 'bip32';
 import type { Network, Payment, Psbt } from 'bitcoinjs-lib';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 
-export interface Preimage {
-  digest: string; //Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
-  //Accepted functions: sha256, hash256, ripemd160, hash160
-  // 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160
-  preimage: string; //Preimages are always 32 bytes (64 character in hex)
-}
+/**
+ * Preimage
+ * @alias Preimage
+ * @memberof Descriptor
+ */
+export type Preimage = {
+  /**
+   * Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
+   * Accepted functions: sha256, hash256, ripemd160, hash160
+   * Digests must be: 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160.
+   */
+  digest: string;
+  /**
+   * Hex encoded preimate. Preimages are always 32 bytes (so, 64 character in hex).
+   */
+  preimage: string;
+};
 export type TimeConstraints = {
   nLockTime: number | undefined;
   nSequence: number | undefined;
@@ -74,7 +85,12 @@ export interface TinySecp256k1Interface {
 }
 
 //https://stackoverflow.com/questions/65220834/what-return-type-should-i-define-for-a-function-that-returns-a-class
-//What defines a Descriptor. This is the type needed in the constructor.
+/**
+ * DescriptorInfo
+ * What defines a Descriptor. This is the type needed in the constructor.
+ * @alias DescriptorInfo
+ * @memberof Descriptor
+ */
 export type DescriptorInfo = {
   expression: string;
   index?: number;
