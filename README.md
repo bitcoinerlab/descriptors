@@ -12,7 +12,7 @@ This library is designed to parse and create Bitcoin Descriptors, including Mini
 
 This library has two main capabilities related to Bitcoin descriptors. Firstly, it can generate addresses and scriptPubKeys from descriptors. These addresses and scriptPubKeys can be used to receive funds from other parties. Secondly, the library is able to sign and spend unspent outputs described by those same descriptors. In order to do this, the descriptors must first be set into a PSBT.
 
-If you are not familiar with *Bitcoin descriptors* and *partially signed Bitcoin transactions (PSBTs)*, click on the section below to expand and read more about these concepts.
+If you are not familiar with _Bitcoin descriptors_ and _partially signed Bitcoin transactions (PSBTs)_, click on the section below to expand and read more about these concepts.
 
 <details>
   <summary>Concepts</summary>
@@ -225,6 +225,7 @@ This code will auto-skip the policy registration process if it already exists. P
 
 Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored.
 
+<a name="documentation"></a>
 ## Documentation
 
 To generate the API documentation for this package, follow these steps:
