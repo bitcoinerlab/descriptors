@@ -199,27 +199,23 @@ export function updatePsbt({
       `Error: txHex+vout required. Alternatively, but ONLY for Segwit inputs, txId+value can also be passed.`
     );
 
-  if (locktime !== undefined) {
-    if (psbt.locktime !== 0 && psbt.locktime !== undefined)
+  if (locktime) {
+    if (psbt.locktime && psbt.locktime !== locktime)
       throw new Error(
-        `Error: transaction locktime has already been set: ${psbt.locktime}`
+        `Error: transaction locktime was already set with a different value: ${locktime} != ${psbt.locktime}`
       );
-    psbt.setLocktime(locktime);
-  }
-  let inputSequence;
-  if (locktime !== undefined) {
+    // nLockTime only works if at least one of the transaction inputs has an
+    // nSequence value that is below 0xffffffff. Let's make sure that at least
+    // this input's sequence < 0xffffffff
     if (sequence === undefined) {
-      // for CTV nSequence MUST be <= 0xfffffffe otherwise OP_CHECKLOCKTIMEVERIFY will fail.
-      inputSequence = 0xfffffffe;
+      //NOTE: if sequence is undefined, bitcoinjs-lib uses 0xffffffff as default
+      sequence = 0xfffffffe;
     } else if (sequence > 0xfffffffe) {
       throw new Error(
-        `Error: incompatible sequence: ${inputSequence} and locktime: ${locktime}`
+        `Error: incompatible sequence: ${sequence} and locktime: ${locktime}`
       );
-    } else {
-      inputSequence = sequence;
     }
-  } else {
-    inputSequence = sequence;
+    psbt.setLocktime(locktime);
   }
 
   const input: PsbtInputExtended = {
@@ -247,7 +243,7 @@ export function updatePsbt({
     //There's no need to put both witnessUtxo and nonWitnessUtxo
     input.witnessUtxo = { script: scriptPubKey, value };
   }
-  if (inputSequence !== undefined) input.sequence = inputSequence;
+  if (sequence !== undefined) input.sequence = sequence;
 
   if (witnessScript) input.witnessScript = witnessScript;
   if (redeemScript) input.redeemScript = redeemScript;
