@@ -124,7 +124,7 @@ pkhBIP32(params: {
   masterNode: BIP32Interface; //A bitcoinjs-lib instance of a BIP32 object.
   network?: Network; //A bitcoinjs-lib network
   account: number;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+  change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string; //You can use change & index or a keyPath such as "/0/0"
   isPublic?: boolean; //Whether to use xpub or xprv
@@ -150,7 +150,7 @@ The parameters required for these functions are:
 function keyExpressionBIP32({
   masterNode: BIP32Interface;
   originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+  change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
   isPublic?: boolean;
