@@ -10,7 +10,7 @@ import {
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
-import type { AppClient } from '@bitcoinerlab/ledger';
+import type { AppClient } from 'ledger-bitcoin';
 
 import * as RE from './re';
 

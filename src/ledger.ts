@@ -25,7 +25,7 @@
  */
 
 import type { DescriptorInterface } from './types';
-import { AppClient, WalletPolicy } from '@bitcoinerlab/ledger';
+import { AppClient, WalletPolicy } from 'ledger-bitcoin';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
 

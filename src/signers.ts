@@ -9,8 +9,9 @@ import {
   DefaultWalletPolicy,
   AppClient,
   WalletPolicy,
-  DefaultDescriptorTemplate
-} from '@bitcoinerlab/ledger';
+  DefaultDescriptorTemplate,
+  PartialSignature
+} from 'ledger-bitcoin';
 import type { DescriptorInterface } from './types';
 import {
   comparePolicies,
@@ -64,13 +65,13 @@ export function signBIP32({
 
 const ledgerSignaturesForInputIndex = (
   index: number,
-  ledgerSignatures: [number, Buffer, Buffer][]
+  ledgerSignatures: [number, PartialSignature][]
 ) =>
   ledgerSignatures
-    .filter(([i]: [number, Buffer, Buffer]) => i === index)
-    .map(([_i, pubkey, signature]: [number, Buffer, Buffer]) => ({
-      pubkey,
-      signature
+    .filter(([i]: [number, PartialSignature]) => i === index)
+    .map(([_i, partialSignature]: [number, PartialSignature]) => ({
+      pubkey: partialSignature.pubkey,
+      signature: partialSignature.signature
     }));
 
 export async function signInputLedger({

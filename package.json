@@ -52,13 +52,14 @@
   "files": [
     "dist"
   ],
+  "COMMENT wrt ledger-bitcoin below": "ledger-bitcoin is installed using an alias. This package can be replaced with the official `ledger-bitcoin` npm package once [this PR](https://github.com/LedgerHQ/app-bitcoin-new/pull/147) is published to npm (likely in version > 0.2.1)",
   "dependencies": {
-    "@bitcoinerlab/ledger": "^0.1.7",
     "@bitcoinerlab/miniscript": "^1.2.1",
     "@bitcoinerlab/secp256k1": "^1.0.2",
     "bip32": "^3.1.0",
     "bitcoinjs-lib": "^6.1.0",
-    "ecpair": "^2.1.0"
+    "ecpair": "^2.1.0",
+    "ledger-bitcoin": "npm:@bitcoinerlab/ledger@^0.2.0"
   },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.20.11",
