@@ -75,13 +75,35 @@ Here are the parameters that can be used to create a `new Descriptor`:
 
 ```javascript
 constructor({
-  expression, //The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index
-  index, //The descriptor's index in the case of a range descriptor (must be an interger >=0)
-  checksumRequired = false, //A flag indicating whether the descriptor is required to include a checksum
-  allowMiniscriptInP2SH = false, //A flag indicating whether this instance can parse and generate script satisfactions for sh(miniscript) top-level expressions of miniscripts. This is not recommended
-  network = networks.bitcoin, //One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface)
-  preimages = [], //An array of preimages of type `Preimage`: `Preimage[]`. This info is necessary to finalize Psbts
-  signersPubKeys //An array of public keys that will be used to sign the output described by this descriptor. If all the keys in the descriptor's `expression` will sign the transaction, you can leave this parameter `undefined`. This parameter is useful in miniscript-based expressions where there are different spending paths depending on the keys that are known. In that case, set this parameter to an array of the public keys that will be used to sign the output
+  expression, // The descriptor string in ASCII format. It may include a "*"
+              // to denote an arbitrary index.
+  index,      // The descriptor's index in the case of a range descriptor
+              // (must be an integer >= 0).
+  checksumRequired = false, // Flag indicating if the descriptor is required
+                            // to include a checksum.
+  allowMiniscriptInP2SH = false, // Flag indicating if this instance can parse
+                                 // and generate script satisfactions for
+                                 // sh(miniscript) top-level expressions of
+                                 // miniscripts. This is not recommended.
+  network = networks.bitcoin, // One of bitcoinjs-lib `networks`
+                              // (https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js)
+                              // or another one with the same interface.
+  preimages = [], // An array of preimages of type `Preimage`: `Preimage[]`.
+                  // This info is necessary to finalize Psbts.
+  signersPubKeys // (Optional): An array of the public keys used for signing
+                 // the transaction when spending the output associated with
+                 // this descriptor. This parameter is only used if the
+                 // descriptor object is being used to finalize a transaction.
+                 // It is necessary to specify the spending path when working
+                 // with miniscript-based expressions that have multiple
+                 // spending paths. Set this parameter to an array containing
+                 // the public keys involved in the desired spending path.
+                 // Leave it `undefined` if you only need to generate the
+                 // `scriptPubKey` or `address` for a descriptor, or if all
+                 // the public keys involved in the descriptor will sign the
+                 // transaction. In the latter case, the satisfier will
+                 // automatically choose the most optimal spending path in terms
+                 // of tx size (if more than one path is available).
 }: DescriptorInfo);
 ```
 
