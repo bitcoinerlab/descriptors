@@ -129,12 +129,7 @@ descriptor.finalizePsbt({ index, psbt });
 
 Here, `index` is the `inputIndex` obtained from the `updatePsbt()` method and `psbt` is an instance of a bitcoinjs-lib `Psbt` object.
 
-For more information, refer to the following resources:
-
-- [Guides](https://bitcoinerlab.com/guides): Comprehensive explanations and playgrounds to help you learn how to use the module.
-- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
-- [Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration): Well-commented code examples showcasing the usage of all functions in the module.
-- [Documentation](#documentation): Auto-generated documentation from the source code, providing detailed information about the library and its methods.
+For further information on using the Descriptor class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
 
 ### keyExpressions and scriptExpressions
 
@@ -258,20 +253,25 @@ Finally, `ledgerState` is an object used to store information related to Ledger 
 
 <a name="documentation"></a>
 
-## Documentation
+## Additional Resources
 
-To generate the API documentation for this package, follow these steps:
+For more information, refer to the following resources:
 
-```bash
-git clone https://github.com/bitcoinerlab/descriptors
-cd descriptors/
-npm run docs
-```
+- [Guides](https://bitcoinerlab.com/guides): Comprehensive explanations and playgrounds to help you learn how to use the module.
+- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
+- [Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration): Well-commented code examples showcasing the usage of all functions in the module.
+- API Documentation: Auto-generated documentation from the source code, providing detailed information about the library and its methods. To generate the API documentation locally, follow these commands:
 
-This will generate the API documentation in the docs/ directory. Open the index.html file located in the docs/ directory to view the documentation.
+  ```bash
+  git clone https://github.com/bitcoinerlab/descriptors
+  cd descriptors/
+  npm install
+  npm run docs
+  ```
 
-Please note that not all the functions have been fully documented yet. However, you can easily understand their usage by reading the source code or by checking the integration tests or playgrounds.
-TODO: Add links to the guides and refer to them as a way to learn.
+  The generated documentation will be available in the `docs/` directory. Open the `index.html` file to view the documentation.
+
+  Please note that not all the functions have been fully documented yet. However, you can easily understand their usage by reading the source code or by checking the integration tests or playgrounds.
 
 ## Authors and Contributors
 
