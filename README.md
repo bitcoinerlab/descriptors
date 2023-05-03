@@ -35,7 +35,7 @@ PSBTs come in handy when working with descriptors, especially when using scripts
 
 ## Usage
 
-Before we dive in, please note that we have some guides available that cover different aspects of the library. These guides are still being developed, but you can already try some real-time code in the playgrounds that are provided. <a href="https://bitcoinerlab.com/guides">Check out the available guides here</a>.
+Before we dive in, it's worth mentioning that we have several comprehensive guides available covering different aspects of the library. These guides provide explanations and code examples in interactive playgrounds, allowing you to see the changes in the output as you modify the code. This hands-on learning experience, combined with clear explanations, helps you better understand how to use the library effectively. [Check out the available guides here](https://bitcoinerlab.com/guides).
 
 To use this library (and accompanying libraries), you can install them using:
 
