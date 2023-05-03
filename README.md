@@ -104,14 +104,14 @@ constructor({
                  // transaction. In the latter case, the satisfier will
                  // automatically choose the most optimal spending path in terms
                  // of tx size (if more than one path is available).
+                 // For more details on using this parameter, refer to this
+                 // Stack Exchange answer: https://bitcoin.stackexchange.com/a/118036/89665
 }: DescriptorInfo);
 ```
 
-Refer to the [documentation](#documentation), [guides](https://bitcoinerlab.com/guides) and [integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration) for more information.
+The `Descriptor` class offers various helpful methods, including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the scriptPubKey for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbt()` and `finalizePsbt()`.
 
-The Descriptor class provides several useful methods such as `getAddress()`, `getScriptPubKey()`, `updatePsbt()`, `finalizePsbt()` or `expand()`, which decomposes a descriptor into its elemental parts. These methods can be used to extract information from the descriptor for further processing. For more information about these and other methods, please refer to the [documentation](#documentation).
-
-The `updatePsbt()` method is a crucial part of the library that adds an input to the PSBT corresponding to the UTXO (unspent transaction output) described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbt()` adds timelock information to the PSBT.
+The `updatePsbt()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO (unspent transaction output) described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbt()` adds timelock information to the PSBT.
 
 To call `updatePsbt()`, use the following syntax:
 
@@ -129,9 +129,16 @@ descriptor.finalizePsbt({ index, psbt });
 
 Here, `index` is the `inputIndex` obtained from the `updatePsbt()` method and `psbt` is an instance of a bitcoinjs-lib `Psbt` object.
 
+For more information, refer to the following resources:
+
+- [Guides](https://bitcoinerlab.com/guides): Comprehensive explanations and playgrounds to help you learn how to use the module.
+- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
+- [Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration): Well-commented code examples showcasing the usage of all functions in the module.
+- [Documentation](#documentation): Auto-generated documentation from the source code, providing detailed information about the library and its methods.
+
 ### keyExpressions and scriptExpressions
 
-This library includes a set of function helpers that facilitate the generation of the `expression` parameter in the constructor of the `Descriptor` class. These helpers are located under the `scriptExpressions` module, which can be imported using the following statement:
+This library also includes a set of function helpers that facilitate the generation of the `expression` parameter in the constructor of the `Descriptor` class. These helpers are located under the `scriptExpressions` module, which can be imported using the following statement:
 
 ```javascript
 import { scriptExpressions } from '@bitcoinerlab/descriptors';
@@ -264,6 +271,7 @@ npm run docs
 This will generate the API documentation in the docs/ directory. Open the index.html file located in the docs/ directory to view the documentation.
 
 Please note that not all the functions have been fully documented yet. However, you can easily understand their usage by reading the source code or by checking the integration tests or playgrounds.
+TODO: Add links to the guides and refer to them as a way to learn.
 
 ## Authors and Contributors
 
