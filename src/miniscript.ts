@@ -104,8 +104,8 @@ function substituteAsm({
     //enclosed in <>, since <> represents hex code already encoded.
     //The regex below will match one or more digits within a string,
     //except if the sequence is surrounded by "<" and ">"
-    .replace(/(?<![<])\b\d+\b(?![>])/g, (num: string) =>
-      numberEncodeAsm(Number(num))
+    .replace(/(<\d+>)|\b\d+\b/g, match =>
+      match.startsWith('<') ? match : numberEncodeAsm(Number(match))
     )
     //we don't have numbers anymore, now it's safe to remove < and > since we
     //know that every remaining is either an op_code or a hex encoded number
