@@ -32,8 +32,7 @@ const derivePath = (node: BIP32Interface, path: string) => {
 };
 
 /*
- * Takes a key expression (xpub, xprv, pubkey or wif) and returns a pubkey in
- * binary format
+ * Parses a key expression (xpub, xprv, pubkey or wif) into KeyInfo
  */
 export function parseKeyExpression({
   keyExpression,
@@ -48,7 +47,7 @@ export function parseKeyExpression({
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
-  let pubkey: Buffer;
+  let pubkey: Buffer | undefined; //won't be computed for ranged keyExpressions
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
   let masterFingerprint: Buffer | undefined;
@@ -56,6 +55,7 @@ export function parseKeyExpression({
   let keyPath: string | undefined;
   let path: string | undefined;
 
+  const isRanged = keyExpression.indexOf('*') !== -1;
   //Validate the keyExpression:
   const keyExpressions = keyExpression.match(RE.reKeyExp);
   if (keyExpressions === null || keyExpressions[0] !== keyExpression) {
@@ -125,7 +125,7 @@ export function parseKeyExpression({
       keyPath = xPubKey.match(RE.rePath)?.[0];
       if (!keyPath) throw new Error(`Error: could not extract a path`);
       //fromBase58 and derivePath will throw if xPub or path are not valid
-      pubkey = derivePath(bip32, keyPath).publicKey;
+      if (!isRanged) pubkey = derivePath(bip32, keyPath).publicKey;
     } else {
       pubkey = bip32.publicKey;
     }
@@ -142,7 +142,7 @@ export function parseKeyExpression({
       keyPath = xPrvKey.match(RE.rePath)?.[0];
       if (!keyPath) throw new Error(`Error: could not extract a path`);
       //fromBase58 and derivePath will throw if xPrv or path are not valid
-      pubkey = derivePath(bip32, keyPath).publicKey;
+      if (!isRanged) pubkey = derivePath(bip32, keyPath).publicKey;
     } else {
       pubkey = bip32.publicKey;
     }
@@ -151,12 +151,12 @@ export function parseKeyExpression({
       `Error: could not get pubkey for keyExpression ${keyExpression}`
     );
   }
-  if (masterFingerprint && (originPath || keyPath)) {
-    path = 'm' + originPath + keyPath;
+  if (originPath || keyPath) {
+    path = `m${originPath ?? ''}${keyPath ?? ''}`;
   }
   return {
-    pubkey,
     keyExpression,
+    ...(pubkey !== undefined ? { pubkey } : {}),
     ...(ecpair !== undefined ? { ecpair } : {}),
     ...(bip32 !== undefined ? { bip32 } : {}),
     ...(masterFingerprint !== undefined ? { masterFingerprint } : {}),

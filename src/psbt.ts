@@ -231,13 +231,16 @@ export function updatePsbt({
       (keyInfo: KeyInfo) =>
         keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
     )
-    .map(
-      (keyInfo: KeyInfo): Bip32Derivation => ({
+    .map((keyInfo: KeyInfo): Bip32Derivation => {
+      const pubkey = keyInfo.pubkey;
+      if (!pubkey)
+        throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
+      return {
         masterFingerprint: keyInfo.masterFingerprint!,
-        pubkey: keyInfo.pubkey,
+        pubkey,
         path: keyInfo.path!
-      })
-    );
+      };
+    });
   if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
   if (isSegwit && txHex !== undefined) {
     //There's no need to put both witnessUtxo and nonWitnessUtxo

@@ -31,7 +31,16 @@ export const fixtures = {
         'sh(pkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))',
       address: '345X16vrwhSrbV4hp1AM5wqLh8s2kj6di4',
       note: 'bdk-cli -n bitcoin wallet -d "sh(pkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))" get_new_address',
-      checksumRequired: false
+      checksumRequired: false,
+      expansion: {
+        expandedExpression: 'sh(pkh(@0))',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              'L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1'
+          }
+        }
+      }
     },
 
     {
@@ -39,13 +48,31 @@ export const fixtures = {
         'sh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))',
       address: '345X16vrwhSrbV4hp1AM5wqLh8s2kj6di4',
       note: 'using the pubkey instead of thw WIF of the test above; bdk-cli -n bitcoin wallet -d "sh(pkh(03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))" get_new_address',
-      checksumRequired: false
+      checksumRequired: false,
+      expansion: {
+        expandedExpression: 'sh(pkh(@0))',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              '03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd'
+          }
+        }
+      }
     },
     {
       expression: 'pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
       script:
         '2103a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bdac',
-      checksumRequired: false
+      checksumRequired: false,
+      expansion: {
+        expandedExpression: 'pk(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              'L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1'
+          }
+        }
+      }
     },
     {
       expression:

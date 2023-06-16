@@ -30,7 +30,7 @@ export type TimeConstraints = {
 
 export type KeyInfo = {
   keyExpression: string;
-  pubkey: Buffer;
+  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor
   ecpair?: ECPairInterface;
   bip32?: BIP32Interface;
   masterFingerprint?: Buffer;
@@ -50,6 +50,24 @@ export interface ParseKeyExpression {
     isSegwit?: boolean;
     network?: Network;
   }): KeyInfo;
+}
+
+export interface Expand {
+  (params: {
+    expression: string;
+    loggedExpression?: string;
+    network?: Network;
+    allowMiniscriptInP2SH?: boolean;
+  }): {
+    payment?: Payment;
+    expandedExpression?: string;
+    miniscript?: string;
+    expansionMap?: ExpansionMap;
+    isSegwit?: boolean;
+    expandedMiniscript?: string;
+    redeemScript?: Buffer;
+    witnessScript?: Buffer;
+  };
 }
 
 interface XOnlyPointAddTweakResult {

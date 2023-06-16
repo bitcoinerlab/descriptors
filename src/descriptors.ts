@@ -22,6 +22,7 @@ import type {
   TimeConstraints,
   ExpansionMap,
   ParseKeyExpression,
+  Expand,
   DescriptorInterfaceConstructor,
   DescriptorInterface,
   DescriptorInfo
@@ -107,6 +108,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
   Descriptor: DescriptorInterfaceConstructor;
   ECPair: ECPairAPI;
   parseKeyExpression: ParseKeyExpression;
+  expand: Expand;
   BIP32: BIP32API;
 } {
   const BIP32: BIP32API = BIP32Factory(ecc);
@@ -132,6 +134,302 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       ECPair,
       BIP32
     });
+  };
+
+  /**
+   * Takes a descriptor (expression) and expands it to its corresponding Bitcoin script and other relevant details.
+   *
+   * @param {Object} params The parameters for the function.
+   * @param {string} params.expression The descriptor expression to be expanded.
+   * @param {string} [params.loggedExpression] The descriptor expression used for logging error messages. If not provided, defaults to the original expression.
+   * @param {Object} [params.network=networks.bitcoin] The Bitcoin network to use. If not provided, defaults to Bitcoin mainnet.
+   * @param {boolean} [params.allowMiniscriptInP2SH=false] Flag to allow miniscript in P2SH. If not provided, defaults to false.
+   *
+   * @returns {Object} An object containing various details about the expanded descriptor:
+   *     - payment: The corresponding Bitcoin script (Payment) for the provided expression.
+   *     - expandedExpression: The expanded descriptor expression.
+   *     - miniscript: The extracted miniscript from the expression, if any.
+   *     - expansionMap: A map of key expressions in the descriptor to their corresponding expanded keys.
+   *     - isSegwit: A boolean indicating whether the descriptor represents a SegWit script.
+   *     - expandedMiniscript: The expanded miniscript, if any.
+   *     - redeemScript: The redeem script for the descriptor, if applicable.
+   *     - witnessScript: The witness script for the descriptor, if applicable.
+   *
+   * @throws {Error} Throws an error if the descriptor cannot be parsed or does not conform to the expected format.
+   */
+  const expand: Expand = ({
+    expression,
+    loggedExpression, //this is the expression that will be used for logging error messages
+    network = networks.bitcoin,
+    allowMiniscriptInP2SH = false
+  }) => {
+    //remove the checksum before proceeding:
+    expression = expression.replace(new RegExp(RE.reChecksum + '$'), '');
+    let expandedExpression: string | undefined;
+    let miniscript: string | undefined;
+    let expansionMap: ExpansionMap | undefined;
+    let isSegwit: boolean | undefined;
+    let expandedMiniscript: string | undefined;
+    let payment: Payment | undefined;
+    let witnessScript: Buffer | undefined;
+    let redeemScript: Buffer | undefined;
+    const isRanged = expression.indexOf('*') !== -1;
+    if (!loggedExpression) loggedExpression = expression;
+    //addr(ADDR)
+    if (expression.match(RE.reAddrAnchored)) {
+      if (isRanged) throw new Error(`Error: addr() cannot be ranged`);
+      const matchedAddress = expression.match(RE.reAddrAnchored)?.[1]; //[1]-> whatever is found addr(->HERE<-)
+      if (!matchedAddress)
+        throw new Error(
+          `Error: could not get an address in ${loggedExpression}`
+        );
+      let output;
+      try {
+        output = address.toOutputScript(matchedAddress, network);
+      } catch (e) {
+        throw new Error(`Error: invalid address ${matchedAddress}`);
+      }
+      try {
+        payment = p2pkh({ output, network });
+      } catch (e) {}
+      try {
+        payment = p2sh({ output, network });
+      } catch (e) {}
+      try {
+        payment = p2wpkh({ output, network });
+      } catch (e) {}
+      try {
+        payment = p2wsh({ output, network });
+      } catch (e) {}
+      try {
+        payment = p2tr({ output, network });
+      } catch (e) {}
+      if (!payment) {
+        throw new Error(`Error: invalid address ${matchedAddress}`);
+      }
+    }
+    //pk(KEY)
+    else if (expression.match(RE.rePkAnchored)) {
+      isSegwit = false;
+      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (expression !== `pk(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      expandedExpression = 'pk(@0)';
+      expansionMap = {
+        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
+      };
+      if (!isRanged) {
+        const pubkey = expansionMap['@0']!.pubkey;
+        //Note there exists no address for p2pk, but we can still use the script
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${loggedExpression}`
+          );
+        payment = p2pk({ pubkey, network });
+      }
+    }
+    //pkh(KEY) - legacy
+    else if (expression.match(RE.rePkhAnchored)) {
+      isSegwit = false;
+      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (expression !== `pkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      expandedExpression = 'pkh(@0)';
+      expansionMap = {
+        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
+      };
+      if (!isRanged) {
+        const pubkey = expansionMap['@0']!.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${loggedExpression}`
+          );
+        payment = p2pkh({ pubkey, network });
+      }
+    }
+    //sh(wpkh(KEY)) - nested segwit
+    else if (expression.match(RE.reShWpkhAnchored)) {
+      isSegwit = true;
+      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (expression !== `sh(wpkh(${keyExpression}))`)
+        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      expandedExpression = 'sh(wpkh(@0))';
+      expansionMap = {
+        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
+      };
+      if (!isRanged) {
+        const pubkey = expansionMap['@0']!.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${loggedExpression}`
+          );
+        payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
+        redeemScript = payment.redeem?.output;
+        if (!redeemScript)
+          throw new Error(
+            `Error: could not calculate redeemScript for ${loggedExpression}`
+          );
+      }
+    }
+    //wpkh(KEY) - native segwit
+    else if (expression.match(RE.reWpkhAnchored)) {
+      isSegwit = true;
+      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (expression !== `wpkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      expandedExpression = 'wpkh(@0)';
+      expansionMap = {
+        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
+      };
+      if (!isRanged) {
+        const pubkey = expansionMap['@0']!.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${loggedExpression}`
+          );
+        payment = p2wpkh({ pubkey, network });
+      }
+    }
+    //sh(wsh(miniscript))
+    else if (expression.match(RE.reShWshMiniscriptAnchored)) {
+      isSegwit = true;
+      miniscript = expression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+      if (!miniscript)
+        throw new Error(
+          `Error: could not get miniscript in ${loggedExpression}`
+        );
+      ({ expandedMiniscript, expansionMap } = expandMiniscript({
+        miniscript,
+        isSegwit,
+        network
+      }));
+      expandedExpression = `sh(wsh(${expandedMiniscript}))`;
+
+      if (!isRanged) {
+        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        witnessScript = script;
+        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+          throw new Error(
+            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        payment = p2sh({
+          redeem: p2wsh({ redeem: { output: script, network }, network }),
+          network
+        });
+        redeemScript = payment.redeem?.output;
+        if (!redeemScript)
+          throw new Error(
+            `Error: could not calculate redeemScript for ${loggedExpression}`
+          );
+      }
+    }
+    //sh(miniscript)
+    else if (expression.match(RE.reShMiniscriptAnchored)) {
+      //isSegwit false because we know it's a P2SH of a miniscript and not a
+      //P2SH that embeds a witness payment.
+      isSegwit = false;
+      miniscript = expression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
+      if (!miniscript)
+        throw new Error(
+          `Error: could not get miniscript in ${loggedExpression}`
+        );
+      if (
+        allowMiniscriptInP2SH === false &&
+        //These top-level expressions within sh are allowed within sh.
+        //They can be parsed with miniscript2Script, but first we must make sure
+        //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
+        miniscript.search(
+          /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
+        ) !== 0
+      ) {
+        throw new Error(
+          `Error: Miniscript expressions can only be used in wsh`
+        );
+      }
+      ({ expandedMiniscript, expansionMap } = expandMiniscript({
+        miniscript,
+        isSegwit,
+        network
+      }));
+      expandedExpression = `sh(${expandedMiniscript})`;
+
+      if (!isRanged) {
+        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        redeemScript = script;
+        if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
+          throw new Error(
+            `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        payment = p2sh({ redeem: { output: script, network }, network });
+      }
+    }
+    //wsh(miniscript)
+    else if (expression.match(RE.reWshMiniscriptAnchored)) {
+      isSegwit = true;
+      miniscript = expression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
+      if (!miniscript)
+        throw new Error(
+          `Error: could not get miniscript in ${loggedExpression}`
+        );
+      ({ expandedMiniscript, expansionMap } = expandMiniscript({
+        miniscript,
+        isSegwit,
+        network
+      }));
+      expandedExpression = `wsh(${expandedMiniscript})`;
+
+      if (!isRanged) {
+        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        witnessScript = script;
+        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
+          throw new Error(
+            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
+          );
+        }
+        const nonPushOnlyOps = countNonPushOnlyOPs(script);
+        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
+          throw new Error(
+            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
+          );
+        }
+        payment = p2wsh({ redeem: { output: script, network }, network });
+      }
+    } else {
+      throw new Error(`Error: Could not parse descriptor ${loggedExpression}`);
+    }
+
+    return {
+      ...(payment !== undefined ? { payment } : {}),
+      ...(expandedExpression !== undefined ? { expandedExpression } : {}),
+      ...(miniscript !== undefined ? { miniscript } : {}),
+      ...(expansionMap !== undefined ? { expansionMap } : {}),
+      ...(isSegwit !== undefined ? { isSegwit } : {}),
+      ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
+      ...(redeemScript !== undefined ? { redeemScript } : {}),
+      ...(witnessScript !== undefined ? { witnessScript } : {})
+    };
   };
 
   /**
@@ -210,278 +508,46 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         checksumRequired
       });
 
-      //addr(ADDR)
-      if (evaluatedExpression.match(RE.reAddrAnchored)) {
-        const matchedAddress = evaluatedExpression.match(
-          RE.reAddrAnchored
-        )?.[1]; //[1]-> whatever is found addr(->HERE<-)
-        if (!matchedAddress)
-          throw new Error(
-            `Error: could not get an address in ${evaluatedExpression}`
-          );
-        let output;
-        let payment;
-        try {
-          output = address.toOutputScript(matchedAddress, network);
-        } catch (e) {
-          throw new Error(`Error: invalid address ${matchedAddress}`);
-        }
-        try {
-          payment = p2pkh({ output, network });
-        } catch (e) {}
-        try {
-          payment = p2sh({ output, network });
-        } catch (e) {}
-        try {
-          payment = p2wpkh({ output, network });
-        } catch (e) {}
-        try {
-          payment = p2wsh({ output, network });
-        } catch (e) {}
-        try {
-          payment = p2tr({ output, network });
-        } catch (e) {}
-        if (!payment) {
-          throw new Error(`Error: invalid address ${matchedAddress}`);
-        }
-        this.#payment = payment;
-      }
-      //pk(KEY)
-      else if (evaluatedExpression.match(RE.rePkAnchored)) {
-        this.#isSegwit = false;
-        const keyExpression = evaluatedExpression.match(RE.reKeyExp)?.[0];
-        if (!keyExpression)
-          throw new Error(`Error: keyExpression could not me extracted`);
-        if (evaluatedExpression !== `pk(${keyExpression})`)
-          throw new Error(`Error: invalid expression ${expression}`);
-        this.#expandedExpression = 'pk(@0)';
-        this.#expansionMap = {
-          '@0': parseKeyExpression({
-            keyExpression,
-            network,
-            isSegwit: this.#isSegwit
-          })
-        };
-        const pubkey = this.#expansionMap['@0']!.pubkey;
-        //Note there exists no address for p2pk, but we can still use the script
-        this.#payment = p2pk({ pubkey, network });
-      }
-      //pkh(KEY) - legacy
-      else if (evaluatedExpression.match(RE.rePkhAnchored)) {
-        this.#isSegwit = false;
-        const keyExpression = evaluatedExpression.match(RE.reKeyExp)?.[0];
-        if (!keyExpression)
-          throw new Error(`Error: keyExpression could not me extracted`);
-        if (evaluatedExpression !== `pkh(${keyExpression})`)
-          throw new Error(`Error: invalid expression ${expression}`);
-        this.#expandedExpression = 'pkh(@0)';
-        this.#expansionMap = {
-          '@0': parseKeyExpression({
-            keyExpression,
-            network,
-            isSegwit: this.#isSegwit
-          })
-        };
-        const pubkey = this.#expansionMap['@0']!.pubkey;
-        this.#payment = p2pkh({ pubkey, network });
-      }
-      //sh(wpkh(KEY)) - nested segwit
-      else if (evaluatedExpression.match(RE.reShWpkhAnchored)) {
-        this.#isSegwit = true;
-        const keyExpression = evaluatedExpression.match(RE.reKeyExp)?.[0];
-        if (!keyExpression)
-          throw new Error(`Error: keyExpression could not me extracted`);
-        if (evaluatedExpression !== `sh(wpkh(${keyExpression}))`)
-          throw new Error(`Error: invalid expression ${expression}`);
-        this.#expandedExpression = 'sh(wpkh(@0))';
-        this.#expansionMap = {
-          '@0': parseKeyExpression({
-            keyExpression,
-            network,
-            isSegwit: this.#isSegwit
-          })
-        };
-        const pubkey = this.#expansionMap['@0']!.pubkey;
-        this.#payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
-        const redeemScript = this.#payment.redeem?.output;
-        if (!redeemScript)
-          throw new Error(
-            `Error: could not calculate redeemScript for ${expression}`
-          );
-        this.#redeemScript = redeemScript;
-      }
-      //wpkh(KEY) - native segwit
-      else if (evaluatedExpression.match(RE.reWpkhAnchored)) {
-        this.#isSegwit = true;
-        const keyExpression = evaluatedExpression.match(RE.reKeyExp)?.[0];
-        if (!keyExpression)
-          throw new Error(`Error: keyExpression could not me extracted`);
-        if (evaluatedExpression !== `wpkh(${keyExpression})`)
-          throw new Error(`Error: invalid expression ${expression}`);
-        this.#expandedExpression = 'wpkh(@0)';
-        this.#expansionMap = {
-          '@0': parseKeyExpression({
-            keyExpression,
-            network,
-            isSegwit: this.#isSegwit
-          })
-        };
-        const pubkey = this.#expansionMap['@0']!.pubkey;
-        this.#payment = p2wpkh({ pubkey, network });
-      }
-      //sh(wsh(miniscript))
-      else if (evaluatedExpression.match(RE.reShWshMiniscriptAnchored)) {
-        this.#isSegwit = true;
-        const miniscript = evaluatedExpression.match(
-          RE.reShWshMiniscriptAnchored
-        )?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
-        if (!miniscript)
-          throw new Error(
-            `Error: could not get miniscript in ${evaluatedExpression}`
-          );
-        this.#miniscript = miniscript;
-        ({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        } = expandMiniscript({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
-        }));
-        this.#expandedExpression = `sh(wsh(${this.#expandedMiniscript}))`;
+      const expandedResult = expand({
+        expression: evaluatedExpression,
+        loggedExpression: expression,
+        network,
+        allowMiniscriptInP2SH
+      });
+      if (!expandedResult.payment)
+        throw new Error(
+          `Error: could not extract a payment from ${expression}`
+        );
 
-        const script = miniscript2Script({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        });
-        this.#witnessScript = script;
-        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
-          throw new Error(
-            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
-          );
-        }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
-        this.#payment = p2sh({
-          redeem: p2wsh({ redeem: { output: script, network }, network }),
-          network
-        });
-        const redeemScript = this.#payment.redeem?.output;
-        if (!redeemScript)
-          throw new Error(
-            `Error: could not calculate redeemScript for ${expression}`
-          );
-        this.#redeemScript = redeemScript;
-      }
-      //sh(miniscript)
-      else if (evaluatedExpression.match(RE.reShMiniscriptAnchored)) {
-        //isSegwit false because we know it's a P2SH of a miniscript and not a
-        //P2SH that embeds a witness payment.
-        this.#isSegwit = false;
-        const miniscript = evaluatedExpression.match(
-          RE.reShMiniscriptAnchored
-        )?.[1]; //[1]-> whatever is found sh(->HERE<-)
-        if (!miniscript)
-          throw new Error(
-            `Error: could not get miniscript in ${evaluatedExpression}`
-          );
-        if (
-          allowMiniscriptInP2SH === false &&
-          //These top-level expressions within sh are allowed within sh.
-          //They can be parsed with miniscript2Script, but first we must make sure
-          //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
-          miniscript.search(
-            /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
-          ) !== 0
-        ) {
-          throw new Error(
-            `Error: Miniscript expressions can only be used in wsh`
-          );
-        }
-        this.#miniscript = miniscript;
-        ({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        } = expandMiniscript({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
-        }));
-        this.#expandedExpression = `sh(${this.#expandedMiniscript})`;
+      this.#payment = expandedResult.payment;
+      if (expandedResult.expandedExpression !== undefined)
+        this.#expandedExpression = expandedResult.expandedExpression;
+      if (expandedResult.miniscript !== undefined)
+        this.#miniscript = expandedResult.miniscript;
+      if (expandedResult.expansionMap !== undefined)
+        this.#expansionMap = expandedResult.expansionMap;
+      if (expandedResult.isSegwit !== undefined)
+        this.#isSegwit = expandedResult.isSegwit;
+      if (expandedResult.expandedMiniscript !== undefined)
+        this.#expandedMiniscript = expandedResult.expandedMiniscript;
+      if (expandedResult.redeemScript !== undefined)
+        this.#redeemScript = expandedResult.redeemScript;
+      if (expandedResult.witnessScript !== undefined)
+        this.#witnessScript = expandedResult.witnessScript;
 
-        const script = miniscript2Script({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        });
-        this.#redeemScript = script;
-        if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
-          throw new Error(
-            `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
-          );
-        }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
-        this.#payment = p2sh({ redeem: { output: script, network }, network });
-        if (Buffer.compare(script, this.getRedeemScript()!) !== 0)
-          throw new Error(
-            `Error: redeemScript was not correctly set to the payment in expression ${expression}`
-          );
-      }
-      //wsh(miniscript)
-      else if (evaluatedExpression.match(RE.reWshMiniscriptAnchored)) {
-        this.#isSegwit = true;
-        const miniscript = evaluatedExpression.match(
-          RE.reWshMiniscriptAnchored
-        )?.[1]; //[1]-> whatever is found wsh(->HERE<-)
-        if (!miniscript)
-          throw new Error(
-            `Error: could not get miniscript in ${evaluatedExpression}`
-          );
-        this.#miniscript = miniscript;
-        ({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        } = expandMiniscript({
-          miniscript,
-          isSegwit: this.#isSegwit,
-          network
-        }));
-        this.#expandedExpression = `wsh(${this.#expandedMiniscript})`;
-
-        const script = miniscript2Script({
-          expandedMiniscript: this.#expandedMiniscript,
-          expansionMap: this.#expansionMap
-        });
-        this.#witnessScript = script;
-        if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
-          throw new Error(
-            `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
-          );
-        }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
-        this.#payment = p2wsh({ redeem: { output: script, network }, network });
-      } else {
-        throw new Error(`Error: Could not parse descriptor ${expression}`);
-      }
       if (signersPubKeys) {
         this.#signersPubKeys = signersPubKeys;
       } else {
         if (this.#expansionMap) {
           this.#signersPubKeys = Object.values(this.#expansionMap).map(
-            keyInfo => keyInfo.pubkey
+            keyInfo => {
+              const pubkey = keyInfo.pubkey;
+              if (!pubkey)
+                throw new Error(
+                  `Error: could not extract a pubkey from ${expression}`
+                );
+              return pubkey;
+            }
           );
         } else {
           //We should only miss expansionMap in addr() expressions:
@@ -764,5 +830,5 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     }
   }
 
-  return { Descriptor, parseKeyExpression, ECPair, BIP32 };
+  return { Descriptor, parseKeyExpression, expand, ECPair, BIP32 };
 }

@@ -50,14 +50,17 @@ export function expandMiniscript({
   );
 
   //Do some assertions. Miniscript must not have duplicate keys, also all
-  //keyExpressions must produce a valid pubkey
-  const pubkeysHex: string[] = Object.values(expansionMap).map(keyInfo => {
-    if (!keyInfo.pubkey)
-      throw new Error(
-        `Error: keyExpression ${keyInfo.keyExpression} does not have a pubkey`
-      );
-    return keyInfo.pubkey.toString('hex');
-  });
+  //keyExpressions must produce a valid pubkey (unless it's ranged and we want
+  //to expand a generalized form, then we don't check)
+  const pubkeysHex: string[] = Object.values(expansionMap)
+    .filter(keyInfo => keyInfo.keyExpression.indexOf('*') === -1)
+    .map(keyInfo => {
+      if (!keyInfo.pubkey)
+        throw new Error(
+          `Error: keyExpression ${keyInfo.keyExpression} does not have a pubkey`
+        );
+      return keyInfo.pubkey.toString('hex');
+    });
   if (new Set(pubkeysHex).size !== pubkeysHex.length) {
     throw new Error(
       `Error: miniscript ${miniscript} is not sane: contains duplicate public keys.`
@@ -176,7 +179,7 @@ export function satisfyMiniscript({
   signatures.forEach(signature => {
     const pubkeyHex = signature.pubkey.toString('hex');
     const keyExpression = Object.keys(expansionMap).find(
-      k => expansionMap[k]?.pubkey.toString('hex') === pubkeyHex
+      k => expansionMap[k]?.pubkey?.toString('hex') === pubkeyHex
     );
     expandedSignatureMap['<sig(' + keyExpression + ')>'] =
       '<' + signature.signature.toString('hex') + '>';
