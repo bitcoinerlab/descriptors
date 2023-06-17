@@ -131,6 +131,54 @@ Here, `index` is the `inputIndex` obtained from the `updatePsbt()` method and `p
 
 For further information on using the Descriptor class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
 
+#### Tip: Parsing descriptors without instantiating a class
+
+`DescriptorsFactory` provides a convenient `expand()` function that allows you to parse a descriptor expression without the need to instantiate the `Descriptor` class. This function can be used as follows:
+
+```javascript
+const { expand } = descriptors.DescriptorsFactory(secp256k1);
+const result = expand({
+  expression: 'sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))',
+  network: networks.testnet, // One of bitcoinjs-lib `networks`
+                             // (https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js)
+                             // or another one with the same interface.
+  allowMiniscriptInP2SH: true // Optional flag to allow miniscript in P2SH
+});
+```
+
+The `expand()` function returns an object with the following properties:
+
+- `payment: Payment | undefined`: The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
+- `expandedExpression: string | undefined`: The expanded descriptor expression.
+- `miniscript: string | undefined`: The extracted miniscript from the expression, if any.
+- `expansionMap: ExpansionMap | undefined`: A map of key expressions in the descriptor to their corresponding expanded keys.
+- `isSegwit: boolean | undefined`: A boolean indicating whether the descriptor represents a SegWit script.
+- `expandedMiniscript: string | undefined`: The expanded miniscript, if any.
+- `redeemScript: Buffer | undefined`: The redeem script for the descriptor, if applicable.
+- `witnessScript: Buffer | undefined`: The witness script for the descriptor, if applicable.
+
+For the example expression provided, the `expandedExpression` and a portion of the `expansionMap` would be as follows:
+
+```javascript
+// expression: 'sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))'
+
+expandedExpression: 'sh(wsh(andor(pk(@0),older(8640),pk(@1))))',
+expansionMap: {
+  '@0': {
+    keyExpression:
+      '0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2'
+  },
+  '@1': {
+    keyExpression:
+      "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
+    keyPath: '/1/2/3/4/*',
+    originPath: "/49'/0'/0'",
+    path: "m/49'/0'/0'/1/2/3/4/*",
+    // Other relevant properties returned: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+  }
+}
+```
+
 ### keyExpressions and scriptExpressions
 
 This library also includes a set of function helpers that facilitate the generation of the `expression` parameter in the constructor of the `Descriptor` class. These helpers are located under the `scriptExpressions` module, which can be imported using the following statement:

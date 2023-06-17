@@ -7,6 +7,18 @@ import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
 const { Descriptor, expand } = DescriptorsFactory(ecc);
 
+function partialDeepEqual(obj) {
+  if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {
+    const newObj = {};
+    for (const key in obj) {
+      newObj[key] = partialDeepEqual(obj[key]);
+    }
+    return expect.objectContaining(newObj);
+  } else {
+    return obj;
+  }
+}
+
 for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
   describe(`Parse valid ${
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
@@ -23,28 +35,10 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
           });
         }).not.toThrow();
 
-        //TODO: This block below is only to generate thruth
-        if (fixtures === customFixtures) {
-          const cloneExpansionMap = obj =>
-            Object.entries(obj).reduce((acc, [key, value]) => {
-              acc[key] = [
-                'keyExpression',
-                'keyPath',
-                'originPath',
-                'path'
-              ].reduce((subAcc, subKey) => {
-                if (subKey in value) subAcc[subKey] = value[subKey];
-                return subAcc;
-              }, {});
-              return acc;
-            }, {});
-          if (expansion.expansionMap) {
-            console.log(fixture.expression, {
-              expandedExpression: expansion.expandedExpression,
-              expansionMap: cloneExpansionMap(expansion.expansionMap)
-            });
-          }
+        if (fixture.expansion) {
+          expect(expansion).toEqual(partialDeepEqual(fixture.expansion));
         }
+
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.expression}`);
         if (fixture.script) {

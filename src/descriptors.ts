@@ -146,7 +146,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
    * @param {boolean} [params.allowMiniscriptInP2SH=false] Flag to allow miniscript in P2SH. If not provided, defaults to false.
    *
    * @returns {Object} An object containing various details about the expanded descriptor:
-   *     - payment: The corresponding Bitcoin script (Payment) for the provided expression.
+   *     - payment: The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
    *     - expandedExpression: The expanded descriptor expression.
    *     - miniscript: The extracted miniscript from the expression, if any.
    *     - expansionMap: A map of key expressions in the descriptor to their corresponding expanded keys.
