@@ -55,7 +55,8 @@ export interface ParseKeyExpression {
 export interface Expand {
   (params: {
     expression: string;
-    loggedExpression?: string;
+    index?: number;
+    checksumRequired?: boolean;
     network?: Network;
     allowMiniscriptInP2SH?: boolean;
   }): {
@@ -67,6 +68,7 @@ export interface Expand {
     expandedMiniscript?: string;
     redeemScript?: Buffer;
     witnessScript?: Buffer;
+    isRanged: boolean;
   };
 }
 
