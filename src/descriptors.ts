@@ -80,21 +80,25 @@ function evaluate({
       throw new Error(`Error: invalid descriptor checksum for ${expression}`);
     }
   }
-  const mWildcard = evaluatedExpression.match(/\*/g);
-  if (mWildcard && mWildcard.length > 0) {
-    if (index === undefined)
-      throw new Error(`Error: index was not provided for ranged descriptor`);
-    if (!Number.isInteger(index) || index < 0)
-      throw new Error(`Error: invalid index ${index}`);
-    //From  https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
-    //To prevent a combinatorial explosion of the search space, if more than
-    //one of the multi() key arguments is a BIP32 wildcard path ending in /* or
-    //*', the multi() expression only matches multisig scripts with the ith
-    //child key from each wildcard path in lockstep, rather than scripts with
-    //any combination of child keys from each wildcard path.
+  if (index !== undefined) {
+    const mWildcard = evaluatedExpression.match(/\*/g);
+    if (mWildcard && mWildcard.length > 0) {
+      //From  https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
+      //To prevent a combinatorial explosion of the search space, if more than
+      //one of the multi() key arguments is a BIP32 wildcard path ending in /* or
+      //*', the multi() expression only matches multisig scripts with the ith
+      //child key from each wildcard path in lockstep, rather than scripts with
+      //any combination of child keys from each wildcard path.
 
-    //We extend this reasoning for musig for all cases
-    evaluatedExpression = evaluatedExpression.replaceAll('*', index.toString());
+      //We extend this reasoning for musig for all cases
+      evaluatedExpression = evaluatedExpression.replaceAll(
+        '*',
+        index.toString()
+      );
+    } else
+      throw new Error(
+        `Error: index passed for non-ranged descriptor: ${expression}`
+      );
   }
   return evaluatedExpression;
 }
@@ -154,17 +158,21 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
    *     - expandedMiniscript: The expanded miniscript, if any.
    *     - redeemScript: The redeem script for the descriptor, if applicable.
    *     - witnessScript: The witness script for the descriptor, if applicable.
+   *     - isRanged: Whether this expression representas a ranged-descriptor
+   *     - canonicalExpression: This is the preferred or authoritative
+   *     representation of the descriptor expression. It standardizes the
+   *     descriptor by replacing indexes on wildcards and eliminating checksums.
+   *     This helps ensure consistency and facilitates efficient interpretation and handling by systems or software.
    *
    * @throws {Error} Throws an error if the descriptor cannot be parsed or does not conform to the expected format.
    */
   const expand: Expand = ({
     expression,
-    loggedExpression, //this is the expression that will be used for logging error messages
+    index,
+    checksumRequired = false,
     network = networks.bitcoin,
     allowMiniscriptInP2SH = false
   }) => {
-    //remove the checksum before proceeding:
-    expression = expression.replace(new RegExp(RE.reChecksum + '$'), '');
     let expandedExpression: string | undefined;
     let miniscript: string | undefined;
     let expansionMap: ExpansionMap | undefined;
@@ -174,15 +182,25 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     let witnessScript: Buffer | undefined;
     let redeemScript: Buffer | undefined;
     const isRanged = expression.indexOf('*') !== -1;
-    if (!loggedExpression) loggedExpression = expression;
+
+    if (index !== undefined)
+      if (!Number.isInteger(index) || index < 0)
+        throw new Error(`Error: invalid index ${index}`);
+
+    //Verify and remove checksum (if exists) and
+    //particularize range descriptor for index (if desc is range descriptor)
+    const canonicalExpression = evaluate({
+      expression,
+      ...(index !== undefined ? { index } : {}),
+      checksumRequired
+    });
+
     //addr(ADDR)
-    if (expression.match(RE.reAddrAnchored)) {
+    if (canonicalExpression.match(RE.reAddrAnchored)) {
       if (isRanged) throw new Error(`Error: addr() cannot be ranged`);
-      const matchedAddress = expression.match(RE.reAddrAnchored)?.[1]; //[1]-> whatever is found addr(->HERE<-)
+      const matchedAddress = canonicalExpression.match(RE.reAddrAnchored)?.[1]; //[1]-> whatever is found addr(->HERE<-)
       if (!matchedAddress)
-        throw new Error(
-          `Error: could not get an address in ${loggedExpression}`
-        );
+        throw new Error(`Error: could not get an address in ${expression}`);
       let output;
       try {
         output = address.toOutputScript(matchedAddress, network);
@@ -209,13 +227,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
     }
     //pk(KEY)
-    else if (expression.match(RE.rePkAnchored)) {
+    else if (canonicalExpression.match(RE.rePkAnchored)) {
       isSegwit = false;
-      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
-      if (expression !== `pk(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      if (canonicalExpression !== `pk(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'pk(@0)';
       expansionMap = {
         '@0': parseKeyExpression({ keyExpression, network, isSegwit })
@@ -225,19 +243,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         //Note there exists no address for p2pk, but we can still use the script
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${loggedExpression}`
+            `Error: could not extract a pubkey from ${expression}`
           );
         payment = p2pk({ pubkey, network });
       }
     }
     //pkh(KEY) - legacy
-    else if (expression.match(RE.rePkhAnchored)) {
+    else if (canonicalExpression.match(RE.rePkhAnchored)) {
       isSegwit = false;
-      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
-      if (expression !== `pkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      if (canonicalExpression !== `pkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'pkh(@0)';
       expansionMap = {
         '@0': parseKeyExpression({ keyExpression, network, isSegwit })
@@ -246,19 +264,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         const pubkey = expansionMap['@0']!.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${loggedExpression}`
+            `Error: could not extract a pubkey from ${expression}`
           );
         payment = p2pkh({ pubkey, network });
       }
     }
     //sh(wpkh(KEY)) - nested segwit
-    else if (expression.match(RE.reShWpkhAnchored)) {
+    else if (canonicalExpression.match(RE.reShWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
-      if (expression !== `sh(wpkh(${keyExpression}))`)
-        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      if (canonicalExpression !== `sh(wpkh(${keyExpression}))`)
+        throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'sh(wpkh(@0))';
       expansionMap = {
         '@0': parseKeyExpression({ keyExpression, network, isSegwit })
@@ -267,24 +285,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         const pubkey = expansionMap['@0']!.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${loggedExpression}`
+            `Error: could not extract a pubkey from ${expression}`
           );
         payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
         redeemScript = payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
-            `Error: could not calculate redeemScript for ${loggedExpression}`
+            `Error: could not calculate redeemScript for ${expression}`
           );
       }
     }
     //wpkh(KEY) - native segwit
-    else if (expression.match(RE.reWpkhAnchored)) {
+    else if (canonicalExpression.match(RE.reWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = expression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
-      if (expression !== `wpkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${loggedExpression}`);
+      if (canonicalExpression !== `wpkh(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'wpkh(@0)';
       expansionMap = {
         '@0': parseKeyExpression({ keyExpression, network, isSegwit })
@@ -293,19 +311,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         const pubkey = expansionMap['@0']!.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${loggedExpression}`
+            `Error: could not extract a pubkey from ${expression}`
           );
         payment = p2wpkh({ pubkey, network });
       }
     }
     //sh(wsh(miniscript))
-    else if (expression.match(RE.reShWshMiniscriptAnchored)) {
+    else if (canonicalExpression.match(RE.reShWshMiniscriptAnchored)) {
       isSegwit = true;
-      miniscript = expression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
+      miniscript = canonicalExpression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${loggedExpression}`
-        );
+        throw new Error(`Error: could not get miniscript in ${expression}`);
       ({ expandedMiniscript, expansionMap } = expandMiniscript({
         miniscript,
         isSegwit,
@@ -334,20 +350,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         redeemScript = payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
-            `Error: could not calculate redeemScript for ${loggedExpression}`
+            `Error: could not calculate redeemScript for ${expression}`
           );
       }
     }
     //sh(miniscript)
-    else if (expression.match(RE.reShMiniscriptAnchored)) {
+    else if (canonicalExpression.match(RE.reShMiniscriptAnchored)) {
       //isSegwit false because we know it's a P2SH of a miniscript and not a
       //P2SH that embeds a witness payment.
       isSegwit = false;
-      miniscript = expression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
+      miniscript = canonicalExpression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
       if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${loggedExpression}`
-        );
+        throw new Error(`Error: could not get miniscript in ${expression}`);
       if (
         allowMiniscriptInP2SH === false &&
         //These top-level expressions within sh are allowed within sh.
@@ -386,13 +400,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }
     }
     //wsh(miniscript)
-    else if (expression.match(RE.reWshMiniscriptAnchored)) {
+    else if (canonicalExpression.match(RE.reWshMiniscriptAnchored)) {
       isSegwit = true;
-      miniscript = expression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
+      miniscript = canonicalExpression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
       if (!miniscript)
-        throw new Error(
-          `Error: could not get miniscript in ${loggedExpression}`
-        );
+        throw new Error(`Error: could not get miniscript in ${expression}`);
       ({ expandedMiniscript, expansionMap } = expandMiniscript({
         miniscript,
         isSegwit,
@@ -417,7 +429,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     } else {
-      throw new Error(`Error: Could not parse descriptor ${loggedExpression}`);
+      throw new Error(`Error: Could not parse descriptor ${expression}`);
     }
 
     return {
@@ -428,7 +440,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       ...(isSegwit !== undefined ? { isSegwit } : {}),
       ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
       ...(redeemScript !== undefined ? { redeemScript } : {}),
-      ...(witnessScript !== undefined ? { witnessScript } : {})
+      ...(witnessScript !== undefined ? { witnessScript } : {}),
+      isRanged,
+      canonicalExpression
     };
   };
 
@@ -500,20 +514,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (typeof expression !== 'string')
         throw new Error(`Error: invalid descriptor type`);
 
-      //Verify and remove checksum (if exists) and
-      //particularize range descriptor for index (if desc is range descriptor)
-      const evaluatedExpression = evaluate({
+      const expandedResult = expand({
         expression,
         ...(index !== undefined ? { index } : {}),
-        checksumRequired
-      });
-
-      const expandedResult = expand({
-        expression: evaluatedExpression,
-        loggedExpression: expression,
+        checksumRequired,
         network,
         allowMiniscriptInP2SH
       });
+      if (expandedResult.isRanged && index === undefined)
+        throw new Error(`Error: index was not provided for ranged descriptor`);
       if (!expandedResult.payment)
         throw new Error(
           `Error: could not extract a payment from ${expression}`
@@ -551,7 +560,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
           );
         } else {
           //We should only miss expansionMap in addr() expressions:
-          if (!evaluatedExpression.match(RE.reAddrAnchored)) {
+          if (!expandedResult.canonicalExpression.match(RE.reAddrAnchored)) {
             throw new Error(
               `Error: expansionMap not available for expression ${expression} that is not an address`
             );

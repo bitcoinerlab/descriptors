@@ -79,8 +79,8 @@ constructor({
               // to denote an arbitrary index.
   index,      // The descriptor's index in the case of a range descriptor
               // (must be an integer >= 0).
-  checksumRequired = false, // Flag indicating if the descriptor is required
-                            // to include a checksum.
+  checksumRequired = false // Optional flag indicating if the descriptor is
+                           // required to include a checksum. Defaults to false.
   allowMiniscriptInP2SH = false, // Flag indicating if this instance can parse
                                  // and generate script satisfactions for
                                  // sh(miniscript) top-level expressions of
@@ -142,7 +142,15 @@ const result = expand({
   network: networks.testnet, // One of bitcoinjs-lib `networks`
                              // (https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js)
                              // or another one with the same interface.
-  allowMiniscriptInP2SH: true // Optional flag to allow miniscript in P2SH
+                             // Optional (defaults to bitcoin mainnet). 
+  allowMiniscriptInP2SH: true, // Optional flag to allow miniscript in P2SH.
+                              // Defaults to false.
+  index, // Optional. The descriptor's index in the case of a range descriptor
+         // (must be an integer >= 0). If not set for ranged descriptors, then 
+         // the function will return an expansionMap with ranged keyPaths and
+         // won't compute Payment or scripts.
+  checksumRequired = false // Optional flag indicating if the descriptor is
+                           // required to include a checksum. Defaults to false.
 });
 ```
 
@@ -156,6 +164,8 @@ The `expand()` function returns an object with the following properties:
 - `expandedMiniscript: string | undefined`: The expanded miniscript, if any.
 - `redeemScript: Buffer | undefined`: The redeem script for the descriptor, if applicable.
 - `witnessScript: Buffer | undefined`: The witness script for the descriptor, if applicable.
+- `isRanged: boolean` : Whether the expression represents a ranged descriptor.
+- `canonicalExpression` : This is the preferred or authoritative representation of the descriptor expression. It standardizes the descriptor by replacing indexes on wildcards and eliminating checksums.
 
 For the example expression provided, the `expandedExpression` and a portion of the `expansionMap` would be as follows:
 
