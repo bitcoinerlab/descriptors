@@ -88,18 +88,25 @@ const keys: {
           const pubkey = node.publicKey;
           if (key === spendingBranch) {
             if (keyExpressionType === 'BIP32') {
-              miniscript = miniscript.replaceAll(key, keyExpression);
+              miniscript = miniscript.replace(
+                new RegExp(key, 'g'),
+                keyExpression
+              );
               signersPubKeys.push(pubkey);
             } else {
-              miniscript = miniscript.replaceAll(
-                key,
+              miniscript = miniscript.replace(
+                new RegExp(key, 'g'),
                 ecpair.publicKey.toString('hex')
               );
+
               signersPubKeys.push(ecpair.publicKey);
             }
           } else {
             //For the non spending branch we can simply use the pubKey as key expressions
-            miniscript = miniscript.replaceAll(key, pubkey.toString('hex'));
+            miniscript = miniscript.replace(
+              new RegExp(key, 'g'),
+              pubkey.toString('hex')
+            );
           }
         }
         const expression = template.replace('SCRIPT', miniscript);
