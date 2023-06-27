@@ -48,7 +48,9 @@ const MAX_OPS_PER_SCRIPT = 201;
 function countNonPushOnlyOPs(script: Buffer): number {
   const decompile = bscript.decompile(script);
   if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
-  return decompile.filter(op => op > bscript.OPS['OP_16']!).length;
+  return decompile.filter(
+    op => typeof op === 'number' && op > bscript.OPS['OP_16']!
+  ).length;
 }
 
 /*
