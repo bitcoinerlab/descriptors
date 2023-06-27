@@ -194,6 +194,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       ...(index !== undefined ? { index } : {}),
       checksumRequired
     });
+    const isCanonicalRanged = canonicalExpression.indexOf('*') !== -1;
 
     //addr(ADDR)
     if (canonicalExpression.match(RE.reAddrAnchored)) {
@@ -235,11 +236,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (canonicalExpression !== `pk(${keyExpression})`)
         throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'pk(@0)';
-      expansionMap = {
-        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
-      };
-      if (!isRanged) {
-        const pubkey = expansionMap['@0']!.pubkey;
+      const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
         //Note there exists no address for p2pk, but we can still use the script
         if (!pubkey)
           throw new Error(
@@ -257,11 +257,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (canonicalExpression !== `pkh(${keyExpression})`)
         throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'pkh(@0)';
-      expansionMap = {
-        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
-      };
-      if (!isRanged) {
-        const pubkey = expansionMap['@0']!.pubkey;
+      const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
             `Error: could not extract a pubkey from ${expression}`
@@ -278,11 +277,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (canonicalExpression !== `sh(wpkh(${keyExpression}))`)
         throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'sh(wpkh(@0))';
-      expansionMap = {
-        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
-      };
-      if (!isRanged) {
-        const pubkey = expansionMap['@0']!.pubkey;
+      const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
             `Error: could not extract a pubkey from ${expression}`
@@ -304,11 +302,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       if (canonicalExpression !== `wpkh(${keyExpression})`)
         throw new Error(`Error: invalid expression ${expression}`);
       expandedExpression = 'wpkh(@0)';
-      expansionMap = {
-        '@0': parseKeyExpression({ keyExpression, network, isSegwit })
-      };
-      if (!isRanged) {
-        const pubkey = expansionMap['@0']!.pubkey;
+      const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
             `Error: could not extract a pubkey from ${expression}`
@@ -329,7 +326,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }));
       expandedExpression = `sh(wsh(${expandedMiniscript}))`;
 
-      if (!isRanged) {
+      if (!isCanonicalRanged) {
         const script = miniscript2Script({ expandedMiniscript, expansionMap });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -382,7 +379,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }));
       expandedExpression = `sh(${expandedMiniscript})`;
 
-      if (!isRanged) {
+      if (!isCanonicalRanged) {
         const script = miniscript2Script({ expandedMiniscript, expansionMap });
         redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
@@ -412,7 +409,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       }));
       expandedExpression = `wsh(${expandedMiniscript})`;
 
-      if (!isRanged) {
+      if (!isCanonicalRanged) {
         const script = miniscript2Script({ expandedMiniscript, expansionMap });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
