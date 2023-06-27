@@ -64,8 +64,8 @@
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.20.11",
     "@ledgerhq/hw-transport-node-hid": "^6.27.12",
-    "@typescript-eslint/eslint-plugin": "^5.53.0",
-    "@typescript-eslint/parser": "^5.53.0",
+    "@typescript-eslint/eslint-plugin": "^5.60.1",
+    "@typescript-eslint/parser": "^5.60.1",
     "babel-plugin-transform-import-meta": "^2.2.0",
     "better-docs": "^2.7.2",
     "bip39": "^3.0.4",
@@ -80,6 +80,7 @@
     "path": "^0.12.7",
     "prettier": "^2.8.8",
     "regtest-client": "^0.2.0",
-    "ts-node-dev": "^2.0.0"
+    "ts-node-dev": "^2.0.0",
+    "typescript": "5.0"
   }
 }

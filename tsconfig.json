@@ -23,7 +23,8 @@
     "checkJs": true,
     // Everything below are custom changes for this app
     "allowJs": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "ignoreDeprecations": "5.0"
   },
   "include": ["./src/**/*.ts"]
 }
