@@ -273,15 +273,26 @@ To finalize the `psbt`, you can either call the method `finalizePsbtInput({ inde
 
 This library currently provides integration with Ledger wallets. Support for more devices is planned.
 
-To use a Ledger device for signing, you can import the necessary functions as follows:
+Before we dive in, note that, in addition to the documentation below, it is highly recommended to visit the [Ledger Playground](https://bitcoinerlab.com/guides/ledger-programming) with an interactive code sandbox of this lib interacting with a Ledger device.
+
+To use this library with Ledger devices, you must first install Ledger support:
+
+```bash
+npm install ledger-bitcoin
+```
+
+For Ledger device signing, import the necessary functions as follows:
 
 ```javascript
+import Transport from '@ledgerhq/hw-transport-node-hid'; //or hw-transport-web-hid, for web
+import { AppClient } from 'ledger-bitcoin';
 import { ledger } from '@bitcoinerlab/descriptors';
 ```
 
-You can then use the following code to assert that the Ledger app is running Bitcoin Test version 2.1.0 or higher, and to create a new Ledger client:
+Then, use the following code to assert that the Ledger app is running Bitcoin Test version 2.1.0 or higher, and to create a new Ledger client:
 
 ```javascript
+const transport = await Transport.create();
 //Throws if not running Bitcoin Test >= 2.1.0
 await ledger.assertLedgerApp({
   transport,
@@ -289,12 +300,12 @@ await ledger.assertLedgerApp({
   minVersion: '2.1.0'
 });
 
-const ledgerClient = new ledger.AppClient(transport);
+const ledgerClient = new AppClient(transport);
 ```
 
 Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).
 
-To register the policies of non-standard descriptors on the Ledger device, you can use the following code:
+To register the policies of non-standard descriptors on the Ledger device, use the following code:
 
 ```javascript
 await ledger.registerLedgerWallet({
@@ -307,7 +318,7 @@ await ledger.registerLedgerWallet({
 
 This code will auto-skip the policy registration process if it already exists. Please refer to [Ledger documentation](https://github.com/LedgerHQ/app-bitcoin-new/blob/develop/doc/wallet.md) to learn more about their Wallet Policies registration procedures.
 
-Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored.
+Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
 
 <a name="documentation"></a>
 

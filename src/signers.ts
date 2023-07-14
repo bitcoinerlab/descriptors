@@ -4,16 +4,9 @@
 import type { Psbt } from 'bitcoinjs-lib';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import {
-  PsbtV2,
-  DefaultWalletPolicy,
-  AppClient,
-  WalletPolicy,
-  DefaultDescriptorTemplate,
-  PartialSignature
-} from 'ledger-bitcoin';
 import type { DescriptorInterface } from './types';
 import {
+  importAndValidateLedgerBitcoin,
   comparePolicies,
   LedgerPolicy,
   ledgerPolicyFromState,
@@ -21,7 +14,17 @@ import {
   descriptorToLedgerFormat,
   LedgerState
 } from './ledger';
-
+type DefaultDescriptorTemplate =
+  | 'pkh(@0/**)'
+  | 'sh(wpkh(@0/**))'
+  | 'wpkh(@0/**)'
+  | 'tr(@0/**)';
+declare class PartialSignature {
+  readonly pubkey: Buffer;
+  readonly signature: Buffer;
+  readonly tapleafHash?: Buffer;
+  constructor(pubkey: Buffer, signature: Buffer, tapleafHash?: Buffer);
+}
 export function signInputECPair({
   psbt,
   index,
@@ -84,9 +87,14 @@ export async function signInputLedger({
   psbt: Psbt;
   index: number;
   descriptor: DescriptorInterface;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<void> {
+  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
+    await importAndValidateLedgerBitcoin(ledgerClient);
+  if (!(ledgerClient instanceof AppClient))
+    throw new Error(`Error: pass a valid ledgerClient`);
+
   const result = await descriptorToLedgerFormat({
     descriptor,
     ledgerClient,
@@ -149,9 +157,13 @@ export async function signLedger({
 }: {
   psbt: Psbt;
   descriptors: DescriptorInterface[];
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<void> {
+  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
+    await importAndValidateLedgerBitcoin(ledgerClient);
+  if (!(ledgerClient instanceof AppClient))
+    throw new Error(`Error: pass a valid ledgerClient`);
   const ledgerPolicies = [];
   for (const descriptor of descriptors) {
     const policy =

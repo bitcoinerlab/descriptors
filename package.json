@@ -1,7 +1,7 @@
 {
   "name": "@bitcoinerlab/descriptors",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,14 +52,20 @@
   "files": [
     "dist"
   ],
-  "COMMENT wrt ledger-bitcoin below": "ledger-bitcoin is installed using an alias. This package can be replaced with the official `ledger-bitcoin` npm package once [this PR](https://github.com/LedgerHQ/app-bitcoin-new/pull/147) is published to npm (likely in version > 0.2.1)",
   "dependencies": {
     "@bitcoinerlab/miniscript": "^1.2.1",
     "@bitcoinerlab/secp256k1": "^1.0.2",
     "bip32": "^3.1.0",
     "bitcoinjs-lib": "^6.1.0",
-    "ecpair": "^2.1.0",
-    "ledger-bitcoin": "npm:@bitcoinerlab/ledger@^0.2.0"
+    "ecpair": "^2.1.0"
+  },
+  "peerDependencies": {
+    "ledger-bitcoin": "^0.2.2"
+  },
+  "peerDependenciesMeta": {
+    "ledger-bitcoin": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.20.11",
@@ -77,6 +83,7 @@
     "fs": "^0.0.1-security",
     "jest": "^29.4.3",
     "jsdoc": "^3.6.11",
+    "ledger-bitcoin": "^0.2.2",
     "path": "^0.12.7",
     "prettier": "^2.8.8",
     "regtest-client": "^0.2.0",

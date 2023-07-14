@@ -84,7 +84,8 @@ import {
 } from '../../src/';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
-const { registerLedgerWallet, AppClient, assertLedgerApp } = ledger;
+const { registerLedgerWallet, assertLedgerApp } = ledger;
+import { AppClient } from 'ledger-bitcoin';
 const { Descriptor, BIP32 } = DescriptorsFactory(ecc);
 
 import { compilePolicy } from '@bitcoinerlab/miniscript';

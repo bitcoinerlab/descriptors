@@ -10,7 +10,6 @@ import {
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
-import type { AppClient } from 'ledger-bitcoin';
 
 import * as RE from './re';
 
@@ -194,7 +193,7 @@ export async function keyExpressionLedger({
   change,
   index
 }: {
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
   originPath: string;
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)

@@ -1,4 +1,3 @@
-import type { AppClient } from 'ledger-bitcoin';
 import { networks, Network } from 'bitcoinjs-lib';
 import type { LedgerState } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
@@ -76,7 +75,7 @@ function standardExpressionsLedgerMaker(
     change,
     index
   }: {
-    ledgerClient: AppClient;
+    ledgerClient: unknown;
     ledgerState: LedgerState;
     network?: Network;
     account: number;

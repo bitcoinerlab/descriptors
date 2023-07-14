@@ -25,9 +25,42 @@
  */
 
 import type { DescriptorInterface } from './types';
-import { AppClient, WalletPolicy } from 'ledger-bitcoin';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
+
+/**
+ * Dynamically imports the 'ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
+ *
+ * @async
+ * @param {unknown} ledgerClient - An optional parameter that, if provided, is checked to see if it's an instance of `AppClient`.
+ * @throws {Error} Throws an error if `ledgerClient` is provided but is not an instance of `AppClient`.
+ * @throws {Error} Throws an error if the 'ledger-bitcoin' module cannot be imported. This typically indicates that the 'ledger-bitcoin' peer dependency is not installed.
+ * @returns {Promise<any>} Returns a promise that resolves with the entire 'ledger-bitcoin' module if it can be successfully imported.
+ *
+ * @example
+ *
+ * importAndValidateLedgerBitcoin(ledgerClient)
+ *   .then((module) => {
+ *     const { AppClient, PsbtV2, DefaultWalletPolicy, WalletPolicy, DefaultDescriptorTemplate, PartialSignature } = module;
+ *     // Use the imported objects...
+ *   })
+ *   .catch((error) => console.error(error));
+ */
+export async function importAndValidateLedgerBitcoin(ledgerClient?: unknown) {
+  let ledgerBitcoinModule;
+  try {
+    ledgerBitcoinModule = await import('ledger-bitcoin');
+  } catch (error) {
+    throw new Error(
+      'Could not import "ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
+    );
+  }
+  const { AppClient } = ledgerBitcoinModule;
+  if (ledgerClient !== undefined && !(ledgerClient instanceof AppClient)) {
+    throw new Error('Error: invalid AppClient instance');
+  }
+  return ledgerBitcoinModule;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function ledgerAppInfo(transport: any) {
@@ -124,9 +157,12 @@ export async function getLedgerMasterFingerPrint({
   ledgerClient,
   ledgerState
 }: {
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<Buffer> {
+  const { AppClient } = await importAndValidateLedgerBitcoin(ledgerClient);
+  if (!(ledgerClient instanceof AppClient))
+    throw new Error(`Error: pass a valid ledgerClient`);
   let masterFingerprint = ledgerState.masterFingerprint;
   if (!masterFingerprint) {
     masterFingerprint = Buffer.from(
@@ -143,9 +179,12 @@ export async function getLedgerXpub({
   ledgerState
 }: {
   originPath: string;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<string> {
+  const { AppClient } = await importAndValidateLedgerBitcoin(ledgerClient);
+  if (!(ledgerClient instanceof AppClient))
+    throw new Error(`Error: pass a valid ledgerClient`);
   if (!ledgerState.xpubs) ledgerState.xpubs = {};
   let xpub = ledgerState.xpubs[originPath];
   if (!xpub) {
@@ -155,6 +194,8 @@ export async function getLedgerXpub({
     } catch (err) {
       xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, true);
     }
+    if (typeof xpub !== 'string')
+      throw new Error(`Error: ledgerClient did not return a valid xpub`);
     ledgerState.xpubs[originPath] = xpub;
   }
   return xpub;
@@ -191,7 +232,7 @@ export async function descriptorToLedgerFormat({
   ledgerState
 }: {
   descriptor: DescriptorInterface;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
   const expandedExpression = descriptor.expand().expandedExpression;
@@ -288,10 +329,15 @@ export async function registerLedgerWallet({
   policyName
 }: {
   descriptor: DescriptorInterface;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
   policyName: string;
 }) {
+  const { WalletPolicy, AppClient } = await importAndValidateLedgerBitcoin(
+    ledgerClient
+  );
+  if (!(ledgerClient instanceof AppClient))
+    throw new Error(`Error: pass a valid ledgerClient`);
   const result = await descriptorToLedgerFormat({
     descriptor,
     ledgerClient,
@@ -339,7 +385,7 @@ export async function ledgerPolicyFromStandard({
   ledgerState
 }: {
   descriptor: DescriptorInterface;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {
   const result = await descriptorToLedgerFormat({
@@ -388,7 +434,7 @@ export async function ledgerPolicyFromState({
   ledgerState
 }: {
   descriptor: DescriptorInterface;
-  ledgerClient: AppClient;
+  ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {
   const result = await descriptorToLedgerFormat({
