@@ -91,7 +91,9 @@ export async function signInputLedger({
   ledgerState: LedgerState;
 }): Promise<void> {
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
-    await importAndValidateLedgerBitcoin(ledgerClient);
+    (await importAndValidateLedgerBitcoin(
+      ledgerClient
+    )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
@@ -161,7 +163,9 @@ export async function signLedger({
   ledgerState: LedgerState;
 }): Promise<void> {
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
-    await importAndValidateLedgerBitcoin(ledgerClient);
+    (await importAndValidateLedgerBitcoin(
+      ledgerClient
+    )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   const ledgerPolicies = [];

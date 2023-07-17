@@ -35,7 +35,7 @@ import { reOriginPath } from './re';
  * @param {unknown} ledgerClient - An optional parameter that, if provided, is checked to see if it's an instance of `AppClient`.
  * @throws {Error} Throws an error if `ledgerClient` is provided but is not an instance of `AppClient`.
  * @throws {Error} Throws an error if the 'ledger-bitcoin' module cannot be imported. This typically indicates that the 'ledger-bitcoin' peer dependency is not installed.
- * @returns {Promise<any>} Returns a promise that resolves with the entire 'ledger-bitcoin' module if it can be successfully imported.
+ * @returns {Promise<unknown>} Returns a promise that resolves with the entire 'ledger-bitcoin' module if it can be successfully imported. We force it to return an unknown type so that the declaration of this function won't break projects that don't use ledger-bitcoin as dependency
  *
  * @example
  *
@@ -46,7 +46,9 @@ import { reOriginPath } from './re';
  *   })
  *   .catch((error) => console.error(error));
  */
-export async function importAndValidateLedgerBitcoin(ledgerClient?: unknown) {
+export async function importAndValidateLedgerBitcoin(
+  ledgerClient?: unknown
+): Promise<unknown> {
   let ledgerBitcoinModule;
   try {
     ledgerBitcoinModule = await import('ledger-bitcoin');
@@ -160,7 +162,9 @@ export async function getLedgerMasterFingerPrint({
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<Buffer> {
-  const { AppClient } = await importAndValidateLedgerBitcoin(ledgerClient);
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    ledgerClient
+  )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   let masterFingerprint = ledgerState.masterFingerprint;
@@ -182,7 +186,9 @@ export async function getLedgerXpub({
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<string> {
-  const { AppClient } = await importAndValidateLedgerBitcoin(ledgerClient);
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    ledgerClient
+  )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   if (!ledgerState.xpubs) ledgerState.xpubs = {};
@@ -333,9 +339,9 @@ export async function registerLedgerWallet({
   ledgerState: LedgerState;
   policyName: string;
 }) {
-  const { WalletPolicy, AppClient } = await importAndValidateLedgerBitcoin(
+  const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  );
+  )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   const result = await descriptorToLedgerFormat({
