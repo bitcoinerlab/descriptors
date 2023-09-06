@@ -3,6 +3,10 @@
 node_modules/
 dist/
 docs/
+webdocs/
+test/**/*.js
+test/**/*.d.ts
+!test/tools/generateBitcoinCoreFixtures.js
 example.js
 example1To1Segwit.js
 README.draft.md

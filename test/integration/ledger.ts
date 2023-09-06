@@ -81,7 +81,7 @@ import {
   DescriptorInterface,
   ledger,
   LedgerState
-} from '../../src/';
+} from '../../dist/';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;

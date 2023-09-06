@@ -24,7 +24,7 @@ import {
   scriptExpressions,
   keyExpressionBIP32,
   signers
-} from '../../src/';
+} from '../../dist/';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 

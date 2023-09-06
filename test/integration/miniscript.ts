@@ -26,7 +26,7 @@ console.log(
 );
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../src/';
+import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 
