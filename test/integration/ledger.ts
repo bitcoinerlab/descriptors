@@ -78,7 +78,7 @@ import {
   keyExpressionLedger,
   scriptExpressions,
   DescriptorsFactory,
-  DescriptorInterface,
+  Descriptor,
   ledger,
   LedgerState
 } from '../../dist/';
@@ -105,7 +105,7 @@ let txId: string;
 let vout: number;
 let inputIndex: number;
 //In this array, we will keep track of the descriptors of each input:
-const psbtInputDescriptors: DescriptorInterface[] = [];
+const psbtInputDescriptors: Descriptor[] = [];
 
 (async () => {
   let transport;

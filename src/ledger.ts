@@ -24,7 +24,7 @@
  * All the conditions above are checked in function descriptorToLedgerFormat.
  */
 
-import type { DescriptorInterface } from './types';
+import type { Descriptor } from './descriptors';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
 
@@ -237,7 +237,7 @@ export async function descriptorToLedgerFormat({
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInterface;
+  descriptor: Descriptor;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
@@ -334,7 +334,7 @@ export async function registerLedgerWallet({
   ledgerState,
   policyName
 }: {
-  descriptor: DescriptorInterface;
+  descriptor: Descriptor;
   ledgerClient: unknown;
   ledgerState: LedgerState;
   policyName: string;
@@ -390,7 +390,7 @@ export async function ledgerPolicyFromStandard({
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInterface;
+  descriptor: Descriptor;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {
@@ -439,7 +439,7 @@ export async function ledgerPolicyFromState({
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInterface;
+  descriptor: Descriptor;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {

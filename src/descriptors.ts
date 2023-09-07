@@ -21,11 +21,8 @@ import type {
   Preimage,
   TimeConstraints,
   ExpansionMap,
-  ParseKeyExpression,
   Expand,
-  DescriptorInterfaceConstructor,
-  DescriptorInterface,
-  DescriptorInfo
+  ParseKeyExpression
 } from './types';
 
 import { finalScriptsFuncFactory, updatePsbt } from './psbt';
@@ -108,15 +105,8 @@ function evaluate({
 /**
  * Builds the functions needed to operate with descriptors using an external elliptic curve (ecc) library.
  * @param {Object} ecc - an object containing elliptic curve operations, such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
- * @namespace
  */
-export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
-  Descriptor: DescriptorInterfaceConstructor;
-  ECPair: ECPairAPI;
-  parseKeyExpression: ParseKeyExpression;
-  expand: Expand;
-  BIP32: BIP32API;
-} {
+export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const BIP32: BIP32API = BIP32Factory(ecc);
   const ECPair: ECPairAPI = ECPairFactory(ecc);
   const signatureValidator = (
@@ -125,7 +115,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     signature: Buffer
   ): boolean => ECPair.fromPublicKey(pubkey).verify(msghash, signature);
 
-  /*
+  /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
    */
   const parseKeyExpression: ParseKeyExpression = ({
@@ -144,27 +134,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
 
   /**
    * Takes a descriptor (expression) and expands it to its corresponding Bitcoin script and other relevant details.
-   *
-   * @param {Object} params The parameters for the function.
-   * @param {string} params.expression The descriptor expression to be expanded.
-   * @param {string} [params.loggedExpression] The descriptor expression used for logging error messages. If not provided, defaults to the original expression.
-   * @param {Object} [params.network=networks.bitcoin] The Bitcoin network to use. If not provided, defaults to Bitcoin mainnet.
-   * @param {boolean} [params.allowMiniscriptInP2SH=false] Flag to allow miniscript in P2SH. If not provided, defaults to false.
-   *
-   * @returns {Object} An object containing various details about the expanded descriptor:
-   *     - payment: The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
-   *     - expandedExpression: The expanded descriptor expression.
-   *     - miniscript: The extracted miniscript from the expression, if any.
-   *     - expansionMap: A map of key expressions in the descriptor to their corresponding expanded keys.
-   *     - isSegwit: A boolean indicating whether the descriptor represents a SegWit script.
-   *     - expandedMiniscript: The expanded miniscript, if any.
-   *     - redeemScript: The redeem script for the descriptor, if applicable.
-   *     - witnessScript: The witness script for the descriptor, if applicable.
-   *     - isRanged: Whether this expression representas a ranged-descriptor
-   *     - canonicalExpression: This is the preferred or authoritative
-   *     representation of the descriptor expression. It standardizes the
-   *     descriptor by replacing indexes on wildcards and eliminating checksums.
-   *     This helps ensure consistency and facilitates efficient interpretation and handling by systems or software.
    *
    * @throws {Error} Throws an error if the descriptor cannot be parsed or does not conform to the expected format.
    */
@@ -473,7 +442,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     });
   }
 
-  class Descriptor implements DescriptorInterface {
+  class Descriptor {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
     readonly #signersPubKeys: Buffer[];
@@ -488,15 +457,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
-     * @param {DescriptorInfo} params
-     * @param {string} params.expression - The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index.
-     * @param {number} params.index - The descriptor's index in the case of a range descriptor (must be an interger >=0).
-     * @param {boolean} [params.checksumRequired=false] - A flag indicating whether the descriptor is required to include a checksum.
-     * @param {boolean} [params.allowMiniscriptInP2SH=false] - A flag indicating whether this instance can parse and generate script satisfactions for sh(miniscript) top-level expressions of miniscripts. This is not recommended.
-     * @param {object} [params.network=networks.bitcoin] One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
-     * @param {Preimage[]} [params.preimages=[]] An array of preimages. This info is necessary to finalize Psbts.
-     * @param {Buffer[]} [params.signersPubKeys] (Optional): An array of the public keys used for signing the transaction when spending the output associated with this descriptor. This parameter is only used if the descriptor object is being used to finalize a transaction. It is necessary to specify the spending path when working with miniscript-based expressions that have multiple spending paths. Set this parameter to an array containing the public keys involved in the desired spending path. Leave it `undefined` if you only need to generate the `scriptPubKey` or `address` for a descriptor, or if all the public keys involved in the descriptor will sign the transaction. In the latter case, the satisfier will automatically choose the most optimal spending path (if more than one is available).
-     *
+     * @param options
      * @throws {Error} - when descriptor is invalid
      */
     constructor({
@@ -507,7 +468,46 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
       network = networks.bitcoin,
       preimages = [],
       signersPubKeys
-    }: DescriptorInfo) {
+    }: {
+      /**
+       * The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index.
+       */
+      expression: string;
+
+      /**
+       * The descriptor's index in the case of a range descriptor (must be an integer >=0).
+       */
+      index?: number;
+
+      /**
+       * A flag indicating whether the descriptor is required to include a checksum.
+       * @defaultValue false
+       */
+      checksumRequired?: boolean;
+
+      /**
+       * A flag indicating whether this instance can parse and generate script satisfactions for sh(miniscript) top-level expressions of miniscripts. This is not recommended.
+       * @defaultValue false
+       */
+      allowMiniscriptInP2SH?: boolean;
+
+      /**
+       * One of bitcoinjs-lib [`networks`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js) (or another one following the same interface).
+       * @defaultValue networks.bitcoin
+       */
+      network?: Network;
+
+      /**
+       * An array of preimages. This info is necessary to finalize Psbts.
+       * @defaultValue `[]`
+       */
+      preimages?: Preimage[];
+
+      /**
+       * An array of the public keys used for signing the transaction when spending the output associated with this descriptor. This parameter is only used if the descriptor object is being used to finalize a transaction. It is necessary to specify the spending path when working with miniscript-based expressions that have multiple spending paths. Set this parameter to an array containing the public keys involved in the desired spending path. Leave it `undefined` if you only need to generate the `scriptPubKey` or `address` for a descriptor, or if all the public keys involved in the descriptor will sign the transaction. In the latter case, the satisfier will automatically choose the most optimal spending path (if more than one is available).
+       */
+      signersPubKeys?: Buffer[];
+    }) {
       this.#network = network;
       this.#preimages = preimages;
       if (typeof expression !== 'string')
@@ -815,12 +815,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
         );
       }
     }
-    expand(): {
-      expandedExpression?: string;
-      miniscript?: string;
-      expandedMiniscript?: string;
-      expansionMap?: ExpansionMap;
-    } {
+    expand() {
       return {
         ...(this.#expandedExpression !== undefined
           ? { expandedExpression: this.#expandedExpression }
@@ -840,3 +835,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface): {
 
   return { Descriptor, parseKeyExpression, expand, ECPair, BIP32 };
 }
+/**
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally creates and returns an instance of the {@link _Internal_.Descriptor | `Descriptor`} class.
+ * This instance is specialized for the provided `TinySecp256k1Interface`.
+ *
+ * See the {@link _Internal_.Descriptor | documentation for the internal Descriptor class} for a complete list of available methods.
+ */
+type Descriptor = InstanceType<
+  ReturnType<typeof DescriptorsFactory>['Descriptor']
+>;
+//type Expand = ReturnType<typeof DescriptorsFactory>['expand'];
+//type ParseKeyExpression = ReturnType<
+//  typeof DescriptorsFactory
+//>['parseKeyExpression'];
+
+export { Descriptor };

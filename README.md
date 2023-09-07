@@ -106,7 +106,7 @@ constructor({
                  // of tx size (if more than one path is available).
                  // For more details on using this parameter, refer to this
                  // Stack Exchange answer: https://bitcoin.stackexchange.com/a/118036/89665
-}: DescriptorInfo);
+});
 ```
 
 The `Descriptor` class offers various helpful methods, including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the scriptPubKey for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbt()` and `finalizePsbt()`.

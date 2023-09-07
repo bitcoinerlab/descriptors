@@ -20,7 +20,7 @@ const SOFT_MNEMONIC =
 import * as ecc from '@bitcoinerlab/secp256k1';
 import {
   DescriptorsFactory,
-  DescriptorInterface,
+  Descriptor,
   scriptExpressions,
   keyExpressionBIP32,
   signers
@@ -60,7 +60,7 @@ const expressionsECPair = [
 
 (async () => {
   const psbtMultiInputs = new Psbt();
-  const multiInputsDescriptors: DescriptorInterface[] = [];
+  const multiInputsDescriptors: Descriptor[] = [];
   for (const expression of expressionsBIP32) {
     const descriptorBIP32 = new Descriptor({ expression, network: NETWORK });
 

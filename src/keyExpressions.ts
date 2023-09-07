@@ -30,7 +30,7 @@ const derivePath = (node: BIP32Interface, path: string) => {
   return node.derivePath(parsedPath);
 };
 
-/*
+/**
  * Parses a key expression (xpub, xprv, pubkey or wif) into KeyInfo
  */
 export function parseKeyExpression({
@@ -42,6 +42,11 @@ export function parseKeyExpression({
 }: {
   keyExpression: string;
   network?: Network;
+  /**
+   * Indicates if this is a SegWit key expression. When set, further checks
+   * ensure the public key (if present in the expression) is compressed
+   * (33 bytes).
+   */
   isSegwit?: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;

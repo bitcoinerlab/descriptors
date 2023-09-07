@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2023-10-7
+
+### Changed
+
+- **Configuration**:
+  - Adopted sharable configs from `@bitcoinerlab/configs` to improve the maintainability of the library.
+
+- **Exported Types**:
+  - Changed the exported type for descriptors:
+    - **Before**: The library exported `DescriptorInterfaceConstructor` which was primarily used for typing the methods of a descriptor instance but not its constructor.
+    - **Now**: The library exports `Descriptor`, a more comprehensive type derived using `InstanceType<ReturnType<typeof DescriptorsFactory>['Descriptor']>;`. This type represents an instance of the descriptor class returned by the factory, including its methods.
+
+      If you had previously relied on `DescriptorInterface` for typing instances of the descriptor class, please update your implementations to use the new `Descriptor` type. The new type offers more accurate typings and includes methods as well as properties of descriptor instances.
+
 ## [1.0.1] - 2023-07-14
 
 ### Changed

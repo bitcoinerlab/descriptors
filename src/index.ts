@@ -1,14 +1,10 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+export type { Expand, ParseKeyExpression } from './types';
 import type { Psbt } from 'bitcoinjs-lib';
-import type { DescriptorInterface } from './types';
-export {
-  DescriptorInterface,
-  DescriptorInterfaceConstructor,
-  ParseKeyExpression
-} from './types';
-export { DescriptorsFactory } from './descriptors';
+import type { Descriptor } from './descriptors';
+export { DescriptorsFactory, Descriptor } from './descriptors';
 export { DescriptorChecksum as checksum } from './checksum';
 
 import * as signers from './signers';
@@ -20,7 +16,7 @@ export function finalizePsbt({
   validate = true
 }: {
   psbt: Psbt;
-  descriptors: DescriptorInterface[];
+  descriptors: Descriptor[];
   validate?: boolean | undefined;
 }) {
   descriptors.forEach((descriptor, inputIndex) =>

@@ -3,8 +3,7 @@
 
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { Network, Payment, Psbt } from 'bitcoinjs-lib';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { Payment, Network } from 'bitcoinjs-lib';
 
 /**
  * Preimage
@@ -44,40 +43,13 @@ export type ExpansionMap = {
   [key: string]: KeyInfo;
 };
 
-export interface ParseKeyExpression {
-  (params: {
-    keyExpression: string;
-    isSegwit?: boolean;
-    network?: Network;
-  }): KeyInfo;
-}
-
-export interface Expand {
-  (params: {
-    expression: string;
-    index?: number;
-    checksumRequired?: boolean;
-    network?: Network;
-    allowMiniscriptInP2SH?: boolean;
-  }): {
-    payment?: Payment;
-    expandedExpression?: string;
-    miniscript?: string;
-    expansionMap?: ExpansionMap;
-    isSegwit?: boolean;
-    expandedMiniscript?: string;
-    redeemScript?: Buffer;
-    witnessScript?: Buffer;
-    isRanged: boolean;
-    canonicalExpression: string;
-  };
-}
-
+/** @ignore */
 interface XOnlyPointAddTweakResult {
   parity: 1 | 0;
   xOnlyPubkey: Uint8Array;
 }
 
+/** @ignore */
 export interface TinySecp256k1Interface {
   isPoint(p: Uint8Array): boolean;
   pointCompress(p: Uint8Array, compressed?: boolean): Uint8Array;
@@ -105,64 +77,105 @@ export interface TinySecp256k1Interface {
   privateNegate(d: Uint8Array): Uint8Array;
 }
 
-//https://stackoverflow.com/questions/65220834/what-return-type-should-i-define-for-a-function-that-returns-a-class
 /**
- * DescriptorInfo
- * What defines a Descriptor. This is the type needed in the constructor.
- * @alias DescriptorInfo
- * @memberof Descriptor
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and returns an implementation of the `Expand` interface.
+ * This returned implementation is tailored for the provided `TinySecp256k1Interface`.
  */
-export type DescriptorInfo = {
-  expression: string;
-  index?: number;
-  checksumRequired?: boolean;
-  allowMiniscriptInP2SH?: boolean;
-  network?: Network;
-  preimages?: Preimage[];
-  signersPubKeys?: Buffer[];
-};
+export interface Expand {
+  (params: {
+    /**
+     * The descriptor expression to be expanded.
+     */
+    expression: string;
 
-export interface DescriptorInterface {
-  getPayment(): Payment;
-  getAddress(): string;
-  getScriptPubKey(): Buffer;
-  getScriptSatisfaction(signatures: PartialSig[]): Buffer;
-  getSequence(): number | undefined;
-  getLockTime(): number | undefined;
-  getWitnessScript(): Buffer | undefined;
-  getRedeemScript(): Buffer | undefined;
-  getNetwork(): Network;
-  isSegwit(): boolean | undefined;
-  updatePsbt({
-    psbt,
-    vout,
-    txHex,
-    txId,
-    value
-  }: {
-    psbt: Psbt;
-    vout: number;
-    txHex?: string;
-    txId?: string;
-    value?: number;
-  }): number;
-  finalizePsbtInput({
-    index,
-    psbt,
-    validate = true
-  }: {
-    index: number;
-    psbt: Psbt;
-    validate?: boolean | undefined;
-  }): void;
-  expand(): {
+    /**
+     * The descriptor index, if ranged.
+     */
+    index?: number;
+
+    /**
+     * A flag indicating whether the descriptor is required to include a checksum.
+     * @defaultValue false
+     */
+    checksumRequired?: boolean;
+
+    /**
+     * The Bitcoin network to use.
+     * @defaultValue `networks.bitcoin`
+     */
+    network?: Network;
+
+    /**
+     * Flag to allow miniscript in P2SH.
+     * @defaultValue false
+     */
+    allowMiniscriptInP2SH?: boolean;
+  }): {
+    /**
+     * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
+     */
+    payment?: Payment;
+
+    /**
+     * The expanded descriptor expression.
+     */
     expandedExpression?: string;
+
+    /**
+     * The extracted miniscript from the expression, if any.
+     */
     miniscript?: string;
-    expandedMiniscript?: string;
+
+    /**
+     * A map of key expressions in the descriptor to their corresponding expanded keys.
+     */
     expansionMap?: ExpansionMap;
+
+    /**
+     * A boolean indicating whether the descriptor represents a SegWit script.
+     */
+    isSegwit?: boolean;
+
+    /**
+     * The expanded miniscript, if any.
+     */
+    expandedMiniscript?: string;
+
+    /**
+     * The redeem script for the descriptor, if applicable.
+     */
+    redeemScript?: Buffer;
+
+    /**
+     * The witness script for the descriptor, if applicable.
+     */
+    witnessScript?: Buffer;
+
+    /**
+     * Whether this expression represents a ranged-descriptor.
+     */
+    isRanged: boolean;
+
+    /**
+     * This is the preferred or authoritative representation of the descriptor expression.
+     */
+    canonicalExpression: string;
   };
 }
 
-export interface DescriptorInterfaceConstructor {
-  new (args: DescriptorInfo): DescriptorInterface;
+/**
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and returns an implementation of the `ParseKeyExpression` interface.
+ * This returned implementation is tailored for the provided `TinySecp256k1Interface`.
+ */
+export interface ParseKeyExpression {
+  (params: {
+    keyExpression: string;
+    /**
+     * Indicates if this is a SegWit key expression. When set, further checks
+     * ensure the public key (if present in the expression) is compressed
+     * (33 bytes).
+     */
+    isSegwit?: boolean;
+    network?: Network;
+  }): KeyInfo;
 }
