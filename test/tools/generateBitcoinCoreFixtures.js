@@ -3,7 +3,26 @@
 
 // Generate fixtures from Bitcoin Core tests.
 const fs = require('fs');
-const path = require('path');
+const { argv } = require('yargs')
+  .option('i', {
+    alias: 'input',
+    description: 'Input file path',
+    type: 'string'
+  })
+  .option('o', {
+    alias: 'output',
+    description: 'Output file path',
+    type: 'string'
+  })
+  .help()
+  .alias('help', 'h');
+
+const { input, output } = argv;
+
+if (!input) {
+  console.error("Input file not specified. Use '-i' to specify.");
+  process.exit(1);
+}
 
 const parseTests = str => {
   const argsRegex = /(?:Check|CheckUnparsable)\((.*)\)/;
@@ -78,17 +97,11 @@ const isSupported = parsed => {
   return supported;
 };
 
-// File name
-const fileName = 'descriptor_tests.cpp';
-
-// File path
-const filePath = path.join(__dirname, fileName);
-
 const valid = [];
 const invalid = [];
 
 // Use the 'utf8' encoding when reading the file
-fs.readFile(filePath, 'utf8', (err, data) => {
+fs.readFile(input, 'utf8', (err, data) => {
   if (err) throw err;
 
   // Split the data by newline character
@@ -147,9 +160,12 @@ fs.readFile(filePath, 'utf8', (err, data) => {
 //This file is generated automatically. Do not edit it!
 
 export const fixtures = ${JSON.stringify(fixtures, null, 2)};`;
-  const fullPath = path.join(__dirname, '../fixtures', 'bitcoinCore.ts');
-  fs.writeFile(fullPath, contents, err => {
-    if (err) throw err;
-    console.log('Bitcoin Core fixtures file created.');
-  });
+  if (output) {
+    fs.writeFile(output, contents, err => {
+      if (err) throw err;
+      console.log('Bitcoin Core fixtures file created.');
+    });
+  } else {
+    console.log(contents);
+  }
 });
