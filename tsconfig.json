@@ -1,0 +1,3 @@
+{
+  "extends": "./node_modules/@bitcoinerlab/configs/tsconfig.json"
+}
