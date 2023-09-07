@@ -54,6 +54,8 @@ const reAddr = String.raw`addr\((.*?)\)`; //Matches anything. We assert later in
 const rePkh = String.raw`pkh\(${reKeyExp}\)`;
 const reWpkh = String.raw`wpkh\(${reKeyExp}\)`;
 const reShWpkh = String.raw`sh\(wpkh\(${reKeyExp}\)\)`;
+const rePtr = String.raw`tr\(${reKeyExp}\)`;
+
 
 const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
 
@@ -72,6 +74,7 @@ export const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
 export const rePkhAnchored = anchorStartAndEnd(composeChecksum(rePkh));
 export const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
 export const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
+export const rePtrAnchored = anchorStartAndEnd(composeChecksum(rePtr));
 
 export const reShMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReSh(reMiniscript))
