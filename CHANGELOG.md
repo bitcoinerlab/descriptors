@@ -10,14 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Configuration**:
-  - Adopted sharable configs from `@bitcoinerlab/configs` to improve the maintainability of the library.
+  - Adopted sharable configurations from `@bitcoinerlab/configs` to enhance library maintainability.
 
 - **Exported Types**:
-  - Changed the exported type for descriptors:
-    - **Before**: The library exported `DescriptorInterfaceConstructor` which was primarily used for typing the methods of a descriptor instance but not its constructor.
-    - **Now**: The library exports `Descriptor`, a more comprehensive type derived using `InstanceType<ReturnType<typeof DescriptorsFactory>['Descriptor']>;`. This type represents an instance of the descriptor class returned by the factory, including its methods.
+  - Revised the exported types for descriptors:
+    - **Before**: The library previously exported both `DescriptorInterface` and `DescriptorInterfaceConstructor`.
+    - **Now**: The library now exports `DescriptorInstance`, a more comprehensive type derived using `InstanceType<ReturnType<typeof DescriptorsFactory>['Descriptor']>;`. This type embodies an instance of the descriptor class returned by the factory, inclusive of its methods. Furthermore, the library now exports `DescriptorConstructor` in place of `DescriptorInterfaceConstructor`.
 
-      If you had previously relied on `DescriptorInterface` for typing instances of the descriptor class, please update your implementations to use the new `Descriptor` type. The new type offers more accurate typings and includes methods as well as properties of descriptor instances.
+      If you previously used `DescriptorInterface` for type annotations with instances of the descriptor class, it's recommended to transition to the newly introduced `DescriptorInstance` type. For example: `const descriptor: DescriptorInterface = new Descriptor();` should now be `const descriptor: DescriptorInstance = new Descriptor();`. This new type not only offers more precise typings but also has a more appropriate name.
 
 ## [1.0.1] - 2023-07-14
 

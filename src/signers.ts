@@ -4,7 +4,7 @@
 import type { Psbt } from 'bitcoinjs-lib';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { Descriptor } from './descriptors';
+import type { DescriptorInstance } from './descriptors';
 import {
   importAndValidateLedgerBitcoin,
   comparePolicies,
@@ -86,7 +86,7 @@ export async function signInputLedger({
 }: {
   psbt: Psbt;
   index: number;
-  descriptor: Descriptor;
+  descriptor: DescriptorInstance;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<void> {
@@ -158,7 +158,7 @@ export async function signLedger({
   ledgerState
 }: {
   psbt: Psbt;
-  descriptors: Descriptor[];
+  descriptors: DescriptorInstance[];
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<void> {

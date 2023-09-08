@@ -77,6 +77,58 @@ export interface TinySecp256k1Interface {
   privateNegate(d: Uint8Array): Uint8Array;
 }
 
+export type Expansion = {
+  /**
+   * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
+   */
+  payment?: Payment;
+
+  /**
+   * The expanded descriptor expression.
+   */
+  expandedExpression?: string;
+
+  /**
+   * The extracted miniscript from the expression, if any.
+   */
+  miniscript?: string;
+
+  /**
+   * A map of key expressions in the descriptor to their corresponding expanded keys.
+   */
+  expansionMap?: ExpansionMap;
+
+  /**
+   * A boolean indicating whether the descriptor represents a SegWit script.
+   */
+  isSegwit?: boolean;
+
+  /**
+   * The expanded miniscript, if any.
+   */
+  expandedMiniscript?: string;
+
+  /**
+   * The redeem script for the descriptor, if applicable.
+   */
+  redeemScript?: Buffer;
+
+  /**
+   * The witness script for the descriptor, if applicable.
+   */
+  witnessScript?: Buffer;
+
+  /**
+   * Whether this expression represents a ranged-descriptor.
+   */
+  isRanged: boolean;
+
+  /**
+   * This is the preferred or authoritative representation of the descriptor expression.
+   */
+  canonicalExpression: string;
+};
+
 /**
  * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and returns an implementation of the `Expand` interface.
  * This returned implementation is tailored for the provided `TinySecp256k1Interface`.
@@ -110,57 +162,7 @@ export interface Expand {
      * @defaultValue false
      */
     allowMiniscriptInP2SH?: boolean;
-  }): {
-    /**
-     * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
-     */
-    payment?: Payment;
-
-    /**
-     * The expanded descriptor expression.
-     */
-    expandedExpression?: string;
-
-    /**
-     * The extracted miniscript from the expression, if any.
-     */
-    miniscript?: string;
-
-    /**
-     * A map of key expressions in the descriptor to their corresponding expanded keys.
-     */
-    expansionMap?: ExpansionMap;
-
-    /**
-     * A boolean indicating whether the descriptor represents a SegWit script.
-     */
-    isSegwit?: boolean;
-
-    /**
-     * The expanded miniscript, if any.
-     */
-    expandedMiniscript?: string;
-
-    /**
-     * The redeem script for the descriptor, if applicable.
-     */
-    redeemScript?: Buffer;
-
-    /**
-     * The witness script for the descriptor, if applicable.
-     */
-    witnessScript?: Buffer;
-
-    /**
-     * Whether this expression represents a ranged-descriptor.
-     */
-    isRanged: boolean;
-
-    /**
-     * This is the preferred or authoritative representation of the descriptor expression.
-     */
-    canonicalExpression: string;
-  };
+  }): Expansion;
 }
 
 /**

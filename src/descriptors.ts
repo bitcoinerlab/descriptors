@@ -836,17 +836,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   return { Descriptor, parseKeyExpression, expand, ECPair, BIP32 };
 }
 /**
- * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally creates and returns an instance of the {@link _Internal_.Descriptor | `Descriptor`} class.
- * This instance is specialized for the provided `TinySecp256k1Interface`.
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally creates and returns the {@link _Internal_.Descriptor | `Descriptor`} class.
+ * This class is specialized for the provided `TinySecp256k1Interface`.
+ * Use `DescriptorInstance` to declare instances for this class: `const: DescriptorInstance = new Descriptor();`
  *
  * See the {@link _Internal_.Descriptor | documentation for the internal Descriptor class} for a complete list of available methods.
  */
-type Descriptor = InstanceType<
-  ReturnType<typeof DescriptorsFactory>['Descriptor']
->;
-//type Expand = ReturnType<typeof DescriptorsFactory>['expand'];
-//type ParseKeyExpression = ReturnType<
-//  typeof DescriptorsFactory
-//>['parseKeyExpression'];
+type DescriptorConstructor = ReturnType<
+  typeof DescriptorsFactory
+>['Descriptor'];
+type DescriptorInstance = InstanceType<DescriptorConstructor>;
 
-export { Descriptor };
+export { DescriptorInstance, DescriptorConstructor };
