@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2023-10-12
+
+### Changed
+
+- **React Native Compatibility**:
+  - Adjusted the way the library imports `ledger-bitcoin` in `src/ledger.ts` to improve compatibility with React Native projects using the Metro bundler.
+    - Previously, the library utilized dynamic imports (`await import('ledger-bitcoin')`), but this approach caused issues with Metro bundler. The bundler tried to unconditionally require `ledger-bitcoin` even if it wasn't installed (since it's an optional peerDependency).
+    - The new approach bypasses this by using a direct `require` statement. For more details on the underlying issue, refer to [this React Native discussion](https://github.com/react-native-community/discussions-and-proposals/issues/120).
+    - This update ensures smoother integration for developers using this library in React Native projects.
+
 ## [1.1.0] - 2023-10-7
 
 ### Changed

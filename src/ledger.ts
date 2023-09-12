@@ -51,7 +51,22 @@ export async function importAndValidateLedgerBitcoin(
 ): Promise<unknown> {
   let ledgerBitcoinModule;
   try {
-    ledgerBitcoinModule = await import('ledger-bitcoin');
+    // Originally, the code used dynamic imports:
+    // ledgerBitcoinModule = await import('ledger-bitcoin');
+
+    // However, in React Native with the Metro bundler, there's an issue with
+    // recognizing dynamic imports inside try-catch blocks. For details, refer to:
+    // https://github.com/react-native-community/discussions-and-proposals/issues/120
+
+    // The dynamic import gets transpiled to:
+    // ledgerBitcoinModule = Promise.resolve().then(() => __importStar(require('ledger-bitcoin')));
+
+    // Metro bundler fails to recognize the above as conditional. Hence, it tries
+    // to require 'ledger-bitcoin' unconditionally, leading to potential errors if
+    // 'ledger-bitcoin' is not installed (given it's an optional peerDependency).
+
+    // To bypass this, we directly use require:
+    ledgerBitcoinModule = require('ledger-bitcoin');
   } catch (error) {
     throw new Error(
       'Could not import "ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
