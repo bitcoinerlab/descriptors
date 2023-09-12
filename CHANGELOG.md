@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Descriptor Buffer Comparison**:
+  - Addressed a bug related to buffer comparisons in `src/descriptors.ts`.
+    - Modified the comparison logic for `witnessScript` and `redeemScript` to handle cases where one of the buffers may be `undefined`.
+    - Introduced the `eqBuffers` function to compare two buffers, ensuring that it correctly handles `undefined` values.
+    - This fix ensures accurate and error-free descriptor comparisons, particularly crucial for finalizing psbt indexes.
+    - Refer to [issue-20](https://github.com/bitcoinerlab/descriptors/issues/20) for more details.
+
 ## [1.1.1] - 2023-10-12
 
 ### Changed
