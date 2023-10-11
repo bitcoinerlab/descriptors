@@ -765,12 +765,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       let sequence = this.getSequence();
       if (sequence === undefined && locktime !== 0) sequence = 0xfffffffe;
       if (sequence === undefined && locktime === 0) sequence = 0xffffffff;
+      const eqBuffers = (buf1: Buffer | undefined, buf2: Buffer | undefined) =>
+        buf1 instanceof Buffer && buf2 instanceof Buffer
+          ? Buffer.compare(buf1, buf2) === 0
+          : buf1 === buf2;
       if (
         Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
         sequence !== inputSequence ||
         locktime !== psbt.locktime ||
-        this.getWitnessScript() !== input.witnessScript ||
-        this.getRedeemScript() !== input.redeemScript
+        !eqBuffers(this.getWitnessScript(), input.witnessScript) ||
+        !eqBuffers(this.getRedeemScript(), input.redeemScript)
       ) {
         throw new Error(
           `Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`
