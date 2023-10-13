@@ -76,7 +76,7 @@ Here are the parameters that can be used to create a `new Descriptor`:
 ```javascript
 constructor({
   expression, // The descriptor string in ASCII format. It may include a "*"
-              // to denote an arbitrary index.
+              // to denote an arbitrary index (aka ranged descriptors).
   index,      // The descriptor's index in the case of a range descriptor
               // (must be an integer >= 0).
   checksumRequired = false // Optional flag indicating if the descriptor is
@@ -109,27 +109,35 @@ constructor({
 });
 ```
 
-The `Descriptor` class offers various helpful methods, including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the scriptPubKey for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbt()` and `finalizePsbt()`.
+The `Descriptor` class offers various helpful methods, including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the scriptPubKey for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()`, `updatePsbtAsOutput()` and `finalizePsbtInput()`.
 
-The `updatePsbt()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO (unspent transaction output) described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbt()` adds timelock information to the PSBT.
+The `updatePsbtAsInput()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO (unspent transaction output) described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbtAsInput()` adds timelock information to the PSBT.
 
-To call `updatePsbt()`, use the following syntax:
+To call `updatePsbtAsInput()`, use the following syntax:
 
 ```javascript
-const inputIndex = descriptor.updatePsbt({ psbt, txHex, vout });
+const inputIndex = descriptor.updatePsbtAsInput({ psbt, txHex, vout });
 ```
 
 Here, `psbt` is an instance of a [bitconjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib), `txHex` is the hex string that serializes the previous transaction, and `vout` is an integer corresponding to the output index of the descriptor in the previous transaction. The method returns a number that corresponds to the input number that this descriptor will take in the `psbt`.
 
-The `finalizePsbt()` method is the final step in adding the unlocking script (scriptWitness or scriptSig) that satisfies the spending condition to the transaction, effectively finalizing the Psbt. It should be called after all necessary signing operations have been completed. The syntax for calling this method is as follows:
+Conversely, `updatePsbtAsOutput` allows you to add an output to a PSBT. For instance, to configure a `psbt` that sends `10,000` sats to the SegWit address `bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x`:
 
 ```javascript
-descriptor.finalizePsbt({ index, psbt });
+const desc = 
+ new Descriptor({ expression: `addr(bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x)` });
+desc.updatePsbtAsOutput({ psbt, value: 10000 });
 ```
 
-Here, `index` is the `inputIndex` obtained from the `updatePsbt()` method and `psbt` is an instance of a bitcoinjs-lib `Psbt` object.
+The `finalizePsbtInput()` method is the final step in adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the spending condition to the transaction, effectively finalizing the Psbt. Note that signatures are part of the `scriptSig` / `scriptWitness`. Thus, this method should only be called after all necessary signing operations have been completed. The syntax for calling this method is as follows:
 
-For further information on using the Descriptor class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
+```javascript
+descriptor.finalizePsbtInput({ index, psbt });
+```
+
+Here, `index` is the `inputIndex` obtained from the `updatePsbtAsInput()` method and `psbt` is an instance of a bitcoinjs-lib `Psbt` object.
+
+For further information on using the Descriptor class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `finalizePsbtInput`, `getAddress`, and `getScriptPubKey`.
 
 #### Tip: Parsing descriptors without instantiating a class
 
@@ -327,7 +335,7 @@ Finally, `ledgerState` is an object used to store information related to Ledger 
 For more information, refer to the following resources:
 
 - [Guides](https://bitcoinerlab.com/guides): Comprehensive explanations and playgrounds to help you learn how to use the module.
-- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbt`, `finalizePsbt`, `getAddress`, and `getScriptPubKey`.
+- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `finalizePsbtInput`, `getAddress`, and `getScriptPubKey`.
 - [Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration): Well-commented code examples showcasing the usage of all functions in the module.
 - API Documentation: Auto-generated documentation from the source code, providing detailed information about the library and its methods. To generate the API documentation locally, follow these commands:
 

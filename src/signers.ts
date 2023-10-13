@@ -4,14 +4,14 @@
 import type { Psbt } from 'bitcoinjs-lib';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { DescriptorInstance } from './descriptors';
+import type { DescriptorInstance, OutputInstance } from './descriptors';
 import {
   importAndValidateLedgerBitcoin,
   comparePolicies,
   LedgerPolicy,
   ledgerPolicyFromState,
   ledgerPolicyFromStandard,
-  descriptorToLedgerFormat,
+  ledgerPolicyFromOutput,
   LedgerState
 } from './ledger';
 type DefaultDescriptorTemplate =
@@ -80,6 +80,24 @@ const ledgerSignaturesForInputIndex = (
 export async function signInputLedger({
   psbt,
   index,
+  output,
+  ledgerClient,
+  ledgerState
+}: {
+  psbt: Psbt;
+  index: number;
+  output: OutputInstance;
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
+}): Promise<void>;
+
+/**
+ * @deprecated
+ * @hidden
+ */
+export async function signInputLedger({
+  psbt,
+  index,
   descriptor,
   ledgerClient,
   ledgerState
@@ -89,7 +107,32 @@ export async function signInputLedger({
   descriptor: DescriptorInstance;
   ledgerClient: unknown;
   ledgerState: LedgerState;
+}): Promise<void>;
+
+/**
+ * To be removed in v3.0 and replaced by a version that does not accept
+ * descriptor
+ * @hidden
+ */
+export async function signInputLedger({
+  psbt,
+  index,
+  output,
+  descriptor,
+  ledgerClient,
+  ledgerState
+}: {
+  psbt: Psbt;
+  index: number;
+  output?: OutputInstance;
+  descriptor?: DescriptorInstance;
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
 }): Promise<void> {
+  if (descriptor && output)
+    throw new Error(`descriptor param has been deprecated`);
+  output = descriptor || output;
+  if (!output) throw new Error(`output not provided`);
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
@@ -97,18 +140,17 @@ export async function signInputLedger({
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  const result = await descriptorToLedgerFormat({
-    descriptor,
+  const result = await ledgerPolicyFromOutput({
+    output,
     ledgerClient,
     ledgerState
   });
-  if (!result)
-    throw new Error(`Error: descriptor does not have a ledger input`);
+  if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
 
   let ledgerSignatures;
   const standardPolicy = await ledgerPolicyFromStandard({
-    descriptor,
+    output,
     ledgerClient,
     ledgerState
   });
@@ -123,7 +165,7 @@ export async function signInputLedger({
     );
   } else {
     const policy = await ledgerPolicyFromState({
-      descriptor,
+      output,
       ledgerClient,
       ledgerState
     });
@@ -148,9 +190,28 @@ export async function signInputLedger({
   });
 }
 
-//signLedger is able to sign several inputs of the same wallet policy since it
-//it clusters together wallet policy types before signing
-//it throws if it cannot sign any input.
+/**
+ * signLedger is able to sign several inputs of the same wallet policy since it
+ * it clusters together wallet policy types before signing.
+ *
+ * It throws if it cannot sign any input.
+ */
+export async function signLedger({
+  psbt,
+  outputs,
+  ledgerClient,
+  ledgerState
+}: {
+  psbt: Psbt;
+  outputs: OutputInstance[];
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
+}): Promise<void>;
+
+/**
+ * @deprecated
+ * @hidden
+ */
 export async function signLedger({
   psbt,
   descriptors,
@@ -161,7 +222,30 @@ export async function signLedger({
   descriptors: DescriptorInstance[];
   ledgerClient: unknown;
   ledgerState: LedgerState;
+}): Promise<void>;
+
+/**
+ * To be removed in v3.0 and replaced by a version that does not accept
+ * descriptors
+ * @hidden
+ */
+export async function signLedger({
+  psbt,
+  outputs,
+  descriptors,
+  ledgerClient,
+  ledgerState
+}: {
+  psbt: Psbt;
+  outputs?: OutputInstance[];
+  descriptors?: DescriptorInstance[];
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
 }): Promise<void> {
+  if (descriptors && outputs)
+    throw new Error(`descriptors param has been deprecated`);
+  outputs = descriptors || outputs;
+  if (!outputs) throw new Error(`outputs not provided`);
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
@@ -169,18 +253,10 @@ export async function signLedger({
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   const ledgerPolicies = [];
-  for (const descriptor of descriptors) {
+  for (const output of outputs) {
     const policy =
-      (await ledgerPolicyFromState({
-        descriptor,
-        ledgerClient,
-        ledgerState
-      })) ||
-      (await ledgerPolicyFromStandard({
-        descriptor,
-        ledgerClient,
-        ledgerState
-      }));
+      (await ledgerPolicyFromState({ output, ledgerClient, ledgerState })) ||
+      (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }));
     if (policy) ledgerPolicies.push(policy);
   }
   if (ledgerPolicies.length === 0)

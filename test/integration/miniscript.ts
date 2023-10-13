@@ -3,7 +3,7 @@
 
 //npm run test:integration
 
-import { networks, Psbt, address } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 const { encode: afterEncode } = require('bip65');
 const { encode: olderEncode } = require('bip68');
@@ -15,7 +15,6 @@ const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const POLICY = (older: number, after: number) =>
@@ -126,7 +125,15 @@ const keys: {
         const { txHex } = await regtestUtils.fetch(txId);
         const psbt = new Psbt();
         const index = descriptor.updatePsbt({ psbt, vout, txHex });
-        psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+        //There are different ways to add an output:
+        //import { address } from 'bitcoinjs-lib';
+        //const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
+        //psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+        //But can also be done like this:
+        new Descriptor({
+          expression: `addr(${FINAL_ADDRESS})`,
+          network: NETWORK
+        }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         descriptor.finalizePsbtInput({ index, psbt });

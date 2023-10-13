@@ -20,8 +20,8 @@ import type {
   TinySecp256k1Interface,
   Preimage,
   TimeConstraints,
+  Expansion,
   ExpansionMap,
-  Expand,
   ParseKeyExpression
 } from './types';
 
@@ -53,58 +53,82 @@ function countNonPushOnlyOPs(script: Buffer): number {
 /*
  * Returns a bare descriptor without checksum and particularized for a certain
  * index (if desc was a range descriptor)
+ * @hidden
  */
 function evaluate({
-  expression,
+  descriptor,
   checksumRequired,
   index
 }: {
-  expression: string;
+  descriptor: string;
   checksumRequired: boolean;
   index?: number;
 }): string {
-  const mChecksum = expression.match(String.raw`(${RE.reChecksum})$`);
+  if (!descriptor) throw new Error('You must provide a descriptor.');
+
+  const mChecksum = descriptor.match(String.raw`(${RE.reChecksum})$`);
   if (mChecksum === null && checksumRequired === true)
-    throw new Error(`Error: descriptor ${expression} has not checksum`);
-  //evaluatedExpression: a bare desc without checksum and particularized for a certain
+    throw new Error(`Error: descriptor ${descriptor} has not checksum`);
+  //evaluatedDescriptor: a bare desc without checksum and particularized for a certain
   //index (if desc was a range descriptor)
-  let evaluatedExpression = expression;
+  let evaluatedDescriptor = descriptor;
   if (mChecksum !== null) {
     const checksum = mChecksum[0].substring(1); //remove the leading #
-    evaluatedExpression = expression.substring(
+    evaluatedDescriptor = descriptor.substring(
       0,
-      expression.length - mChecksum[0].length
+      descriptor.length - mChecksum[0].length
     );
-    if (checksum !== DescriptorChecksum(evaluatedExpression)) {
-      throw new Error(`Error: invalid descriptor checksum for ${expression}`);
+    if (checksum !== DescriptorChecksum(evaluatedDescriptor)) {
+      throw new Error(`Error: invalid descriptor checksum for ${descriptor}`);
     }
   }
   if (index !== undefined) {
-    const mWildcard = evaluatedExpression.match(/\*/g);
+    const mWildcard = evaluatedDescriptor.match(/\*/g);
     if (mWildcard && mWildcard.length > 0) {
       //From  https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md
       //To prevent a combinatorial explosion of the search space, if more than
       //one of the multi() key arguments is a BIP32 wildcard path ending in /* or
-      //*', the multi() expression only matches multisig scripts with the ith
+      //*', the multi() descriptor only matches multisig scripts with the ith
       //child key from each wildcard path in lockstep, rather than scripts with
       //any combination of child keys from each wildcard path.
 
       //We extend this reasoning for musig for all cases
-      evaluatedExpression = evaluatedExpression.replaceAll(
+      evaluatedDescriptor = evaluatedDescriptor.replaceAll(
         '*',
         index.toString()
       );
     } else
       throw new Error(
-        `Error: index passed for non-ranged descriptor: ${expression}`
+        `Error: index passed for non-ranged descriptor: ${descriptor}`
       );
   }
-  return evaluatedExpression;
+  return evaluatedDescriptor;
 }
 
 /**
- * Builds the functions needed to operate with descriptors using an external elliptic curve (ecc) library.
- * @param {Object} ecc - an object containing elliptic curve operations, such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
+ * Constructs the necessary functions and classes for working with descriptors
+ * using an external elliptic curve (ecc) library.
+ *
+ * Notably, it returns the {@link _Internal_.Output | `Output`} class, which
+ * provides methods to create, sign, and finalize PSBTs based on descriptor
+ * expressions.
+ *
+ * While this Factory function includes the `Descriptor` class, note that
+ * this class was deprecated in v2.0 in favor of `Output`. For backward
+ * compatibility, the `Descriptor` class remains, but using `Output` is advised.
+ *
+ * The Factory also returns utility methods like `expand` (detailed below)
+ * and `parseKeyExpression` (see {@link ParseKeyExpression}).
+ *
+ * Additionally, for convenience, the function returns `BIP32` and `ECPair`.
+ * These are {@link https://github.com/bitcoinjs bitcoinjs-lib} classes designed
+ * for managing {@link https://github.com/bitcoinjs/bip32 | `BIP32`} keys and
+ * public/private key pairs:
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}, respectively.
+ *
+ * @param {Object} ecc - An object with elliptic curve operations, such as
+ * [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
+ * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
 export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const BIP32: BIP32API = BIP32Factory(ecc);
@@ -133,17 +157,77 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   };
 
   /**
-   * Takes a descriptor (expression) and expands it to its corresponding Bitcoin script and other relevant details.
+   * Parses and analyzies a descriptor expression and destructures it into {@link Expansion |its elemental parts}.
    *
    * @throws {Error} Throws an error if the descriptor cannot be parsed or does not conform to the expected format.
    */
-  const expand: Expand = ({
+  function expand(params: {
+    /**
+     * The descriptor expression to be expanded.
+     */
+    descriptor: string;
+
+    /**
+     * The descriptor index, if ranged.
+     */
+    index?: number;
+
+    /**
+     * A flag indicating whether the descriptor is required to include a checksum.
+     * @defaultValue false
+     */
+    checksumRequired?: boolean;
+
+    /**
+     * The Bitcoin network to use.
+     * @defaultValue `networks.bitcoin`
+     */
+    network?: Network;
+
+    /**
+     * Flag to allow miniscript in P2SH.
+     * @defaultValue false
+     */
+    allowMiniscriptInP2SH?: boolean;
+  }): Expansion;
+
+  /**
+   * @deprecated
+   * @hidden
+   * To be removed in version 3.0
+   */
+  function expand(params: {
+    expression: string;
+    index?: number;
+    checksumRequired?: boolean;
+    network?: Network;
+    allowMiniscriptInP2SH?: boolean;
+  }): Expansion;
+
+  /**
+   * @hidden
+   * To be removed in v3.0 and replaced by the version with the signature that
+   * does not accept descriptors
+   */
+  function expand({
+    descriptor,
     expression,
     index,
     checksumRequired = false,
     network = networks.bitcoin,
     allowMiniscriptInP2SH = false
-  }) => {
+  }: {
+    descriptor?: string;
+    expression?: string;
+    index?: number;
+    checksumRequired?: boolean;
+    network?: Network;
+    allowMiniscriptInP2SH?: boolean;
+  }): Expansion {
+    if (descriptor && expression)
+      throw new Error(`expression param has been deprecated`);
+    descriptor = descriptor || expression;
+    if (!descriptor) throw new Error(`descriptor not provided`);
     let expandedExpression: string | undefined;
     let miniscript: string | undefined;
     let expansionMap: ExpansionMap | undefined;
@@ -152,7 +236,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let payment: Payment | undefined;
     let witnessScript: Buffer | undefined;
     let redeemScript: Buffer | undefined;
-    const isRanged = expression.indexOf('*') !== -1;
+    const isRanged = descriptor.indexOf('*') !== -1;
 
     if (index !== undefined)
       if (!Number.isInteger(index) || index < 0)
@@ -161,7 +245,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //Verify and remove checksum (if exists) and
     //particularize range descriptor for index (if desc is range descriptor)
     const canonicalExpression = evaluate({
-      expression,
+      descriptor,
       ...(index !== undefined ? { index } : {}),
       checksumRequired
     });
@@ -172,7 +256,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (isRanged) throw new Error(`Error: addr() cannot be ranged`);
       const matchedAddress = canonicalExpression.match(RE.reAddrAnchored)?.[1]; //[1]-> whatever is found addr(->HERE<-)
       if (!matchedAddress)
-        throw new Error(`Error: could not get an address in ${expression}`);
+        throw new Error(`Error: could not get an address in ${descriptor}`);
       let output;
       try {
         output = address.toOutputScript(matchedAddress, network);
@@ -205,7 +289,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pk(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
+        throw new Error(`Error: invalid expression ${descriptor}`);
       expandedExpression = 'pk(@0)';
       const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
       expansionMap = { '@0': pKE };
@@ -214,7 +298,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         //Note there exists no address for p2pk, but we can still use the script
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2pk({ pubkey, network });
       }
@@ -226,7 +310,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
+        throw new Error(`Error: invalid expression ${descriptor}`);
       expandedExpression = 'pkh(@0)';
       const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
       expansionMap = { '@0': pKE };
@@ -234,7 +318,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2pkh({ pubkey, network });
       }
@@ -246,7 +330,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `sh(wpkh(${keyExpression}))`)
-        throw new Error(`Error: invalid expression ${expression}`);
+        throw new Error(`Error: invalid expression ${descriptor}`);
       expandedExpression = 'sh(wpkh(@0))';
       const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
       expansionMap = { '@0': pKE };
@@ -254,13 +338,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2sh({ redeem: p2wpkh({ pubkey, network }), network });
         redeemScript = payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
-            `Error: could not calculate redeemScript for ${expression}`
+            `Error: could not calculate redeemScript for ${descriptor}`
           );
       }
     }
@@ -271,7 +355,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `wpkh(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
+        throw new Error(`Error: invalid expression ${descriptor}`);
       expandedExpression = 'wpkh(@0)';
       const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
       expansionMap = { '@0': pKE };
@@ -279,7 +363,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2wpkh({ pubkey, network });
       }
@@ -289,7 +373,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       isSegwit = true;
       miniscript = canonicalExpression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${expression}`);
+        throw new Error(`Error: could not get miniscript in ${descriptor}`);
       ({ expandedMiniscript, expansionMap } = expandMiniscript({
         miniscript,
         isSegwit,
@@ -318,7 +402,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         redeemScript = payment.redeem?.output;
         if (!redeemScript)
           throw new Error(
-            `Error: could not calculate redeemScript for ${expression}`
+            `Error: could not calculate redeemScript for ${descriptor}`
           );
       }
     }
@@ -329,7 +413,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       isSegwit = false;
       miniscript = canonicalExpression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${expression}`);
+        throw new Error(`Error: could not get miniscript in ${descriptor}`);
       if (
         allowMiniscriptInP2SH === false &&
         //These top-level expressions within sh are allowed within sh.
@@ -372,7 +456,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       isSegwit = true;
       miniscript = canonicalExpression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
       if (!miniscript)
-        throw new Error(`Error: could not get miniscript in ${expression}`);
+        throw new Error(`Error: could not get miniscript in ${descriptor}`);
       ({ expandedMiniscript, expansionMap } = expandMiniscript({
         miniscript,
         isSegwit,
@@ -397,7 +481,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     } else {
-      throw new Error(`Error: Could not parse descriptor ${expression}`);
+      throw new Error(`Error: Could not parse descriptor ${descriptor}`);
     }
 
     return {
@@ -412,7 +496,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       isRanged,
       canonicalExpression
     };
-  };
+  }
 
   /**
    * Expand a miniscript to a generalized form using variables instead of key
@@ -442,7 +526,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     });
   }
 
-  class Descriptor {
+  class Output {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
     readonly #signersPubKeys: Buffer[];
@@ -461,7 +545,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * @throws {Error} - when descriptor is invalid
      */
     constructor({
-      expression,
+      descriptor,
       index,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
@@ -472,7 +556,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       /**
        * The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index.
        */
-      expression: string;
+      descriptor: string;
 
       /**
        * The descriptor's index in the case of a range descriptor (must be an integer >=0).
@@ -510,11 +594,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }) {
       this.#network = network;
       this.#preimages = preimages;
-      if (typeof expression !== 'string')
+      if (typeof descriptor !== 'string')
         throw new Error(`Error: invalid descriptor type`);
 
       const expandedResult = expand({
-        expression,
+        descriptor,
         ...(index !== undefined ? { index } : {}),
         checksumRequired,
         network,
@@ -524,7 +608,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: index was not provided for ranged descriptor`);
       if (!expandedResult.payment)
         throw new Error(
-          `Error: could not extract a payment from ${expression}`
+          `Error: could not extract a payment from ${descriptor}`
         );
 
       this.#payment = expandedResult.payment;
@@ -552,7 +636,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
               const pubkey = keyInfo.pubkey;
               if (!pubkey)
                 throw new Error(
-                  `Error: could not extract a pubkey from ${expression}`
+                  `Error: could not extract a pubkey from ${descriptor}`
                 );
               return pubkey;
             }
@@ -561,7 +645,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           //We should only miss expansionMap in addr() expressions:
           if (!expandedResult.canonicalExpression.match(RE.reAddrAnchored)) {
             throw new Error(
-              `Error: expansionMap not available for expression ${expression} that is not an address`
+              `Error: expansionMap not available for expression ${descriptor} that is not an address`
             );
           }
           this.#signersPubKeys = [this.getScriptPubKey()];
@@ -685,27 +769,40 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
     }
-    /**
-     * Updates a Psbt where the descriptor describes an utxo.
-     * The txHex (nonWitnessUtxo) and vout of the utxo must be passed.
-     *
-     * updatePsbt adds an input to the psbt and updates the tx locktime if needed.
-     * It also adds a new input to the Psbt based on txHex
-     * It returns the number of the input that is added.
-     * psbt and vout are mandatory. Also pass txHex.
-     *
-     * The following is not recommended but, alternatively, ONLY for Segwit inputs,
-     * you can pass txId and value, instead of txHex.
-     * If you do so, it is your responsibility to make sure that `value` is
-     * correct to avoid possible fee vulnerability attacks:
-     * https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625
-     * Note that HW wallets require the full txHex also for Segwit anyways:
-     * https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd
-     *
-     * In doubt, simply pass txHex (and you can skip passing txId and value) and
-     * you shall be fine.
+
+    /** @deprecated - Use updatePsbtAsInput instead
+     * @hidden
      */
-    updatePsbt({
+    updatePsbt(params: {
+      psbt: Psbt;
+      txHex?: string;
+      txId?: string;
+      value?: number;
+      vout: number;
+    }) {
+      return this.updatePsbtAsInput(params);
+    }
+
+    /**
+     * Sets this output as an input of the provided `psbt` and updates the
+     * `psbt` locktime if required by the descriptor.
+     *
+     * `psbt` and `vout` are mandatory. Include `txHex` as well. The pair
+     * `vout` and `txHex` define the transaction and output number this instance
+     * pertains to.
+     *
+     * Though not advised, for Segwit inputs you can pass `txId` and `value`
+     * in lieu of `txHex`. If doing so, ensure `value` accuracy to avoid
+     * potential fee attacks -
+     * [See this issue](https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625).
+     *
+     * Note: Hardware wallets need the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
+     *
+     * When unsure, always use `txHex`, and skip `txId` and `value` for safety.
+     *
+     * @returns The index of the added input.
+     */
+    updatePsbtAsInput({
       psbt,
       txHex,
       txId,
@@ -743,6 +840,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         redeemScript: this.getRedeemScript()
       });
     }
+
+    /**
+     * Adds this output as an output of the provided `psbt` with the given
+     * value.
+     *
+     * @param psbt - The Partially Signed Bitcoin Transaction.
+     * @param value - The value for the output in satoshis.
+     */
+    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: number }) {
+      psbt.addOutput({ script: this.getScriptPubKey(), value });
+    }
+
     #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
       const input = psbt.data.inputs[index];
       const txInput = psbt.txInputs[index];
@@ -837,18 +946,48 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
   }
 
-  return { Descriptor, parseKeyExpression, expand, ECPair, BIP32 };
+  /**
+   * @hidden
+   * @deprecated Use `Output` instead
+   */
+  class Descriptor extends Output {
+    constructor({
+      expression,
+      ...rest
+    }: {
+      expression: string;
+      index?: number;
+      checksumRequired?: boolean;
+      allowMiniscriptInP2SH?: boolean;
+      network?: Network;
+      preimages?: Preimage[];
+      signersPubKeys?: Buffer[];
+    }) {
+      super({ descriptor: expression, ...rest });
+    }
+  }
+
+  return { Descriptor, Output, parseKeyExpression, expand, ECPair, BIP32 };
 }
-/**
- * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally creates and returns the {@link _Internal_.Descriptor | `Descriptor`} class.
- * This class is specialized for the provided `TinySecp256k1Interface`.
- * Use `DescriptorInstance` to declare instances for this class: `const: DescriptorInstance = new Descriptor();`
- *
- * See the {@link _Internal_.Descriptor | documentation for the internal Descriptor class} for a complete list of available methods.
- */
+
+/** @hidden */
 type DescriptorConstructor = ReturnType<
   typeof DescriptorsFactory
 >['Descriptor'];
+/** @hidden */
 type DescriptorInstance = InstanceType<DescriptorConstructor>;
-
 export { DescriptorInstance, DescriptorConstructor };
+
+type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
+/**
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally
+ * creates and returns the {@link _Internal_.Output | `Descriptor`} class.
+ * This class is specialized for the provided `TinySecp256k1Interface`.
+ * Use `OutputInstance` to declare instances for this class:
+ * `const: OutputInstance = new Output();`
+ *
+ * See the {@link _Internal_.Output | documentation for the internal `Output`
+ * class} for a complete list of available methods.
+ */
+type OutputInstance = InstanceType<OutputConstructor>;
+export { OutputInstance, OutputConstructor };

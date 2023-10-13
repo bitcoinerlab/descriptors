@@ -31,7 +31,20 @@ const derivePath = (node: BIP32Interface, path: string) => {
 };
 
 /**
- * Parses a key expression (xpub, xprv, pubkey or wif) into KeyInfo
+ * Parses a key expression (xpub, xprv, pubkey or wif) into {@link KeyInfo | `KeyInfo`}.
+ *
+ * For example, given this `keyExpression`: `"[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*"`, this is its parsed result:
+ *
+ * ```javascript
+ *  {
+ *    keyExpression:
+ *      "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
+ *    keyPath: '/1/2/3/4/*',
+ *    originPath: "/49'/0'/0'",
+ *    path: "m/49'/0'/0'/1/2/3/4/*",
+ *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *  }
+ * ```
  */
 export function parseKeyExpression({
   keyExpression,
@@ -43,9 +56,9 @@ export function parseKeyExpression({
   keyExpression: string;
   network?: Network;
   /**
-   * Indicates if this is a SegWit key expression. When set, further checks
-   * ensure the public key (if present in the expression) is compressed
-   * (33 bytes).
+   * Indicates if this key expression belongs to a a SegWit output. When set,
+   * further checks are done to ensure the public key (if present in the
+   * expression) is compressed (33 bytes).
    */
   isSegwit?: boolean;
   ECPair: ECPairAPI;
@@ -190,6 +203,22 @@ function assertChangeIndexKeyPath({
     throw new Error(`Error: Pass either change and index or a keyPath`);
 }
 
+/**
+ * Constructs a key expression string for a Ledger device from the provided
+ * components.
+ *
+ * This function assists in crafting key expressions tailored for Ledger
+ * hardware wallets. It fetches the master fingerprint and xpub for a
+ * specified origin path and then combines them with the input parameters.
+ *
+ * For detailed understanding and examples of terms like `originPath`,
+ * `change`, and `keyPath`, refer to the documentation of
+ * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}, which consists
+ * of the reverse procedure.
+ *
+ * @returns {string} - The formed key expression for the Ledger device.
+ */
+
 export async function keyExpressionLedger({
   ledgerClient,
   ledgerState,
@@ -219,6 +248,14 @@ export async function keyExpressionLedger({
   else return `${keyRoot}/${change}/${index}`;
 }
 
+/**
+ * Constructs a key expression string from its constituent components.
+ *
+ * This function essentially performs the reverse operation of
+ * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}. For detailed
+ * explanations and examples of the terms used here, refer to
+ * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ */
 export function keyExpressionBIP32({
   masterNode,
   originPath,

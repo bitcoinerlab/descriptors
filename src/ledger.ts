@@ -21,10 +21,10 @@
  * 4) Since all originPaths must be the same and originPaths for the Ledger are
  * necessary, a Ledger device can only sign at most 1 key per policy and input.
  *
- * All the conditions above are checked in function descriptorToLedgerFormat.
+ * All the conditions above are checked in function ledgerPolicyFromOutput.
  */
 
-import type { DescriptorInstance } from './descriptors';
+import type { DescriptorInstance, OutputInstance } from './descriptors';
 import { Network, networks } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
 
@@ -223,7 +223,9 @@ export async function getLedgerXpub({
 }
 
 /**
- * Takes a descriptor and gets its Ledger Wallet Policy, that is, its keyRoots and template.
+ * Given an output, it extracts its descriptor and converts it to a Ledger
+ * Wallet Policy, that is, its keyRoots and template.
+ *
  * keyRoots and template follow Ledger's specifications:
  * https://github.com/LedgerHQ/app-bitcoin-new/blob/develop/doc/wallet.md
  *
@@ -247,19 +249,19 @@ export async function getLedgerXpub({
  * This function takes into account all the considerations regarding Ledger
  * policy implementation details expressed in the header of this file.
  */
-export async function descriptorToLedgerFormat({
-  descriptor,
+export async function ledgerPolicyFromOutput({
+  output,
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInstance;
+  output: OutputInstance;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
-  const expandedExpression = descriptor.expand().expandedExpression;
-  const expansionMap = descriptor.expand().expansionMap;
+  const expandedExpression = output.expand().expandedExpression;
+  const expansionMap = output.expand().expansionMap;
   if (!expandedExpression || !expansionMap)
-    throw new Error(`Error: invalid descriptor`);
+    throw new Error(`Error: invalid output`);
 
   const ledgerMasterFingerprint = await getLedgerMasterFingerPrint({
     ledgerClient,
@@ -337,12 +339,29 @@ export async function descriptorToLedgerFormat({
 }
 
 /**
- * It registers a policy based on a descriptor. It stores it in ledgerState.
+ * It registers a policy based on the descriptor retrieved from of an `output`.
+ * It stores the policy in `ledgerState`.
  *
  * If the policy was already registered, it does not register it.
  * If the policy is standard, it does not register it.
  *
- **/
+ */
+export async function registerLedgerWallet({
+  output,
+  ledgerClient,
+  ledgerState,
+  policyName
+}: {
+  output: OutputInstance;
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
+  policyName: string;
+}): Promise<void>;
+
+/**
+ * @deprecated
+ * @hidden
+ */
 export async function registerLedgerWallet({
   descriptor,
   ledgerClient,
@@ -353,27 +372,49 @@ export async function registerLedgerWallet({
   ledgerClient: unknown;
   ledgerState: LedgerState;
   policyName: string;
+}): Promise<void>;
+
+/**
+ * To be removed in v3.0 and replaced by a version that does not accept
+ * descriptors
+ * @hidden
+ **/
+export async function registerLedgerWallet({
+  output,
+  descriptor,
+  ledgerClient,
+  ledgerState,
+  policyName
+}: {
+  output?: OutputInstance;
+  descriptor?: DescriptorInstance;
+  ledgerClient: unknown;
+  ledgerState: LedgerState;
+  policyName: string;
 }) {
+  if (descriptor && output)
+    throw new Error(`descriptor param has been deprecated`);
+  output = descriptor || output;
+  if (!output) throw new Error(`output not provided`);
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
   )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
-  const result = await descriptorToLedgerFormat({
-    descriptor,
+  const result = await ledgerPolicyFromOutput({
+    output,
     ledgerClient,
     ledgerState
   });
-  if (await ledgerPolicyFromStandard({ descriptor, ledgerClient, ledgerState }))
+  if (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }))
     return;
-  if (!result)
-    throw new Error(`Error: descriptor does not have a ledger input`);
+  if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
   if (!ledgerState.policies) ledgerState.policies = [];
   let walletPolicy, policyHmac;
   //Search in ledgerState first
   const policy = await ledgerPolicyFromState({
-    descriptor,
+    output,
     ledgerClient,
     ledgerState
   });
@@ -401,16 +442,16 @@ export async function registerLedgerWallet({
  * Retrieve a standard ledger policy or null if it does correspond.
  **/
 export async function ledgerPolicyFromStandard({
-  descriptor,
+  output,
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInstance;
+  output: OutputInstance;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {
-  const result = await descriptorToLedgerFormat({
-    descriptor,
+  const result = await ledgerPolicyFromOutput({
+    output,
     ledgerClient,
     ledgerState
   });
@@ -421,7 +462,7 @@ export async function ledgerPolicyFromStandard({
     isLedgerStandard({
       ledgerTemplate,
       keyRoots,
-      network: descriptor.getNetwork()
+      network: output.getNetwork()
     })
   )
     return { ledgerTemplate, keyRoots };
@@ -450,21 +491,20 @@ export function comparePolicies(policyA: LedgerPolicy, policyB: LedgerPolicy) {
  * Retrieve a ledger policy from ledgerState or null if it does not exist yet.
  **/
 export async function ledgerPolicyFromState({
-  descriptor,
+  output,
   ledgerClient,
   ledgerState
 }: {
-  descriptor: DescriptorInstance;
+  output: OutputInstance;
   ledgerClient: unknown;
   ledgerState: LedgerState;
 }): Promise<LedgerPolicy | null> {
-  const result = await descriptorToLedgerFormat({
-    descriptor,
+  const result = await ledgerPolicyFromOutput({
+    output,
     ledgerClient,
     ledgerState
   });
-  if (!result)
-    throw new Error(`Error: descriptor does not have a ledger input`);
+  if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
   if (!ledgerState.policies) ledgerState.policies = [];
   //Search in ledgerState:
