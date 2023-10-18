@@ -17,6 +17,7 @@ import * as signers from './signers';
 export { signers };
 
 /**
+ * @hidden @deprecated
  * To finalize the `psbt`, you can either call the method
  * `output.finalizePsbtInput({ index, psbt })` on each descriptor, passing as
  * arguments the `psbt` and its input `index`, or call this helper function:
@@ -76,7 +77,8 @@ import {
   getLedgerMasterFingerPrint,
   getLedgerXpub,
   registerLedgerWallet,
-  assertLedgerApp
+  assertLedgerApp,
+  LedgerManager
 } from './ledger';
 export const ledger = {
   getLedgerMasterFingerPrint,
@@ -85,4 +87,4 @@ export const ledger = {
   assertLedgerApp
 };
 
-export type { LedgerState };
+export type { LedgerState, LedgerManager };

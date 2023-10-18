@@ -57,9 +57,9 @@ The library can be split into four main parts:
 The `Output` class is dynamically created by providing a cryptographic secp256k1 engine as shown below:
 
 ```javascript
-import * as secp256k1 from '@bitcoinerlab/secp256k1';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import * as descriptors from '@bitcoinerlab/descriptors';
-const { Output } = descriptors.DescriptorsFactory(secp256k1);
+const { Output } = descriptors.DescriptorsFactory(ecc);
 ```
 
 Once set up, you can obtain an instance for an output, described by a descriptor such as a `wpkh`, as follows:
@@ -129,7 +129,7 @@ const recipientOutput =
 recipientOutput.updatePsbtAsOutput({ psbt, value: 10000 });
 ```
 
-The `finalizePsbtInput()` method completes a PSBT input by adding the unlocking script (either `scriptWitness` or `scriptSig`) that satisfies the input's spending conditions to the PSBT. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling this method. Detailed [explanations on the `finalizePsbtInput` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
+The `finalizePsbtInput()` method completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling this method. Detailed [explanations on the `finalizePsbtInput` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 
 For further information on using the `Output` class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `finalizePsbtInput`, `getAddress`, and `getScriptPubKey`.
 
@@ -138,7 +138,7 @@ For further information on using the `Output` class, refer to the [comprehensive
 `DescriptorsFactory` provides a convenient `expand()` function that allows you to parse a descriptor without the need to instantiate the `Output` class. This function can be used as follows:
 
 ```javascript
-const { expand } = descriptors.DescriptorsFactory(secp256k1);
+const { expand } = descriptors.DescriptorsFactory(ecc);
 const result = expand({
   descriptor: 'sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))',
   network: networks.testnet, // One of bitcoinjs-lib `networks`
@@ -215,7 +215,7 @@ pkhBIP32(params: {
 })
 ```
 
-For functions suffixed with *Ledger* (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with both `ledgerClient` and `ledgerState`. Detailed information on Ledger integration will be provided in subsequent sections.
+For functions suffixed with *Ledger* (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration will be provided in subsequent sections.
 
 The `keyExpressions` category includes functions that generate string representations of key expressions for public keys.
 
@@ -241,7 +241,7 @@ function keyExpressionBIP32({
 });
 ```
 
-For the `keyExpressionLedger` function, you'd use `ledgerClient` and `ledgerState` instead of `masterNode`. Detailed information on Ledger in subsequent sections.
+For the `keyExpressionLedger` function, you'd use `ledgerManager` instead of `masterNode`. Detailed information on Ledger in subsequent sections.
 
 Both functions will generate strings that fully define BIP32 keys. For example: `[d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*`. Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) to learn more about Key Expressions.
 
@@ -259,16 +259,7 @@ For signing operations, utilize the methods provided by the `signers`:
 
 ```javascript
 // For Ledger
-await signers.signLedger({
-  ledgerClient,
-  ledgerState,
-  psbt,
-  outputs
-});
-// Note: The `outputs` array consists of `Output` instances. It should encompass
-// all unspent outputs associated with Ledger-controlled keys, as these are 
-// essential for signing their linked inputs within the `psbt`. Nevertheless, 
-// the array may also contain other unrelated unspent outputs.
+await signers.signLedger({ psbt, ledgerManager });
 
 // For BIP32 - https://github.com/bitcoinjs/bip32
 signers.signBIP32({ psbt, masterNode });
@@ -318,6 +309,7 @@ await ledger.assertLedgerApp({
 });
 
 const ledgerClient = new AppClient(transport);
+const ledgerManager = { ledgerClient, ledgerState: {}, ecc, network };
 ```
 
 Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).
@@ -326,8 +318,7 @@ To register the policies of non-standard descriptors on the Ledger device, use t
 
 ```javascript
 await ledger.registerLedgerWallet({
-  ledgerClient,
-  ledgerState,
+  ledgerManager,
   descriptor: wshDescriptor,
   policyName: 'BitcoinerLab'
 });
@@ -335,7 +326,7 @@ await ledger.registerLedgerWallet({
 
 This code will auto-skip the policy registration process if it already exists. Please refer to [Ledger documentation](https://github.com/LedgerHQ/app-bitcoin-new/blob/develop/doc/wallet.md) to learn more about their Wallet Policies registration procedures.
 
-Finally, `ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
+Finally, `ledgerManager.ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
 
 <a name="documentation"></a>
 
@@ -356,8 +347,6 @@ For more information, refer to the following resources:
   ```
 
   The generated documentation will be available in the `docs/` directory. Open the `index.html` file to view the documentation.
-
-  Please note that not all the functions have been fully documented yet. However, you can easily understand their usage by reading the source code or by checking the integration tests or playgrounds.
 
 ## Authors and Contributors
 

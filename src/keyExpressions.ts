@@ -7,6 +7,7 @@ import type { BIP32API, BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
   LedgerState,
+  LedgerManager,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
@@ -54,6 +55,7 @@ export function parseKeyExpression({
   network = networks.bitcoin
 }: {
   keyExpression: string;
+  /** @default networks.bitcoin */
   network?: Network;
   /**
    * Indicates if this key expression belongs to a a SegWit output. When set,
@@ -218,7 +220,21 @@ function assertChangeIndexKeyPath({
  *
  * @returns {string} - The formed key expression for the Ledger device.
  */
+export async function keyExpressionLedger({
+  ledgerManager,
+  originPath,
+  keyPath,
+  change,
+  index
+}: {
+  ledgerManager: LedgerManager;
+  originPath: string;
+  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+  index?: number | undefined | '*';
+  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
+}): Promise<string>;
 
+/** @deprecated @hidden */
 export async function keyExpressionLedger({
   ledgerClient,
   ledgerState,
@@ -233,7 +249,30 @@ export async function keyExpressionLedger({
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
+}): Promise<string>;
+/** @hidden */
+export async function keyExpressionLedger({
+  ledgerClient,
+  ledgerState,
+  ledgerManager,
+  originPath,
+  keyPath,
+  change,
+  index
+}: {
+  ledgerClient?: unknown;
+  ledgerState?: LedgerState;
+  ledgerManager?: LedgerManager;
+  originPath: string;
+  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+  index?: number | undefined | '*';
+  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
 }) {
+  if (ledgerManager && (ledgerClient || ledgerState))
+    throw new Error(`ledgerClient and ledgerState have been deprecated`);
+  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
+  if (!ledgerClient || !ledgerState)
+    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
   assertChangeIndexKeyPath({ change, index, keyPath });
 
   const masterFingerprint = await getLedgerMasterFingerPrint({
@@ -269,6 +308,10 @@ export function keyExpressionBIP32({
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
+  /**
+   * Compute an xpub or xprv
+   * @default true
+   */
   isPublic?: boolean;
 }) {
   assertChangeIndexKeyPath({ change, index, keyPath });

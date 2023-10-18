@@ -10,7 +10,7 @@ import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
-const { Descriptor, expand } = DescriptorsFactory(ecc);
+const { Output, expand } = DescriptorsFactory(ecc);
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {
@@ -29,12 +29,12 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.valid) {
-      test(`Parse valid ${fixture.expression}`, () => {
-        const descriptor = new Descriptor(fixture);
+      test(`Parse valid ${fixture.descriptor}`, () => {
+        const descriptor = new Output(fixture);
         let expansion;
         expect(() => {
           expansion = expand({
-            expression: fixture.expression,
+            descriptor: fixture.descriptor,
             network: fixture.network,
             allowMiniscriptInP2SH: fixture.allowMiniscriptInP2SH
           });
@@ -45,7 +45,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         }
 
         if (!fixture.script && !fixture.address)
-          throw new Error(`Error: pass a valid test for ${fixture.expression}`);
+          throw new Error(`Error: pass a valid test for ${fixture.descriptor}`);
         if (fixture.script) {
           expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
             fixture.script
@@ -61,14 +61,14 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.invalid) {
-      test(`Parse invalid ${fixture.expression}`, () => {
+      test(`Parse invalid ${fixture.descriptor}`, () => {
         if (typeof fixture.throw !== 'string') {
           expect(() => {
-            new Descriptor(fixture);
+            new Output(fixture);
           }).toThrow();
         } else {
           expect(() => {
-            new Descriptor(fixture);
+            new Output(fixture);
           }).toThrow(fixture.throw);
         }
       });

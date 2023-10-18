@@ -157,9 +157,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   };
 
   /**
-   * Parses and analyzies a descriptor expression and destructures it into {@link Expansion |its elemental parts}.
+   * Parses and analyzies a descriptor expression and destructures it into
+   * {@link Expansion |its elemental parts}.
    *
-   * @throws {Error} Throws an error if the descriptor cannot be parsed or does not conform to the expected format.
+   * @throws {Error} Throws an error if the descriptor cannot be parsed or does
+   * not conform to the expected format.
    */
   function expand(params: {
     /**
@@ -526,6 +528,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     });
   }
 
+  /**
+   * The `Output` class is the central component for managing descriptors.
+   * It facilitates the creation of outputs to receive funds and enables the
+   * signing and finalization of PSBTs (Partially Signed Bitcoin Transactions)
+   * for spending UTXOs (Unspent Transaction Outputs).
+   */
   class Output {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
@@ -588,7 +596,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       preimages?: Preimage[];
 
       /**
-       * An array of the public keys used for signing the transaction when spending the output associated with this descriptor. This parameter is only used if the descriptor object is being used to finalize a transaction. It is necessary to specify the spending path when working with miniscript-based expressions that have multiple spending paths. Set this parameter to an array containing the public keys involved in the desired spending path. Leave it `undefined` if you only need to generate the `scriptPubKey` or `address` for a descriptor, or if all the public keys involved in the descriptor will sign the transaction. In the latter case, the satisfier will automatically choose the most optimal spending path (if more than one is available).
+       * An array of the public keys used for signing the transaction when
+       * spending the output associated with this descriptor. This parameter is
+       * only used if the descriptor object is being used to finalize a
+       * transaction. It is necessary to specify the spending path when working
+       * with miniscript-based expressions that have multiple spending paths.
+       * Set this parameter to an array containing the public keys involved in
+       * the desired spending path. Leave it `undefined` if you only need to
+       * generate the `scriptPubKey` or `address` for a descriptor, or if all
+       * the public keys involved in the descriptor will sign the transaction.
+       * In the latter case, the satisfier will automatically choose the most
+       * optimal spending path (if more than one is available).
        */
       signersPubKeys?: Buffer[];
     }) {
@@ -695,28 +713,50 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         return { nLockTime, nSequence };
       } else return undefined;
     }
+    /**
+     * Creates and returns an instance of bitcoinjs-lib
+     * [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts)'s interface with the `scriptPubKey` of this `Output`.
+     */
     getPayment(): Payment {
       return this.#payment;
     }
     /**
-     * Returns the Bitcoin Address
+     * Returns the Bitcoin Address of this `Output`.
      */
     getAddress(): string {
       if (!this.#payment.address)
         throw new Error(`Error: could extract an address from the payment`);
       return this.#payment.address;
     }
+    /**
+     * Returns this `Output`'s scriptPubKey.
+     */
     getScriptPubKey(): Buffer {
       if (!this.#payment.output)
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
     }
     /**
-     * Returns the compiled script satisfaction
-     * @param {PartialSig[]} signatures An array of signatures using this format: `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
-     * @returns {Buffer}
+     * Returns the compiled Script Satisfaction if this `Output` was created
+     * using a miniscript-based descriptor.
+     *
+     * The Satisfaction is the unlocking script that fulfills
+     * (satisfies) this `Output` and it is derived using the Safisfier algorithm
+     * [described here](https://bitcoin.sipa.be/miniscript/).
+     *
+     * Important: As mentioned above, note that this function only applies to
+     * miniscript descriptors.
      */
-    getScriptSatisfaction(signatures: PartialSig[]): Buffer {
+    getScriptSatisfaction(
+      /**
+       * An array with all the signatures needed to
+       * build the Satisfaction of this miniscript-based `Output`.
+       *
+       * `signatures` must be passed using this format (pairs of `pubKey/signature`):
+       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       */
+      signatures: PartialSig[]
+    ): Buffer {
       const miniscript = this.#miniscript;
       const expandedMiniscript = this.#expandedMiniscript;
       const expansionMap = this.#expansionMap;
@@ -751,21 +791,41 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could not produce a valid satisfaction`);
       return scriptSatisfaction;
     }
+    /**
+     * Gets the nSequence required to fulfill this `Output`.
+     */
     getSequence(): number | undefined {
       return this.#getTimeConstraints()?.nSequence;
     }
+    /**
+     * Gets the nLockTime required to fulfill this `Output`.
+     */
     getLockTime(): number | undefined {
       return this.#getTimeConstraints()?.nLockTime;
     }
+    /**
+     * Gets the witnessScript required to fulfill this `Output`. Only applies to
+     * Segwit outputs.
+     */
     getWitnessScript(): Buffer | undefined {
       return this.#witnessScript;
     }
+    /**
+     * Gets the redeemScript required to fullfill this `Output`. Only applies to
+     * SH outputs: sh(wpkh), sh(wsh), sh(lockingScript).
+     */
     getRedeemScript(): Buffer | undefined {
       return this.#redeemScript;
     }
+    /**
+     * Gets the bitcoinjs-lib [`network`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/networks.ts) used to create this `Output`.
+     */
     getNetwork(): Network {
       return this.#network;
     }
+    /**
+     * Whether this `Output` is Segwit.
+     */
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
     }
@@ -780,7 +840,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       value?: number;
       vout: number;
     }) {
-      return this.updatePsbtAsInput(params);
+      this.updatePsbtAsInput(params);
+      return params.psbt.data.inputs.length - 1;
     }
 
     /**
@@ -800,7 +861,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      *
      * When unsure, always use `txHex`, and skip `txId` and `value` for safety.
      *
-     * @returns The index of the added input.
+     * @returns A finalizer function to be used after signing the `psbt`.
+     * This function ensures that this input is properly finalized.
+     * The finalizer has this signature:
+     *
+     * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
+     *
      */
     updatePsbtAsInput({
       psbt,
@@ -814,7 +880,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       txId?: string;
       value?: number;
       vout: number;
-    }): number {
+    }) {
       if (txHex === undefined) {
         console.warn(`Warning: missing txHex may allow fee attacks`);
       }
@@ -825,7 +891,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: could not determine whether this is a segwit descriptor`
         );
       }
-      return updatePsbt({
+      const index = updatePsbt({
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
@@ -839,6 +905,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         witnessScript: this.getWitnessScript(),
         redeemScript: this.getRedeemScript()
       });
+      const finalizer = ({
+        psbt,
+        validate = true
+      }: {
+        psbt: Psbt;
+        /** @default true */
+        validate?: boolean | undefined;
+      }) => this.finalizePsbtInput({ index, psbt, validate });
+      return finalizer;
     }
 
     /**
@@ -890,6 +965,37 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         );
       }
     }
+
+    /**
+     * Finalizes a PSBT input by adding the necessary unlocking script that satisfies this `Output`'s
+     * spending conditions.
+     *
+     * 🔴 IMPORTANT 🔴
+     * It is STRONGLY RECOMMENDED to use the finalizer function returned by
+     * {@link _Internal_.Output.updatePsbtAsInput | `updatePsbtAsInput`} instead
+     * of calling this method directly.
+     * This approach eliminates the need to manage the `Output` instance and the
+     * input's index, simplifying the process.
+     *
+     * The `finalizePsbtInput` method completes a PSBT input by adding the
+     * unlocking script (`scriptWitness` or `scriptSig`) that satisfies
+     * this `Output`'s spending conditions. Bear in mind that both
+     * `scriptSig` and `scriptWitness` incorporate signatures. As such, you
+     * should complete all necessary signing operations before calling this
+     * method.
+     *
+     * For each unspent output from a previous transaction that you're
+     * referencing in a `psbt` as an input to be spent, apply this method as
+     * follows: `output.finalizePsbtInput({ index, psbt })`.
+     *
+     * It's essential to specify the exact position (or `index`) of the input in
+     * the `psbt` that references this unspent `Output`. This `index` should
+     * align with the value returned by the `updatePsbtAsInput` method.
+     * Note:
+     * The `index` corresponds to the position of the input in the `psbt`.
+     * To get this index, right after calling `updatePsbtAsInput()`, use:
+     * `index = psbt.data.inputs.length - 1`.
+     */
     finalizePsbtInput({
       index,
       psbt,
@@ -897,6 +1003,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }: {
       index: number;
       psbt: Psbt;
+      /** @default true */
       validate?: boolean | undefined;
     }): void {
       if (
@@ -928,6 +1035,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         );
       }
     }
+    /**
+     * Decomposes the descriptor used to form this `Output` into its elemental
+     * parts. See {@link ExpansionMap ExpansionMap} for a detailed explanation.
+     */
     expand() {
       return {
         ...(this.#expandedExpression !== undefined
@@ -967,14 +1078,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
   }
 
-  return { Descriptor, Output, parseKeyExpression, expand, ECPair, BIP32 };
+  return {
+    // deprecated TAG must also be below so it is exported to descriptors.d.ts
+    /** @deprecated */ Descriptor,
+    Output,
+    parseKeyExpression,
+    expand,
+    ECPair,
+    BIP32
+  };
 }
 
-/** @hidden */
+/** @hidden @deprecated */
 type DescriptorConstructor = ReturnType<
   typeof DescriptorsFactory
 >['Descriptor'];
-/** @hidden */
+/** @hidden  @deprecated */
 type DescriptorInstance = InstanceType<DescriptorConstructor>;
 export { DescriptorInstance, DescriptorConstructor };
 

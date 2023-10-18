@@ -29,7 +29,7 @@ import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 const { signBIP32, signECPair } = signers;
 
-const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();
@@ -108,9 +108,9 @@ const keys: {
             );
           }
         }
-        const expression = template.replace('SCRIPT', miniscript);
-        const descriptor = new Descriptor({
-          expression,
+        const descriptor = template.replace('SCRIPT', miniscript);
+        const output = new Output({
+          descriptor,
           //Use signersPubKeys to mark which spending path will be used
           //(which pubkey must be used)
           signersPubKeys,
@@ -119,24 +119,24 @@ const keys: {
         });
 
         const { txId, vout } = await regtestUtils.faucetComplex(
-          descriptor.getScriptPubKey(),
+          output.getScriptPubKey(),
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
         const psbt = new Psbt();
-        const index = descriptor.updatePsbt({ psbt, vout, txHex });
+        const inputFinalizer = output.updatePsbtAsInput({ psbt, vout, txHex });
         //There are different ways to add an output:
         //import { address } from 'bitcoinjs-lib';
         //const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
         //psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
         //But can also be done like this:
-        new Descriptor({
-          expression: `addr(${FINAL_ADDRESS})`,
+        new Output({
+          descriptor: `addr(${FINAL_ADDRESS})`,
           network: NETWORK
         }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
-        descriptor.finalizePsbtInput({ index, psbt });
+        inputFinalizer({ psbt });
         const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.
@@ -171,13 +171,13 @@ const keys: {
           spendTx.ins[0]?.sequence !== older
         )
           throw new Error(`Error: final sequence was not correct`);
-        console.log(`\nDescriptor: ${expression}`);
+        console.log(`\nDescriptor: ${descriptor}`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
             psbt.locktime
           }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
             16
-          )}, ${descriptor
+          )}, ${output
             .expand()
             .expandedExpression?.replace('@0', '@olderKey')
             .replace('@1', '@afterKey')}: OK`

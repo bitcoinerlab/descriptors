@@ -4,7 +4,7 @@
 import type { Psbt } from 'bitcoinjs-lib';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { DescriptorInstance, OutputInstance } from './descriptors';
+import type { DescriptorInstance } from './descriptors';
 import {
   importAndValidateLedgerBitcoin,
   comparePolicies,
@@ -12,7 +12,9 @@ import {
   ledgerPolicyFromState,
   ledgerPolicyFromStandard,
   ledgerPolicyFromOutput,
-  LedgerState
+  LedgerState,
+  LedgerManager,
+  ledgerPolicyFromPsbtInput
 } from './ledger';
 type DefaultDescriptorTemplate =
   | 'pkh(@0/**)'
@@ -77,18 +79,20 @@ const ledgerSignaturesForInputIndex = (
       signature: partialSignature.signature
     }));
 
+/**
+ * Signs an input of the `psbt` where the keys are controlled by a Ledger
+ * device.
+ *
+ * The function will throw an error if it's unable to sign the input.
+ */
 export async function signInputLedger({
   psbt,
   index,
-  output,
-  ledgerClient,
-  ledgerState
+  ledgerManager
 }: {
   psbt: Psbt;
   index: number;
-  output: OutputInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerManager: LedgerManager;
 }): Promise<void>;
 
 /**
@@ -117,22 +121,30 @@ export async function signInputLedger({
 export async function signInputLedger({
   psbt,
   index,
-  output,
   descriptor,
   ledgerClient,
-  ledgerState
+  ledgerState,
+  ledgerManager
 }: {
   psbt: Psbt;
   index: number;
-  output?: OutputInstance;
   descriptor?: DescriptorInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerClient?: unknown;
+  ledgerState?: LedgerState;
+  ledgerManager?: LedgerManager;
 }): Promise<void> {
-  if (descriptor && output)
-    throw new Error(`descriptor param has been deprecated`);
-  output = descriptor || output;
-  if (!output) throw new Error(`output not provided`);
+  if (!descriptor && !ledgerManager)
+    throw new Error(`ledgerManager not provided`);
+  if (descriptor && ledgerManager)
+    throw new Error(`Invalid usage: don't pass descriptor`);
+  if (ledgerManager && (ledgerClient || ledgerState))
+    throw new Error(
+      `Invalid usage: either ledgerManager or ledgerClient + ledgerState`
+    );
+  const output = descriptor;
+  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
+  if (!ledgerClient) throw new Error(`ledgerManager not provided`);
+  if (!ledgerState) throw new Error(`ledgerManager not provided`);
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
@@ -140,48 +152,83 @@ export async function signInputLedger({
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  const result = await ledgerPolicyFromOutput({
-    output,
-    ledgerClient,
-    ledgerState
-  });
-  if (!result) throw new Error(`Error: output does not have a ledger input`);
-  const { ledgerTemplate, keyRoots } = result;
-
   let ledgerSignatures;
-  const standardPolicy = await ledgerPolicyFromStandard({
-    output,
-    ledgerClient,
-    ledgerState
-  });
-  if (standardPolicy) {
-    ledgerSignatures = await ledgerClient.signPsbt(
-      new PsbtV2().fromBitcoinJS(psbt),
-      new DefaultWalletPolicy(
-        ledgerTemplate as DefaultDescriptorTemplate,
-        keyRoots[0]!
-      ),
-      null
-    );
+  if (ledgerManager) {
+    const policy = await ledgerPolicyFromPsbtInput({
+      psbt,
+      index,
+      ledgerManager
+    });
+    if (!policy)
+      throw new Error(`Error: the ledger cannot sign this pstb input`);
+    if (policy.policyName && policy.policyHmac && policy.policyId) {
+      //non-standard policy
+      const walletPolicy = new WalletPolicy(
+        policy.policyName,
+        policy.ledgerTemplate,
+        policy.keyRoots
+      );
+
+      ledgerSignatures = await ledgerClient.signPsbt(
+        new PsbtV2().fromBitcoinJS(psbt),
+        walletPolicy,
+        policy.policyHmac
+      );
+    } else {
+      //standard policy
+      ledgerSignatures = await ledgerClient.signPsbt(
+        new PsbtV2().fromBitcoinJS(psbt),
+        new DefaultWalletPolicy(
+          policy.ledgerTemplate as DefaultDescriptorTemplate,
+          policy.keyRoots[0]!
+        ),
+        null
+      );
+    }
   } else {
-    const policy = await ledgerPolicyFromState({
+    if (!output) throw new Error(`outputs not provided`);
+    const result = await ledgerPolicyFromOutput({
       output,
       ledgerClient,
       ledgerState
     });
-    if (!policy || !policy.policyName || !policy.policyHmac)
-      throw new Error(`Error: the descriptor's policy is not registered`);
-    const walletPolicy = new WalletPolicy(
-      policy.policyName,
-      ledgerTemplate,
-      keyRoots
-    );
+    if (!result) throw new Error(`Error: output does not have a ledger input`);
+    const { ledgerTemplate, keyRoots } = result;
 
-    ledgerSignatures = await ledgerClient.signPsbt(
-      new PsbtV2().fromBitcoinJS(psbt),
-      walletPolicy,
-      policy.policyHmac
-    );
+    const standardPolicy = await ledgerPolicyFromStandard({
+      output,
+      ledgerClient,
+      ledgerState
+    });
+    if (standardPolicy) {
+      ledgerSignatures = await ledgerClient.signPsbt(
+        new PsbtV2().fromBitcoinJS(psbt),
+        new DefaultWalletPolicy(
+          ledgerTemplate as DefaultDescriptorTemplate,
+          keyRoots[0]!
+        ),
+        null
+      );
+    } else {
+      const policy = await ledgerPolicyFromState({
+        output,
+        ledgerClient,
+        ledgerState
+      });
+      if (!policy || !policy.policyName || !policy.policyHmac)
+        throw new Error(`Error: the descriptor's policy is not registered`);
+      const walletPolicy = new WalletPolicy(
+        policy.policyName,
+        ledgerTemplate,
+        keyRoots
+      );
+
+      ledgerSignatures = await ledgerClient.signPsbt(
+        new PsbtV2().fromBitcoinJS(psbt),
+        walletPolicy,
+        policy.policyHmac
+      );
+    }
   }
 
   //Add the signatures to the Psbt object using PartialSig format:
@@ -191,21 +238,21 @@ export async function signInputLedger({
 }
 
 /**
- * signLedger is able to sign several inputs of the same wallet policy since it
- * it clusters together wallet policy types before signing.
+ * Signs the inputs of the `psbt` where the keys are controlled by a Ledger
+ * device.
  *
- * It throws if it cannot sign any input.
+ * `signLedger` can sign multiple inputs of the same wallet policy in a single
+ * pass by grouping inputs by their wallet policy type before the signing
+ * process.
+ *
+ * The function will throw an error if it's unable to sign any input.
  */
 export async function signLedger({
   psbt,
-  outputs,
-  ledgerClient,
-  ledgerState
+  ledgerManager
 }: {
   psbt: Psbt;
-  outputs: OutputInstance[];
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerManager: LedgerManager;
 }): Promise<void>;
 
 /**
@@ -231,37 +278,57 @@ export async function signLedger({
  */
 export async function signLedger({
   psbt,
-  outputs,
   descriptors,
   ledgerClient,
-  ledgerState
+  ledgerState,
+  ledgerManager
 }: {
   psbt: Psbt;
-  outputs?: OutputInstance[];
   descriptors?: DescriptorInstance[];
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerClient?: unknown;
+  ledgerState?: LedgerState;
+  ledgerManager?: LedgerManager;
 }): Promise<void> {
-  if (descriptors && outputs)
-    throw new Error(`descriptors param has been deprecated`);
-  outputs = descriptors || outputs;
-  if (!outputs) throw new Error(`outputs not provided`);
+  if (!descriptors && !ledgerManager)
+    throw new Error(`ledgerManager not provided`);
+  if (descriptors && ledgerManager)
+    throw new Error(`Invalid usage: don't pass descriptors`);
+  if (ledgerManager && (ledgerClient || ledgerState))
+    throw new Error(
+      `Invalid usage: either ledgerManager or ledgerClient + ledgerState`
+    );
+  const outputs = descriptors;
+  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
+  if (!ledgerClient) throw new Error(`ledgerManager not provided`);
+  if (!ledgerState) throw new Error(`ledgerManager not provided`);
   const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
     )) as typeof import('ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
-  const ledgerPolicies = [];
-  for (const output of outputs) {
-    const policy =
-      (await ledgerPolicyFromState({ output, ledgerClient, ledgerState })) ||
-      (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }));
-    if (policy) ledgerPolicies.push(policy);
-  }
-  if (ledgerPolicies.length === 0)
-    throw new Error(`Error: there are no inputs which could be signed`);
 
+  const ledgerPolicies = [];
+  if (ledgerManager)
+    for (let index = 0; index < psbt.data.inputs.length; index++) {
+      const policy = await ledgerPolicyFromPsbtInput({
+        psbt,
+        index,
+        ledgerManager
+      });
+      if (policy) ledgerPolicies.push(policy);
+    }
+  else {
+    if (!outputs) throw new Error(`outputs not provided`);
+    for (const output of outputs) {
+      const policy =
+        (await ledgerPolicyFromState({ output, ledgerClient, ledgerState })) ||
+        (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }));
+      if (policy) ledgerPolicies.push(policy);
+    }
+    if (ledgerPolicies.length === 0)
+      throw new Error(`Error: there are no inputs which could be signed`);
+  }
   //cluster unique LedgerPolicies
   const uniquePolicies: LedgerPolicy[] = [];
   for (const policy of ledgerPolicies) {
