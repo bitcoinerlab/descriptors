@@ -134,7 +134,7 @@ function standardExpressionsLedgerMaker(
     ledgerClient,
     ledgerState,
     ledgerManager,
-    network = networks.bitcoin,
+    network,
     account,
     keyPath,
     change,
@@ -143,7 +143,6 @@ function standardExpressionsLedgerMaker(
     ledgerClient?: unknown;
     ledgerState?: LedgerState;
     ledgerManager?: LedgerManager;
-    /** @default networks.bitcoin */
     network?: Network;
     account: number;
     keyPath?: string;
@@ -154,6 +153,7 @@ function standardExpressionsLedgerMaker(
       throw new Error(`ledgerClient and ledgerState have been deprecated`);
     if (ledgerManager && network)
       throw new Error(`ledgerManager already includes the network object`);
+    if (!ledgerManager && !network) network = networks.bitcoin;
     if (ledgerManager) ({ ledgerClient, ledgerState, network } = ledgerManager);
     if (!ledgerClient || !ledgerState)
       throw new Error(`Could not retrieve ledgerClient or ledgerState`);
