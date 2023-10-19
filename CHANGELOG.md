@@ -5,18 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2023-10-19
+
+### Changed
+
+- **Main Class Renaming**:
+  - Deprecated the old naming convention.
+  - Renamed the main class from "Descriptor" to "Output".
+  - This change emphasizes that a descriptor describes an "Output".
+
+- **Parameter Refactoring**:
+  - Refactored the main input parameter in the constructor of the "Output" class.
+    - Previously: "expression" (string).
+    - Now: "descriptor" (string).
+  - This modification better aligns with the principle above that a descriptor describes an Output.
+
+- **Function Updates**:
+  - All functions that utilized "expression" have been updated to use "descriptor".
+
+- **Ledger Hardware Wallet & PSBT Finalizers Improvements**:
+  - Refined functions related to the Ledger Hardware Wallet and PSBT finalizers.
+  - These refinements greatly simplify and enhance the library's usability. See details below.
+
+- **Finalizers Update**:
+  - Deprecated `updatePsbt` in favor of `updatePsbtAsInput`.
+    - The new function returns the finalizer directly instead of the input number.
+    - This change eliminates the need to explicitly call the `finalizePsbtInput` method of the Output class.
+    - Previous implementations were error-prone due to the need to keep track of the input number of the PSBT input being finalized and the Output instance of the previous output.
+
+- **Ledger Enhancements**:
+  - Simplified the signer's requirements before v2.0.0, which previously required tracking the Output instances of each input and passing them to the signer.
+    - The essential information is now directly extracted from the PSBT, facilitating usability.
+  - Unified `ledgerClient` and `ledgerState` parameters into a new type `LedgerManager`, which also includes an instance to the Elliptic Curve Library (`ecc`).
+    - To initialize: `const ledgerManager = {ledgerClient, ledgerState: {}, ecc};`, where `import * as ecc from '@bitcoinerlab/secp256k1'`.
+
+- **Deprecation Notices**:
+  - While the old functions and classes with former signatures remain available in 2.0.0, they are now deprecated.
+    - Transitioning to v2.0.0 requires no immediate action, but you may encounter "deprecated" warnings if your code editor supports typedoc/jsdoc linting.
+    - It's highly recommended to start updating to the new functions and classes.
+
+- **Key Updates to Consider**:
+  - Substitute `new Descriptor({expression})` with `new Output({descriptor})`.
+  - Transition from `expand({expression})` to `expand({descriptor})`.
+  - Use `updatePsbtAsInput` as `updatePsbt` is now deprecated.
+  - Introduced `updatePsbtAsOutput` for completeness.
+  - Opt for finalizers returned by `updatePsbtAsInput` as `finalizePsbtInput` and `finalizePsbt` have been deprecated.
+
+- **Additional Ledger Updates**:
+  - Functions previously expecting `ledgerClient` and `ledgerState` should now receive `ledgerManager` instead.
+    - This change affects multiple functions, including `signLedger`, all Ledger script expression functions and also: `keyExpressionLedger`, `registerLedgerWallet`, `getLedgerMasterFingerPrint`, and `assertLedgerApp`.
+  - `signLedger` and `signInputLedger` no longer necessitate passing an instance to the former `Descriptor` class. All relevant information is automatically retrieved from the psbt now.
+
+- **Testing Enhancements**:
+  - **Deprecated Function Testing**:
+    - Retained old tests, now suffixed with `-deprecated`, to continue testing the deprecated functions and classes.
+  - **New API Testing**:
+    - Introduced additional tests specifically designed to evaluate the new API's functionality.
+
+- **Documentation Enhancements**:
+  - Extensively documented all methods using typedoc.
+    - This facilitates the generation of a comprehensive API reference for developers.
+  - Updated the README.md to mirror the latest changes, optimizing clarity by referencing the API for intricate details.
 
 ### Fixed
 
 - **Descriptor Buffer Comparison**:
-  - Addressed a bug related to buffer comparisons in `src/descriptors.ts`.
-    - Modified the comparison logic for `witnessScript` and `redeemScript` to handle cases where one of the buffers may be `undefined`.
-    - Introduced the `eqBuffers` function to compare two buffers, ensuring that it correctly handles `undefined` values.
-    - This fix ensures accurate and error-free descriptor comparisons, particularly crucial for finalizing psbt indexes.
-    - Refer to [issue-20](https://github.com/bitcoinerlab/descriptors/issues/20) for more details.
+  - Resolved a bug associated with buffer comparisons in `src/descriptors.ts`.
+    - Adjusted the comparison logic for `witnessScript` and `redeemScript` to manage scenarios where one buffer may be `undefined`.
+    - Introduced the `eqBuffers` function for accurate buffer comparisons, particularly when handling `undefined` values.
+    - This correction is vital for precise descriptor comparisons, especially when determining psbt indexes.
+  - For an in-depth analysis, consult [issue-20](https://github.com/bitcoinerlab/descriptors/issues/20).
 
-## [1.1.1] - 2023-10-12
+## [1.1.1] - 2023-9-12
 
 ### Changed
 
@@ -26,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - The new approach bypasses this by using a direct `require` statement. For more details on the underlying issue, refer to [this React Native discussion](https://github.com/react-native-community/discussions-and-proposals/issues/120).
     - This update ensures smoother integration for developers using this library in React Native projects.
 
-## [1.1.0] - 2023-10-7
+## [1.1.0] - 2023-9-7
 
 ### Changed
 

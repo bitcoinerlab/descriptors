@@ -27,6 +27,9 @@ export type TimeConstraints = {
   nSequence: number | undefined;
 };
 
+/**
+ * See {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ */
 export type KeyInfo = {
   keyExpression: string;
   pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor
@@ -38,6 +41,35 @@ export type KeyInfo = {
   path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
 };
 
+/**
+ * An `ExpansionMap` contains destructured information of a descritptor expression.
+ *
+ * For example, this descriptor `sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))` has the following
+ * `expandedExpression`: `sh(wsh(andor(pk(@0),older(8640),pk(@1))))`
+ *
+ * `key`'s are set using this format: `@i`, where `i` is an integer starting from `0` assigned by parsing and retrieving keys from the descriptor from left to right.
+ *
+ * For the given example, the `ExpansionMap` is:
+ *
+ * ```javascript
+ *  {
+ *    '@0': {
+ *      keyExpression:
+ *      '0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2'
+ *    },
+ *    '@1': {
+ *      keyExpression:
+ *        "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
+ *      keyPath: '/1/2/3/4/*',
+ *      originPath: "/49'/0'/0'",
+ *      path: "m/49'/0'/0'/1/2/3/4/*",
+ *      // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *    }
+ *  }
+ *```
+ *
+ *
+ */
 export type ExpansionMap = {
   //key will have this format: @i, where i is an integer
   [key: string]: KeyInfo;
@@ -77,6 +109,11 @@ export interface TinySecp256k1Interface {
   privateNegate(d: Uint8Array): Uint8Array;
 }
 
+/**
+ * `DescriptorsFactory` creates and returns the {@link DescriptorsFactory | `expand()`}
+ * function that parses a descriptor expression and destructures it
+ * into its elemental parts. `Expansion` is the type that `expand()` returns.
+ */
 export type Expansion = {
   /**
    * The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided expression, if applicable.
@@ -85,6 +122,7 @@ export type Expansion = {
 
   /**
    * The expanded descriptor expression.
+   * See {@link ExpansionMap ExpansionMap} for a detailed explanation.
    */
   expandedExpression?: string;
 
@@ -95,16 +133,19 @@ export type Expansion = {
 
   /**
    * A map of key expressions in the descriptor to their corresponding expanded keys.
+   * See {@link ExpansionMap ExpansionMap} for a detailed explanation.
    */
   expansionMap?: ExpansionMap;
 
   /**
-   * A boolean indicating whether the descriptor represents a SegWit script.
+   * A boolean indicating whether the descriptor uses SegWit.
    */
   isSegwit?: boolean;
 
   /**
    * The expanded miniscript, if any.
+   * It corresponds to the `expandedExpression` without the top-level script
+   * expression.
    */
   expandedMiniscript?: string;
 
@@ -119,63 +160,49 @@ export type Expansion = {
   witnessScript?: Buffer;
 
   /**
-   * Whether this expression represents a ranged-descriptor.
+   * Whether the descriptor is a ranged-descriptor.
    */
   isRanged: boolean;
 
   /**
-   * This is the preferred or authoritative representation of the descriptor expression.
+   * This is the preferred or authoritative representation of an output
+   * descriptor expression.
+   * It removes the checksum and, if it is a ranged-descriptor, it
+   * particularizes it to its index.
    */
   canonicalExpression: string;
 };
 
 /**
- * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and returns an implementation of the `Expand` interface.
- * This returned implementation is tailored for the provided `TinySecp256k1Interface`.
- */
-export interface Expand {
-  (params: {
-    /**
-     * The descriptor expression to be expanded.
-     */
-    expression: string;
-
-    /**
-     * The descriptor index, if ranged.
-     */
-    index?: number;
-
-    /**
-     * A flag indicating whether the descriptor is required to include a checksum.
-     * @defaultValue false
-     */
-    checksumRequired?: boolean;
-
-    /**
-     * The Bitcoin network to use.
-     * @defaultValue `networks.bitcoin`
-     */
-    network?: Network;
-
-    /**
-     * Flag to allow miniscript in P2SH.
-     * @defaultValue false
-     */
-    allowMiniscriptInP2SH?: boolean;
-  }): Expansion;
-}
-
-/**
- * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and returns an implementation of the `ParseKeyExpression` interface.
- * This returned implementation is tailored for the provided `TinySecp256k1Interface`.
+ * The {@link DescriptorsFactory | `DescriptorsFactory`} function creates and
+ * returns the `parseKeyExpression` function, which is an implementation of this
+ * interface.
+ *
+ * It parses and destructures a key expression string (xpub, xprv, pubkey or
+ * wif) into {@link KeyInfo | `KeyInfo`}.
+ *
+ * For example, given this `keyExpression`: `[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*`, this is the parsed result:
+ *
+ * ```javascript
+ *  {
+ *    keyExpression:
+ *      "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
+ *    keyPath: '/1/2/3/4/*',
+ *    originPath: "/49'/0'/0'",
+ *    path: "m/49'/0'/0'/1/2/3/4/*",
+ *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *  }
+ * ```
+ *
+ * See {@link KeyInfo} for the complete list of elements retrieved by this function.
  */
 export interface ParseKeyExpression {
   (params: {
     keyExpression: string;
     /**
-     * Indicates if this is a SegWit key expression. When set, further checks
-     * ensure the public key (if present in the expression) is compressed
-     * (33 bytes).
+     * Indicates if this key expression belongs to a a SegWit output. When set,
+     * further checks are done to ensure the public key (if present in the
+     * expression) is compressed (33 bytes).
      */
     isSegwit?: boolean;
     network?: Network;

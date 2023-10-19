@@ -10,7 +10,7 @@ import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
-const { Output, expand } = DescriptorsFactory(ecc);
+const { Descriptor, expand } = DescriptorsFactory(ecc);
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {
@@ -25,16 +25,18 @@ function partialDeepEqual(obj) {
 }
 
 for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
-  describe(`Parse valid ${
+  describe(`Deprecated API - Parse valid ${
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.valid) {
-      test(`Parse valid ${fixture.descriptor}`, () => {
-        const descriptor = new Output(fixture);
+      fixture.expression = fixture.descriptor;
+      delete fixture.descriptor;
+      test(`Parse valid ${fixture.expression}`, () => {
+        const descriptor = new Descriptor(fixture);
         let expansion;
         expect(() => {
           expansion = expand({
-            descriptor: fixture.descriptor,
+            expression: fixture.expression,
             network: fixture.network,
             allowMiniscriptInP2SH: fixture.allowMiniscriptInP2SH
           });
@@ -45,7 +47,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         }
 
         if (!fixture.script && !fixture.address)
-          throw new Error(`Error: pass a valid test for ${fixture.descriptor}`);
+          throw new Error(`Error: pass a valid test for ${fixture.expression}`);
         if (fixture.script) {
           expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
             fixture.script
@@ -57,18 +59,20 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
       });
     }
   });
-  describe(`Parse invalid ${
+  describe(`Deprecated API - Parse invalid ${
     fixtures === customFixtures ? 'custom fixtures' : 'Bitcoin Core fixtures'
   }`, () => {
     for (const fixture of fixtures.invalid) {
-      test(`Parse invalid ${fixture.descriptor}`, () => {
+      fixture.expression = fixture.descriptor;
+      delete fixture.descriptor;
+      test(`Parse invalid ${fixture.expression}`, () => {
         if (typeof fixture.throw !== 'string') {
           expect(() => {
-            new Output(fixture);
+            new Descriptor(fixture);
           }).toThrow();
         } else {
           expect(() => {
-            new Output(fixture);
+            new Descriptor(fixture);
           }).toThrow(fixture.throw);
         }
       });

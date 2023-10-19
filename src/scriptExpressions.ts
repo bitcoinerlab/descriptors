@@ -1,5 +1,5 @@
 import { networks, Network } from 'bitcoinjs-lib';
-import type { LedgerState } from './ledger';
+import type { LedgerState, LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import type { BIP32Interface } from 'bip32';
 
@@ -17,7 +17,20 @@ function standardExpressionsBIP32Maker(
   purpose: number,
   scriptTemplate: string
 ) {
-  function standardKeyExpressionBIP32({
+  /**
+   * Computes the standard descriptor based on given parameters.
+   *
+   * You can define the output location either by:
+   * - Providing the full `keyPath` (e.g., "/0/2").
+   * OR
+   * - Specifying the `change` and `index` values separately (e.g., `{change:0, index:2}`).
+   *
+   * For ranged indexing, the `index` can be set as a wildcard '*'. For example:
+   * - `keyPath="/0/*"`
+   * OR
+   * - `{change:0, index:'*'}`.
+   */
+  function standardScriptExpressionBIP32({
     masterNode,
     network = networks.bitcoin,
     keyPath,
@@ -27,11 +40,16 @@ function standardExpressionsBIP32Maker(
     isPublic = true
   }: {
     masterNode: BIP32Interface;
+    /** @default networks.bitcoin */
     network?: Network;
     account: number;
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
     keyPath?: string;
+    /**
+     * Compute an xpub or xprv
+     * @default true
+     */
     isPublic?: boolean;
   }) {
     const originPath = `/${purpose}'/${
@@ -49,7 +67,7 @@ function standardExpressionsBIP32Maker(
 
     return scriptTemplate.replace('KEYEXPRESSION', keyExpression);
   }
-  return standardKeyExpressionBIP32;
+  return standardScriptExpressionBIP32;
 }
 
 export const pkhBIP32 = standardExpressionsBIP32Maker(44, 'pkh(KEYEXPRESSION)');
@@ -66,7 +84,34 @@ function standardExpressionsLedgerMaker(
   purpose: number,
   scriptTemplate: string
 ) {
-  async function standardKeyExpressionLedger({
+  /**
+   * Computes the standard descriptor based on given parameters.
+   *
+   * You can define the output location either by:
+   * - Providing the full `keyPath` (e.g., "/0/2").
+   * OR
+   * - Specifying the `change` and `index` values separately (e.g., `{change:0, index:2}`).
+   *
+   * For ranged indexing, the `index` can be set as a wildcard '*'. For example:
+   * - `keyPath="/0/*"`
+   * OR
+   * - `{change:0, index:'*'}`.
+   */
+  async function standardScriptExpressionLedger({
+    ledgerManager,
+    account,
+    keyPath,
+    change,
+    index
+  }: {
+    ledgerManager: LedgerManager;
+    account: number;
+    keyPath?: string;
+    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+    index?: number | undefined | '*';
+  }): Promise<string>;
+  /** @deprecated @hidden */
+  async function standardScriptExpressionLedger({
     ledgerClient,
     ledgerState,
     network = networks.bitcoin,
@@ -77,12 +122,41 @@ function standardExpressionsLedgerMaker(
   }: {
     ledgerClient: unknown;
     ledgerState: LedgerState;
+    /** @default networks.bitcoin */
+    network?: Network;
+    account: number;
+    keyPath?: string;
+    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+    index?: number | undefined | '*';
+  }): Promise<string>;
+  /** @hidden */
+  async function standardScriptExpressionLedger({
+    ledgerClient,
+    ledgerState,
+    ledgerManager,
+    network = networks.bitcoin,
+    account,
+    keyPath,
+    change,
+    index
+  }: {
+    ledgerClient?: unknown;
+    ledgerState?: LedgerState;
+    ledgerManager?: LedgerManager;
+    /** @default networks.bitcoin */
     network?: Network;
     account: number;
     keyPath?: string;
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
   }) {
+    if (ledgerManager && (ledgerClient || ledgerState))
+      throw new Error(`ledgerClient and ledgerState have been deprecated`);
+    if (ledgerManager && network)
+      throw new Error(`ledgerManager already includes the network object`);
+    if (ledgerManager) ({ ledgerClient, ledgerState, network } = ledgerManager);
+    if (!ledgerClient || !ledgerState)
+      throw new Error(`Could not retrieve ledgerClient or ledgerState`);
     const originPath = `/${purpose}'/${
       network === networks.bitcoin ? 0 : 1
     }'/${account}'`;
@@ -98,7 +172,7 @@ function standardExpressionsLedgerMaker(
 
     return scriptTemplate.replace('KEYEXPRESSION', keyExpression);
   }
-  return standardKeyExpressionLedger;
+  return standardScriptExpressionLedger;
 }
 
 export const pkhLedger = standardExpressionsLedgerMaker(
