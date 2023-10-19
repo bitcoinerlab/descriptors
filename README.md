@@ -50,8 +50,8 @@ npm install @bitcoinerlab/secp256k1
 The library can be split into four main parts:
 
 - The `Output` class is the central component for managing descriptors. It facilitates the creation of outputs to receive funds and enables the signing and finalization of PSBTs (Partially Signed Bitcoin Transactions) for spending UTXOs (Unspent Transaction Outputs).
-- `keyExpressions` and `scriptExpressions`, which provide functions to create key and descriptor expressions (strings) from structured data, making it easier to work with complex descriptors.
 - PSBT signers and finalizers, which are used to manage the signing and finalization of PSBTs.
+- `keyExpressions` and `scriptExpressions`, which provide functions to create key and standard descriptor expressions (strings) from structured data.
 - Hardware wallet integration, which provides support for interacting with hardware wallets such as Ledger devices.
 
 ### Output class
