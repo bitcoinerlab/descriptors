@@ -37,6 +37,8 @@ PSBTs come in handy when working with descriptors, especially when using scripts
 
 Before we dive in, it's worth mentioning that we have several comprehensive guides available covering different aspects of the library. These guides provide explanations and code examples in interactive playgrounds, allowing you to see the changes in the output as you modify the code. This hands-on learning experience, combined with clear explanations, helps you better understand how to use the library effectively. [Check out the available guides here](https://bitcoinerlab.com/guides).
 
+Furthermore, we've meticulously documented our API. For an in-depth look into Classes, functions, and types, head over [here](https://bitcoinerlab.com/modules/descriptors/api).
+
 To use this library (and accompanying libraries), you can install them using:
 
 ```bash
@@ -71,55 +73,23 @@ const wpkhOutput = new Output({
 });
 ```
 
-Here are the parameters that can be used to create an `Output`:
+Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#constructor) for the complete list of parameters in the constructor.
 
-```javascript
-constructor({
-  descriptor, // The descriptor string in ASCII format. It may include a "*"
-              // to denote an arbitrary index (aka ranged descriptors).
-  index,      // The descriptor's index in the case of a range descriptor
-              // (must be an integer >= 0).
-  checksumRequired = false // Optional flag indicating if the descriptor is
-                           // required to include a checksum. Defaults to false.
-  allowMiniscriptInP2SH = false, // Flag indicating if this instance can parse
-                                 // and generate script satisfactions for
-                                 // sh(miniscript) top-level expressions of
-                                 // miniscripts. This is not recommended.
-  network = networks.bitcoin, // One of bitcoinjs-lib `networks`
-                              // (https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js)
-                              // or another one with the same interface.
-  preimages = [], // An array of preimages of type `Preimage`: `Preimage[]`.
-                  // This info is necessary to finalize Psbts.
-  signersPubKeys // (Optional): An array of the public keys used for signing
-                 // the transaction when spending the output associated with
-                 // this descriptor. This parameter is only used if the
-                 // descriptor object is being used to finalize a transaction.
-                 // It is necessary to specify the spending path when working
-                 // with miniscript-based expressions that have multiple
-                 // spending paths. Set this parameter to an array containing
-                 // the public keys involved in the desired spending path.
-                 // Leave it `undefined` if you only need to generate the
-                 // `scriptPubKey` or `address` for a descriptor, or if all
-                 // the public keys involved in the descriptor will sign the
-                 // transaction. In the latter case, the satisfier will
-                 // automatically choose the most optimal spending path in terms
-                 // of tx size (if more than one path is available).
-                 // For more details on using this parameter, refer to this
-                 // Stack Exchange answer: https://bitcoin.stackexchange.com/a/118036/89665
-});
-```
-
-The `Output` class offers various helpful methods, including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()`, `updatePsbtAsOutput()` and `finalizePsbtInput()`.
+The `Output` class [offers various helpful methods](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html), including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
 
 The `updatePsbtAsInput()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO  described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbtAsInput()` adds timelock information to the PSBT.
 
 To call `updatePsbtAsInput()`, use the following syntax:
 
 ```javascript
-const inputIndex = output.updatePsbtAsInput({ psbt, txHex, vout });
+import { Psbt } from 'bitcoinjs-lib';
+const psbt = new Psbt();
+const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
 ```
 
-Here, `psbt` refers to the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. The method returns a number that indicates the position this output will hold when utilized as input in the current `psbt` transaction.
+Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction.
+
+The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling `inputFinalizer()`. Detailed [explanations on the `inputFinalizer` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 
 Conversely, `updatePsbtAsOutput` allows you to add an output to a PSBT. For instance, to configure a `psbt` that sends `10,000` sats to the SegWit address `bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x`:
 
@@ -129,67 +99,109 @@ const recipientOutput =
 recipientOutput.updatePsbtAsOutput({ psbt, value: 10000 });
 ```
 
-The `finalizePsbtInput()` method completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling this method. Detailed [explanations on the `finalizePsbtInput` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
+For further information on using the `Output` class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. For specific details on the methods, refer directly to [the API](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html). For insights into the constructor, especially regarding the `signersPubKeys` parameter, as well as the usage of `updatePsbtAsInput`, `getAddress`, and `getScriptPubKey`, see this detailed [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665).
 
-For further information on using the `Output` class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. Additionally, a [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665) provides a focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `finalizePsbtInput`, `getAddress`, and `getScriptPubKey`.
+#### Parsing Descriptors with `expand()`
 
-#### Tip: Parsing descriptors without instantiating a class
+The `expand()` function serves as a mechanism to parse Bitcoin descriptors, unveiling a detailed breakdown of the descriptor's content. There are two main pathways to utilize this function:
 
-`DescriptorsFactory` provides a convenient `expand()` function that allows you to parse a descriptor without the need to instantiate the `Output` class. This function can be used as follows:
+##### 1. Directly from an `Output` Instance
+
+If you have already instantiated the `Output` class and created an output, you can directly use the [`expand()` method](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#expand) on that `Output` instance. This method provides a straightforward way to parse descriptors without the need for additional utilities.
+
+```javascript
+const output = new Output({ descriptor: "your-descriptor-here" });
+const result = output.expand();
+```
+
+##### 2. Through the `DescriptorsFactory`
+
+If you haven't instantiated the `Output` class or simply prefer a standalone utility, the `DescriptorsFactory` provides an `expand()` function that allows you to directly parse the descriptor. For a comprehensive understanding of all the function arguments, refer to [this reference](https://bitcoinerlab.com/modules/descriptors/api/functions/DescriptorsFactory.html#DescriptorsFactory). Here's how you can use it:
 
 ```javascript
 const { expand } = descriptors.DescriptorsFactory(ecc);
 const result = expand({
-  descriptor: 'sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))',
-  network: networks.testnet, // One of bitcoinjs-lib `networks`
-                             // (https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/src/networks.js)
-                             // or another one with the same interface.
-                             // Optional (defaults to bitcoin mainnet). 
-  allowMiniscriptInP2SH: true, // Optional flag to allow miniscript in P2SH.
-                              // Defaults to false.
-  index, // Optional. The descriptor's index in the case of a range descriptor
-         // (must be an integer >= 0). If not set for ranged descriptors, then 
-         // the function will return an expansionMap with ranged keyPaths and
-         // won't compute Payment or scripts.
-  checksumRequired = false // Optional flag indicating if the descriptor is
-                           // required to include a checksum. Defaults to false.
+  descriptor: "sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))"
 });
 ```
 
-The `expand()` function returns an object with the following properties:
+Regardless of your chosen pathway, the outcome from `expand()` grants an insightful exploration into the descriptor's structure. For an exhaustive list of return properties, you can refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/types/Expansion.html).
 
-- `payment: Payment | undefined`: The corresponding [bitcoinjs-lib Payment](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts) for the provided descriptor, if applicable.
-- `expandedExpression: string | undefined`: The expanded descriptor expression.
-- `miniscript: string | undefined`: The extracted miniscript from the descriptor, if any.
-- `expansionMap: ExpansionMap | undefined`: A map of key expressions in the descriptor to their corresponding expanded keys.
-- `isSegwit: boolean | undefined`: A boolean indicating whether the descriptor represents a SegWit script.
-- `expandedMiniscript: string | undefined`: The expanded miniscript, if any.
-- `redeemScript: Buffer | undefined`: The redeem script for the descriptor, if applicable.
-- `witnessScript: Buffer | undefined`: The witness script for the descriptor, if applicable.
-- `isRanged: boolean` : Whether the descriptor describes a range of outputs (using wildcards `*`).
-- `canonicalExpression` : This is the preferred or authoritative representation of the descriptor. It standardizes the descriptor by replacing indexes on wildcards and eliminating checksums.
-
-For the example descriptor provided, the `expandedExpression` and a portion of the `expansionMap` would be as follows:
+For illustration, given the descriptor above, the corresponding `expandedExpression` and a section of the `expansionMap` would appear as:
 
 ```javascript
-// descriptor: 'sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))'
-
-expandedExpression: 'sh(wsh(andor(pk(@0),older(8640),pk(@1))))',
-expansionMap: {
-  '@0': {
-    keyExpression:
-      '0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2'
-  },
-  '@1': {
-    keyExpression:
-      "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
-    keyPath: '/1/2/3/4/*',
-    originPath: "/49'/0'/0'",
-    path: "m/49'/0'/0'/1/2/3/4/*",
-    // Other relevant properties returned: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
-  }
+{
+    expandedExpression: 'sh(wsh(andor(pk(@0),older(8640),pk(@1))))',
+    expansionMap: {
+      '@0': {
+        keyExpression:
+          '0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2'
+      },
+      '@1': {
+        keyExpression:
+          "[d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*",
+        keyPath: '/1/2/3/4/*',
+        originPath: "/49'/0'/0'",
+        path: "m/49'/0'/0'/1/2/3/4/*",
+        // Other relevant properties returned: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+      }
+    }
+    //...
 }
 ```
+
+### Signers and Finalizers
+
+This library encompasses a PSBT finalizer as well as three distinct signers: ECPair for single-signatures, BIP32, and Ledger (specifically crafted for Ledger Wallet devices, with upcoming support for other devices planned).
+
+To incorporate these functionalities, use the following import statement:
+
+```javascript
+import { signers } from '@bitcoinerlab/descriptors';
+```
+
+For signing operations, utilize the methods provided by the [`signers`](https://bitcoinerlab.com/modules/descriptors/api/modules/signers.html):
+
+```javascript
+// For Ledger
+await signers.signLedger({ psbt, ledgerManager });
+
+// For BIP32 - https://github.com/bitcoinjs/bip32
+signers.signBIP32({ psbt, masterNode });
+
+// For ECPair - https://github.com/bitcoinjs/ecpair
+signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is an instance of the bitcoinjs-lib ECPairInterface
+```
+
+Detailed information on Ledger integration will be provided in subsequent sections.
+
+<a name="signers-and-finalizers-finalize-psbt-input"></a>
+
+#### Finalizing the `psbt`
+
+When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#updatePsbtAsInput) plays a key role. When invoked, the `output.updatePsbtAsInput()` sets up the `psbt` by designating the output as an input and, if required, adjusts the transaction locktime. In addition, it returns a `inputFinalizer` function tailored for this specific `psbt` input.
+
+##### Procedure:
+
+1. For each unspent output from a previous transaction that you're referencing in a `psbt` as an input to be spent, call the `updatePsbtAsInput` method:
+
+   ```javascript
+   const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
+   ```
+
+2. Once you've completed the necessary signing operations on the `psbt`, use the returned finalizer function on each input:
+
+   ```javascript
+   inputFinalizer({ psbt });
+   ```
+
+##### Important Notes:
+
+- The finalizer function returned from `updatePsbtAsInput` adds the necessary unlocking script (`scriptWitness` or `scriptSig`) that satisfies the `Output`'s spending conditions. Remember, both `scriptSig` and `scriptWitness` contain signatures. Ensure that all necessary signing operations are completed before finalizing.
+
+- When using `updatePsbtAsInput`, the `txHex` parameter is crucial. For Segwit inputs, you can choose to pass `txId` and `value` instead of `txHex`. However, ensure the accuracy of the `value` to avoid potential fee attacks. When unsure, use `txHex` and skip `txId` and `value`.
+
+- Hardware wallets require the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
 
 ### Key Expressions and Script Expressions
 
@@ -199,7 +211,7 @@ This library also provides a series of function helpers designed to streamline t
 import { scriptExpressions } from '@bitcoinerlab/descriptors';
 ```
 
-Within `scriptExpressions`, you will find functions tailored to produce descriptors for a range of commonly utilized scripts. To name a few: `pkhBIP32()`, `shWpkhBIP32()`, `wpkhBIP32()`, `pkhLedger()`, `shWpkhLedger()`, and `wpkhLedger()`.
+Within the `scriptExpressions` module, there are functions designed to generate descriptors for commonly used scripts. Some examples include `pkhBIP32()`, `shWpkhBIP32()`, `wpkhBIP32()`, `pkhLedger()`, `shWpkhLedger()`, and `wpkhLedger()`. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html#expand) for a detailed list and further information.
 
 When using BIP32-based descriptors, the following parameters are required for the `scriptExpressions` functions:
 
@@ -215,11 +227,11 @@ pkhBIP32(params: {
 })
 ```
 
-For functions suffixed with *Ledger* (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration will be provided in subsequent sections.
+For functions suffixed with *Ledger* (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration will be provided in the following section.
 
 The `keyExpressions` category includes functions that generate string representations of key expressions for public keys.
 
-This library includes the following `keyExpressions`: `keyExpressionBIP32` and `keyExpressionLedger`. They can be imported as follows:
+This library includes the following `keyExpressions`: [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) and [`keyExpressionLedger`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionLedger.html). They can be imported as follows:
 
 ```javascript
 import {
@@ -241,41 +253,13 @@ function keyExpressionBIP32({
 });
 ```
 
-For the `keyExpressionLedger` function, you'd use `ledgerManager` instead of `masterNode`. Detailed information on Ledger in subsequent sections.
+For the `keyExpressionLedger` function, you'd use `ledgerManager` instead of `masterNode`.
 
-Both functions will generate strings that fully define BIP32 keys. For example: `[d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*`. Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) to learn more about Key Expressions.
-
-### Signers and Finalizers
-
-This library encompasses a PSBT finalizer as well as three distinct signers: ECPair for single-signatures, BIP32, and Ledger (specifically crafted for Ledger Wallet devices, with upcoming support for other devices planned).
-
-To incorporate these functionalities, use the following import statement:
-
-```javascript
-import { signers, finalizePsbt } from '@bitcoinerlab/descriptors';
+Both functions will generate strings that fully define BIP32 keys. For example:
+```text
+[d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*
 ```
-
-For signing operations, utilize the methods provided by the `signers`:
-
-```javascript
-// For Ledger
-await signers.signLedger({ psbt, ledgerManager });
-
-// For BIP32 - https://github.com/bitcoinjs/bip32
-signers.signBIP32({ psbt, masterNode });
-
-// For ECPair - https://github.com/bitcoinjs/ecpair
-signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is an instance of the bitcoinjs-lib ECPairInterface
-```
-
-<a name="signers-and-finalizers-finalize-psbt-input"></a>
-
-To finalize the `psbt`, there are two approaches:
-
-1. For each unspent output from a previous transaction that you're referencing in the `psbt` as an input to be spent, apply the `output.finalizePsbtInput({ index, psbt })` method. It's essential to specify the exact position (or `index`) of the input in the `psbt` that references this unspent output. This `index` should align with the value returned by the `updatePsbtAsInput` method.
-
-2. Alternatively, you can employ the `finalizePsbt({psbt, outputs })` function. Within this context, `outputs` is an array of previously unspent outputs (each an instance of the `Output` class) that are being referenced and spent by the inputs of the `psbt`. It's crucial to position each item in the `outputs` array to reflect the exact order they're referenced in the `psbt` inputs. Put another way, the order of these `output` entries should coincide with the index values returned by `updatePsbtAsInput`.
-
+Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) to learn more about Key Expressions.
 
 ### Hardware Wallet Integration
 
@@ -328,16 +312,19 @@ This code will auto-skip the policy registration process if it already exists. P
 
 Finally, `ledgerManager.ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints, and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
 
+The [API reference for the ledger module](https://bitcoinerlab.com/modules/descriptors/api/variables/ledger.html) provides a comprehensive list of functions related to the Ledger Hardware Wallet, along with detailed explanations of their parameters and behavior.
+
 <a name="documentation"></a>
 
 ## Additional Resources
 
 For more information, refer to the following resources:
 
-- [Guides](https://bitcoinerlab.com/guides): Comprehensive explanations and playgrounds to help you learn how to use the module.
-- [Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665): Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `finalizePsbtInput`, `getAddress`, and `getScriptPubKey`.
-- [Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration): Well-commented code examples showcasing the usage of all functions in the module.
-- API Documentation: Auto-generated documentation from the source code, providing detailed information about the library and its methods. To generate the API documentation locally, follow these commands:
+- **[Guides](https://bitcoinerlab.com/guides)**: Comprehensive explanations and playgrounds to help you learn how to use the module.
+- **[API](https://bitcoinerlab.com/modules/descriptors/api)**: Dive into the details of the Classes, functions, and types.
+- **[Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665)**: Focused explanation on the constructor, specifically the `signersPubKeys` parameter, and the usage of `updatePsbtAsInput`, `getAddress`, and `getScriptPubKey`.
+- **[Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration)**: Well-commented code examples showcasing the usage of all functions in the module.
+- **Local Documentation**: Generate comprehensive API documentation from the source code:
 
   ```bash
   git clone https://github.com/bitcoinerlab/descriptors
