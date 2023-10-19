@@ -562,7 +562,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       signersPubKeys
     }: {
       /**
-       * The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index.
+       * The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index (aka ranged descriptors).
        */
       descriptor: string;
 
@@ -572,7 +572,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       index?: number;
 
       /**
-       * A flag indicating whether the descriptor is required to include a checksum.
+       * An optional flag indicating whether the descriptor is required to include a checksum.
        * @defaultValue false
        */
       checksumRequired?: boolean;
@@ -607,6 +607,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * the public keys involved in the descriptor will sign the transaction.
        * In the latter case, the satisfier will automatically choose the most
        * optimal spending path (if more than one is available).
+       * For more details on using this parameter, refer to [this Stack Exchange
+       * answer](https://bitcoin.stackexchange.com/a/118036/89665).
        */
       signersPubKeys?: Buffer[];
     }) {
@@ -910,7 +912,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         validate = true
       }: {
         psbt: Psbt;
-        /** @default true */
+        /** Runs further test on the validity of the signatures.
+         * It speeds down the finalization process but makes sure the psbt will
+         * be valid.
+         * @default true */
         validate?: boolean | undefined;
       }) => this.finalizePsbtInput({ index, psbt, validate });
       return finalizer;
@@ -1003,7 +1008,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }: {
       index: number;
       psbt: Psbt;
-      /** @default true */
+      /** Runs further test on the validity of the signatures.
+       * It speeds down the finalization process but makes sure the psbt will
+       * be valid.
+       * @default true */
       validate?: boolean | undefined;
     }): void {
       if (

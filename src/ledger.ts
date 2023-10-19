@@ -98,14 +98,33 @@ async function ledgerAppInfo(transport: any) {
   return { name, version, flags, format };
 }
 
+/**
+ * Verifies if the Ledger device is connected, if the required Bitcoin App is opened,
+ * and if the version of the app meets the minimum requirements.
+ *
+ * @throws Will throw an error if the Ledger device is not connected, the required
+ * Bitcoin App is not opened, or if the version is below the required number.
+ *
+ * @returns Promise<void> - A promise that resolves if all assertions pass, or throws otherwise.
+ */
 export async function assertLedgerApp({
   transport,
   name,
   minVersion
 }: {
+  /**
+   * Connection transport with the Ledger device.
+   * One of these: https://github.com/LedgerHQ/ledger-live#libs---libraries
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   transport: any;
+  /**
+   * The name of the Bitcoin App. "Bitcoin" for mainnet or "Bitcoin Test" for testnet.
+   */
   name: string;
+  /**
+   * The minimum acceptable version of the Bitcoin App in semver format (major.minor.patch).
+   */
   minVersion: string;
 }): Promise<void> {
   const { name: openName, version } = await ledgerAppInfo(transport);
