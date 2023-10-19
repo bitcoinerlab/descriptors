@@ -49,12 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Transition from `expand({expression})` to `expand({descriptor})`.
   - Use `updatePsbtAsInput` as `updatePsbt` is now deprecated.
   - Introduced `updatePsbtAsOutput` for completeness.
-  - Opt for finalizers returned by `updatePsbtAsInput` as `finalizePsbt` has been deprecated.
+  - Opt for finalizers returned by `updatePsbtAsInput` as `finalizePsbtInput` and `finalizePsbt` have been deprecated.
 
 - **Additional Ledger Updates**:
   - Functions previously expecting `ledgerClient` and `ledgerState` should now receive `ledgerManager`.
     - This change affects multiple functions, including `signLedger`, all Ledger script expression functions and also: `keyExpressionLedger`, `registerLedgerWallet`, `getLedgerMasterFingerPrint`, and `assertLedgerApp`.
-  - `signLedger` and `signInputLedger` no longer necessitate passing an instance to the former `Descriptor` class.
+  - `signLedger` and `signInputLedger` no longer necessitate passing an instance to the former `Descriptor` class. All relevant information is automatically retrieved from the psbt now.
+
+- **Testing Enhancements**:
+  - **Deprecated Function Testing**:
+    - Retained old tests, now suffixed with `-deprecated`, to continue testing the deprecated functions and classes.
+  - **New API Testing**:
+    - Introduced additional tests specifically designed to evaluate the new API's functionality.
 
 - **Documentation Enhancements**:
   - Extensively documented all methods using typedoc.
