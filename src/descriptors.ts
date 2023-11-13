@@ -704,7 +704,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         //signatures don't matter
         const fakeSignatures = signersPubKeys.map(pubkey => ({
           pubkey,
-          signature: Buffer.alloc(64, 0)
+          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
+          signature: Buffer.alloc(72, 0)
         }));
         const { nLockTime, nSequence } = satisfyMiniscript({
           expandedMiniscript,
@@ -713,6 +714,50 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           preimages
         });
         return { nLockTime, nSequence };
+      } else return undefined;
+    }
+
+    /**
+     * Retrieves the byte length of the script satisfaction for a Miniscript-based
+     * descriptor, using only the expression, signers' public keys, and preimages
+     * provided in the constructor.
+     *
+     * Useful in scenarios like coin selection algorithms for transaction creation,
+     * where signatures are not yet available. Since signatures are still to be
+     * computed, the function assigns a standard length of 72 bytes for each
+     * signature. However, note that this may not always be completely accurate,
+     * as approximately 50% of signatures are 71 bytes in length
+     * (source: https://transactionfee.info/charts/bitcoin-script-ecdsa-length/).
+     * The function returns the byte length for a worst-case scenario.
+     *
+     * @returns The byte length of the compiled script satisfaction, or `undefined`
+     *          if this was not a miniscript-based descriptor.
+     */
+    getScriptSatisfactionSize(): number | undefined {
+      const miniscript = this.#miniscript;
+      const preimages = this.#preimages;
+      const expandedMiniscript = this.#expandedMiniscript;
+      const expansionMap = this.#expansionMap;
+      const signersPubKeys = this.#signersPubKeys;
+      //Create a method. solvePreimages to solve them.
+      if (miniscript) {
+        if (expandedMiniscript === undefined || expansionMap === undefined)
+          throw new Error(
+            `Error: cannot get script satisfactions from not expanded miniscript ${miniscript}`
+          );
+        //We create some fakeSignatures since we may not have them yet.
+        const fakeSignatures = signersPubKeys.map(pubkey => ({
+          pubkey,
+          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
+          signature: Buffer.alloc(72, 0)
+        }));
+        const { scriptSatisfaction } = satisfyMiniscript({
+          expandedMiniscript,
+          expansionMap,
+          signatures: fakeSignatures,
+          preimages
+        });
+        return scriptSatisfaction.length;
       } else return undefined;
     }
     /**
