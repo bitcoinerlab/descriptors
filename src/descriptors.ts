@@ -590,23 +590,35 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       network?: Network;
 
       /**
-       * An array of preimages. This info is necessary to finalize Psbts.
+       * An array of preimages if the miniscript-based descriptor uses them.
+       *
+       * This info is necessary to finalize Psbts. Leave it `undefined` if your
+       * miniscript-based descriptor does not use preimages or you don't know
+       * or don't wanto use them.
+       *
+       * You can also leave it `undefined` if only need to generate the
+       * `scriptPubKey` or `address` for a descriptor.
+       *
        * @defaultValue `[]`
        */
       preimages?: Preimage[];
 
       /**
        * An array of the public keys used for signing the transaction when
-       * spending the output associated with this descriptor. This parameter is
-       * only used if the descriptor object is being used to finalize a
-       * transaction. It is necessary to specify the spending path when working
-       * with miniscript-based expressions that have multiple spending paths.
-       * Set this parameter to an array containing the public keys involved in
-       * the desired spending path. Leave it `undefined` if you only need to
-       * generate the `scriptPubKey` or `address` for a descriptor, or if all
-       * the public keys involved in the descriptor will sign the transaction.
-       * In the latter case, the satisfier will automatically choose the most
-       * optimal spending path (if more than one is available).
+       * spending the previous output associated with this descriptor.
+       *
+       * This parameter is only used if the descriptor object is being used to
+       * finalize a transaction. It is necessary to specify the spending path
+       * when working with miniscript-based expressions that have multiple
+       * spending paths.
+       *
+       * Set this parameter to an array containing the public
+       * keys involved in the desired spending path. Leave it `undefined` if you
+       * only need to generate the `scriptPubKey` or `address` for a descriptor,
+       * or if all the public keys involved in the descriptor will sign the
+       * transaction. In the latter case, the satisfier will automatically
+       * choose the most optimal spending path (if more than one is available).
+       *
        * For more details on using this parameter, refer to [this Stack Exchange
        * answer](https://bitcoin.stackexchange.com/a/118036/89665).
        */
@@ -718,49 +730,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
 
     /**
-     * Retrieves the byte length of the script satisfaction for a Miniscript-based
-     * descriptor, using only the expression, signers' public keys, and preimages
-     * provided in the constructor.
-     *
-     * Useful in scenarios like coin selection algorithms for transaction creation,
-     * where signatures are not yet available. Since signatures are still to be
-     * computed, the function assigns a standard length of 72 bytes for each
-     * signature. However, note that this may not always be completely accurate,
-     * as approximately 50% of signatures are 71 bytes in length
-     * (source: https://transactionfee.info/charts/bitcoin-script-ecdsa-length/).
-     * The function returns the byte length for a worst-case scenario.
-     *
-     * @returns The byte length of the compiled script satisfaction, or `undefined`
-     *          if this was not a miniscript-based descriptor.
-     */
-    getScriptSatisfactionSize(): number | undefined {
-      const miniscript = this.#miniscript;
-      const preimages = this.#preimages;
-      const expandedMiniscript = this.#expandedMiniscript;
-      const expansionMap = this.#expansionMap;
-      const signersPubKeys = this.#signersPubKeys;
-      //Create a method. solvePreimages to solve them.
-      if (miniscript) {
-        if (expandedMiniscript === undefined || expansionMap === undefined)
-          throw new Error(
-            `Error: cannot get script satisfactions from not expanded miniscript ${miniscript}`
-          );
-        //We create some fakeSignatures since we may not have them yet.
-        const fakeSignatures = signersPubKeys.map(pubkey => ({
-          pubkey,
-          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
-          signature: Buffer.alloc(72, 0)
-        }));
-        const { scriptSatisfaction } = satisfyMiniscript({
-          expandedMiniscript,
-          expansionMap,
-          signatures: fakeSignatures,
-          preimages
-        });
-        return scriptSatisfaction.length;
-      } else return undefined;
-    }
-    /**
      * Creates and returns an instance of bitcoinjs-lib
      * [`Payment`](https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/payments/index.ts)'s interface with the `scriptPubKey` of this `Output`.
      */
@@ -801,9 +770,29 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        *
        * `signatures` must be passed using this format (pairs of `pubKey/signature`):
        * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       *
+       *  * Alternatively, if you do not have the signatures, you can use the option
+       * `'DANGEROUSLY_USE_FAKE_SIGNATURES'`. This will generate script satisfactions
+       * using 72-byte zero-padded signatures. While this can be useful in
+       * modules like coinselector that require estimating transaction size before
+       * signing, it is critical to understand the risks:
+       * - Using this option generales invalid unlocking scripts.
+       * - It should NEVER be used with real transactions.
+       * - Its primary use is for testing and size estimation purposes only.
+       *
+       * ⚠️ Warning: Misuse of 'DANGEROUSLY_USE_FAKE_SIGNATURES' can lead to security
+       * vulnerabilities, including but not limited to invalid transaction generation.
+       * Ensure you fully understand the implications before use.
+       *
        */
-      signatures: PartialSig[]
+      signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
     ): Buffer {
+      if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES')
+        signatures = this.#signersPubKeys.map(pubkey => ({
+          pubkey,
+          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
+          signature: Buffer.alloc(72, 0)
+        }));
       const miniscript = this.#miniscript;
       const expandedMiniscript = this.#expandedMiniscript;
       const expansionMap = this.#expansionMap;

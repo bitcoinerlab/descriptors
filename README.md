@@ -73,11 +73,11 @@ const wpkhOutput = new Output({
 });
 ```
 
-Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#constructor) for the complete list of parameters in the constructor.
+For miniscript-based descriptors, the `signersPubKeys` parameter in the constuctor becomes particularly important. It specifies the spending path of a previous output with multiple spending paths. Detailed information about the constructor parameters, including `signersPubKeys`, can be found in [the API documentation](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#constructor) and in [this Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665).
 
 The `Output` class [offers various helpful methods](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html), including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
 
-The `updatePsbtAsInput()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO  described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N," `updatePsbtAsInput()` adds timelock information to the PSBT.
+The `updatePsbtAsInput()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO  described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N", `updatePsbtAsInput()` adds timelock information to the PSBT.
 
 To call `updatePsbtAsInput()`, use the following syntax:
 

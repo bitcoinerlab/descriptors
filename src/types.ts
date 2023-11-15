@@ -12,13 +12,15 @@ import type { Payment, Network } from 'bitcoinjs-lib';
  */
 export type Preimage = {
   /**
-   * Use same expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
+   * Use same string expressions as in miniscript. For example: "sha256(cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204)" or "ripemd160(095ff41131e5946f3c85f79e44adbcf8e27e080e)"
+   *
    * Accepted functions: sha256, hash256, ripemd160, hash160
+   *
    * Digests must be: 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160.
    */
   digest: string;
   /**
-   * Hex encoded preimate. Preimages are always 32 bytes (so, 64 character in hex).
+   * Hex encoded preimage. Preimages are always 32 bytes (so, 64 character in hex).
    */
   preimage: string;
 };
