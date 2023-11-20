@@ -267,18 +267,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       try {
         payment = p2pkh({ output, network });
+        isSegwit = false;
       } catch (e) {}
       try {
         payment = p2sh({ output, network });
+        //undefined isSegwit. Cannot know from looking at the address. Could
+        //be sh(wpkh), sh(wsh) or a plain old sh(SCRIPT)
       } catch (e) {}
       try {
         payment = p2wpkh({ output, network });
+        isSegwit = true;
       } catch (e) {}
       try {
         payment = p2wsh({ output, network });
+        isSegwit = true;
       } catch (e) {}
       try {
         payment = p2tr({ output, network });
+        isSegwit = true;
       } catch (e) {}
       if (!payment) {
         throw new Error(`Error: invalid address ${matchedAddress}`);
