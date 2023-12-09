@@ -389,12 +389,12 @@ export async function ledgerPolicyFromPsbtInput({
           )
             ? 'pkh(@0/**)'
             : originPath.match(new RegExp(`^/84'/${coinType}'/(\\d+)'$`))
-            ? 'wpkh(@0/**)'
-            : originPath.match(new RegExp(`^/49'/${coinType}'/(\\d+)'$`))
-            ? 'sh(wpkh(@0/**))'
-            : originPath.match(new RegExp(`^/86'/${coinType}'/(\\d+)'$`))
-            ? 'tr(@0/**)'
-            : undefined;
+              ? 'wpkh(@0/**)'
+              : originPath.match(new RegExp(`^/49'/${coinType}'/(\\d+)'$`))
+                ? 'sh(wpkh(@0/**))'
+                : originPath.match(new RegExp(`^/86'/${coinType}'/(\\d+)'$`))
+                  ? 'tr(@0/**)'
+                  : undefined;
           if (standardTemplate) {
             const xpub = await getLedgerXpub({
               originPath,
