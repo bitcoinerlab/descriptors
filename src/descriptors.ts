@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+import memoize from 'lodash.memoize';
 import {
   address,
   networks,
@@ -11,6 +12,7 @@ import {
   Payment,
   Psbt
 } from 'bitcoinjs-lib';
+import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
 import { BIP32Factory, BIP32API } from 'bip32';
@@ -48,6 +50,38 @@ function countNonPushOnlyOPs(script: Buffer): number {
   return decompile.filter(
     op => typeof op === 'number' && op > bscript.OPS['OP_16']!
   ).length;
+}
+
+function vectorSize(someVector: Buffer[]): number {
+  const length = someVector.length;
+
+  return (
+    encodingLength(length) +
+    someVector.reduce((sum, witness) => {
+      return sum + varSliceSize(witness);
+    }, 0)
+  );
+}
+
+function varSliceSize(someScript: Buffer): number {
+  const length = someScript.length;
+
+  return encodingLength(length) + length;
+}
+
+/**
+ * This function will typically return 73; since it assumes a signature size of
+ * 72 bytes (this is the max size of a DER encoded signature) and it adds 1
+ * extra byte for encoding its length
+ */
+function signatureSize(
+  signature: PartialSig | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+) {
+  const length =
+    signature === 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+      ? 72
+      : signature.signature.length;
+  return encodingLength(length) + length;
 }
 
 /*
@@ -271,8 +305,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } catch (e) {}
       try {
         payment = p2sh({ output, network });
-        //undefined isSegwit. Cannot know from looking at the address. Could
-        //be sh(wpkh), sh(wsh) or a plain old sh(SCRIPT)
+        // It assumes that an addr(SH_ADDRESS) is always a add(SH_WPKH) address
+        isSegwit = true;
       } catch (e) {}
       try {
         payment = p2wpkh({ output, network });
@@ -689,6 +723,38 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           this.#signersPubKeys = [this.getScriptPubKey()];
         }
       }
+      this.getSequence = memoize(this.getSequence);
+      this.getLockTime = memoize(this.getLockTime);
+      const getSignaturesKey = (
+        signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+      ) =>
+        signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+          ? signatures
+          : signatures
+              .map(
+                s =>
+                  `${s.pubkey.toString('hex')}-${s.signature.toString('hex')}`
+              )
+              .join('|');
+      this.getScriptSatisfaction = memoize(
+        this.getScriptSatisfaction,
+        // resolver function:
+        getSignaturesKey
+      );
+      this.guessOutput = memoize(this.guessOutput);
+      this.inputWeight = memoize(
+        this.inputWeight,
+        // resolver function:
+        (
+          isSegwitTx: boolean,
+          signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+        ) => {
+          const segwitKey = isSegwitTx ? 'segwit' : 'non-segwit';
+          const signaturesKey = getSignaturesKey(signatures);
+          return `${segwitKey}-${signaturesKey}`;
+        }
+      );
+      this.outputWeight = memoize(this.outputWeight);
     }
 
     /**
@@ -867,9 +933,235 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
     /**
      * Whether this `Output` is Segwit.
+     *
+     * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
+     * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
+     * (Script Hash-Witness Public Key Hash).
+     * For inputs using arbitrary scripts (not standard addresses),
+     * use a descriptor in the format `sh(MINISCRIPT)`.
+     *
      */
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
+    }
+
+    /**
+     * Returns the tuple: `{ isPKH: boolean; isWPKH: boolean; isSH: boolean; }`
+     * for this Output.
+     */
+    guessOutput() {
+      function guessSH(output: Buffer) {
+        try {
+          payments.p2sh({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
+      function guessWPKH(output: Buffer) {
+        try {
+          payments.p2wpkh({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
+      function guessPKH(output: Buffer) {
+        try {
+          payments.p2pkh({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
+      const isPKH = guessPKH(this.getScriptPubKey());
+      const isWPKH = guessWPKH(this.getScriptPubKey());
+      const isSH = guessSH(this.getScriptPubKey());
+
+      if ([isPKH, isWPKH, isSH].filter(Boolean).length > 1)
+        throw new Error('Cannot have multiple output types.');
+
+      return { isPKH, isWPKH, isSH };
+    }
+
+    // References for inputWeight & outputWeight:
+    // https://gist.github.com/junderw/b43af3253ea5865ed52cb51c200ac19c
+    // https://bitcoinops.org/en/tools/calc-size/
+    // Look for byteLength: https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/transaction.ts
+    // https://github.com/bitcoinjs/coinselect/blob/master/utils.js
+
+    /**
+     * Computes the Weight Unit contributions of this Output as if it were the
+     * input in a tx.
+     *
+     * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
+     * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
+     * (Script Hash-Witness Public Key Hash).
+     * For inputs using arbitrary scripts (not standard addresses),
+     * use a descriptor in the format `sh(MINISCRIPT)`.
+     */
+    inputWeight(
+      /**
+       * Indicates if the transaction is a Segwit transaction.
+       * If a transaction isSegwitTx, a single byte is then also required for
+       * non-witness inputs to encode the length of the empty witness stack:
+       * encodeLength(0) + 0 = 1
+       * Read more:
+       * https://gist.github.com/junderw/b43af3253ea5865ed52cb51c200ac19c?permalink_comment_id=4760512#gistcomment-4760512
+       */
+      isSegwitTx: boolean,
+      /*
+       *  Array of `PartialSig`. Each `PartialSig` includes
+       *  a public key and its corresponding signature. This parameter
+       *  enables the accurate calculation of signature sizes.
+       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length.
+       *  Mainly used for testing.
+       */
+      signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+    ) {
+      if (this.isSegwit() && !isSegwitTx)
+        throw new Error(`a tx is segwit if at least one input is segwit`);
+      const errorMsg =
+        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
+    sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
+    addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS).';
+
+      //expand any miniscript-based descriptor. If not miniscript-based, then it's
+      //an addr() descriptor. For those, we can only guess their type.
+      const expansion = this.expand().expandedExpression;
+      const { isPKH, isWPKH, isSH } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+
+      const firstSignature =
+        signatures && typeof signatures[0] === 'object'
+          ? signatures[0]
+          : 'DANGEROUSLY_USE_FAKE_SIGNATURES';
+
+      if (expansion ? expansion.startsWith('pkh(') : isPKH) {
+        return (
+          // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1) + (sig:73) + (pubkey:34)
+          (32 + 4 + 4 + 1 + signatureSize(firstSignature) + 34) * 4 +
+          //Segwit:
+          (isSegwitTx ? 1 : 0)
+        );
+      } else if (expansion ? expansion.startsWith('wpkh(') : isWPKH) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        return (
+          // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
+          41 * 4 +
+          // Segwit: (push_count:1) + (sig:73) + (pubkey:34)
+          (1 + signatureSize(firstSignature) + 34)
+        );
+      } else if (expansion ? expansion.startsWith('sh(wpkh(') : isSH) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        return (
+          // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1) + (p2wpkh:23)
+          //  -> p2wpkh_script: OP_0 OP_PUSH20 <public_key_hash>
+          //  -> p2wpkh: (script_len:1) + (script:22)
+          64 * 4 +
+          // Segwit: (push_count:1) + (sig:73) + (pubkey:34)
+          (1 + signatureSize(firstSignature) + 34)
+        );
+      } else if (expansion?.startsWith('sh(wsh(')) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        const witnessScript = this.getWitnessScript();
+        if (!witnessScript)
+          throw new Error('sh(wsh) must provide witnessScript');
+        const payment = payments.p2sh({
+          redeem: payments.p2wsh({
+            redeem: {
+              input: this.getScriptSatisfaction(
+                signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+              ),
+              output: witnessScript
+            }
+          })
+        });
+        if (!payment || !payment.input || !payment.witness)
+          throw new Error('Could not create payment');
+        return (
+          //Non-segwit
+          4 * (40 + varSliceSize(payment.input)) +
+          //Segwit
+          vectorSize(payment.witness)
+        );
+      } else if (expansion?.startsWith('sh(')) {
+        const redeemScript = this.getRedeemScript();
+        if (!redeemScript) throw new Error('sh() must provide redeemScript');
+        const payment = payments.p2sh({
+          redeem: {
+            input: this.getScriptSatisfaction(
+              signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+            ),
+            output: redeemScript
+          }
+        });
+        if (!payment || !payment.input)
+          throw new Error('Could not create payment');
+        if (payment.witness?.length)
+          throw new Error(
+            'A legacy p2sh payment should not cointain a witness'
+          );
+        return (
+          //Non-segwit
+          4 * (40 + varSliceSize(payment.input)) +
+          //Segwit:
+          (isSegwitTx ? 1 : 0)
+        );
+      } else if (expansion?.startsWith('wsh(')) {
+        const witnessScript = this.getWitnessScript();
+        if (!witnessScript) throw new Error('wsh must provide witnessScript');
+        const payment = payments.p2wsh({
+          redeem: {
+            input: this.getScriptSatisfaction(
+              signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+            ),
+            output: witnessScript
+          }
+        });
+        if (!payment || !payment.input || !payment.witness)
+          throw new Error('Could not create payment');
+        return (
+          //Non-segwit
+          4 * (40 + varSliceSize(payment.input)) +
+          //Segwit
+          vectorSize(payment.witness)
+        );
+      } else {
+        throw new Error(errorMsg);
+      }
+    }
+
+    /**
+     * Computes the Weight Unit contributions of this Output as if it were the
+     * output in a tx.
+     */
+    outputWeight() {
+      const errorMsg =
+        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
+    sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
+    addr(SH_WPKH_ADDRESS)';
+
+      //expand any miniscript-based descriptor. If not miniscript-based, then it's
+      //an addr() descriptor. For those, we can only guess their type.
+      const expansion = this.expand().expandedExpression;
+      const { isPKH, isWPKH, isSH } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+      if (expansion ? expansion.startsWith('pkh(') : isPKH) {
+        // (p2pkh:26) + (amount:8)
+        return 34 * 4;
+      } else if (expansion ? expansion.startsWith('wpkh(') : isWPKH) {
+        // (p2wpkh:23) + (amount:8)
+        return 31 * 4;
+      } else if (expansion ? expansion.startsWith('sh(') : isSH) {
+        // (p2sh:24) + (amount:8)
+        return 32 * 4;
+      } else if (expansion?.startsWith('wsh(')) {
+        // (p2wsh:35) + (amount:8)
+        return 43 * 4;
+      } else {
+        throw new Error(errorMsg);
+      }
     }
 
     /** @deprecated - Use updatePsbtAsInput instead
