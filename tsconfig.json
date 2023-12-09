@@ -1,3 +1,7 @@
 {
-  "extends": "./node_modules/@bitcoinerlab/configs/tsconfig.json"
-}
+  {
+    "compilerOptions": {
+      "resolveJsonModule": true,
+    },
+    "extends": "./node_modules/@bitcoinerlab/configs/tsconfig.json"
+  }
