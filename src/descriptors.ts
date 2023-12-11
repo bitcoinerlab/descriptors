@@ -410,6 +410,26 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wpkh({ pubkey, network });
       }
     }
+    //tr(KEY) - taproot
+    else if (canonicalExpression.match(RE.rePtrAnchored)) {
+      isSegwit = true;
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (canonicalExpression !== `tr(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      expandedExpression = 'tr(@0)';
+      const pKE = parseKeyExpression({ keyExpression, network, isSegwit });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${expression}`
+          );
+        payment = p2tr({ pubkey, network });
+      }
+    }
     //sh(wsh(miniscript))
     else if (canonicalExpression.match(RE.reShWshMiniscriptAnchored)) {
       isSegwit = true;
