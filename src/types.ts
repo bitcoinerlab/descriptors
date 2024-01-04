@@ -108,6 +108,7 @@ export interface TinySecp256k1Interface {
     p: Uint8Array,
     tweak: Uint8Array
   ): XOnlyPointAddTweakResult | null;
+  isXOnlyPoint(p: Uint8Array): boolean;
   privateNegate(d: Uint8Array): Uint8Array;
 }
 

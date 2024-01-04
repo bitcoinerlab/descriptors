@@ -114,7 +114,7 @@ function standardExpressionsLedgerMaker(
   async function standardScriptExpressionLedger({
     ledgerClient,
     ledgerState,
-    network = networks.bitcoin,
+    network,
     account,
     keyPath,
     change,

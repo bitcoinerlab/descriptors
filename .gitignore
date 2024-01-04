@@ -8,3 +8,4 @@ webdocs/
 test/**/*.js
 test/**/*.d.ts
 !test/tools/generateBitcoinCoreFixtures.js
+.vscode
