@@ -10,7 +10,7 @@ import {
   Transaction,
   PsbtTxInput
 } from 'bitcoinjs-lib';
-import * as varuint from 'bip174/src/lib/converter/varint';
+import { encode, encodingLength } from 'varuint-bitcoin';
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 function reverseBuffer(buffer: Buffer): Buffer {
   if (buffer.length < 1) return buffer;
@@ -33,10 +33,10 @@ function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
 
   function writeVarInt(i: number): void {
     const currentLen = buffer.length;
-    const varintLen = varuint.encodingLength(i);
+    const varintLen = encodingLength(i);
 
     buffer = Buffer.concat([buffer, Buffer.allocUnsafe(varintLen)]);
-    varuint.encode(i, buffer, currentLen);
+    encode(i, buffer, currentLen);
   }
 
   function writeVarSlice(slice: Buffer): void {

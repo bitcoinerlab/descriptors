@@ -72,21 +72,18 @@ const SOFT_MNEMONIC =
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import {
-  finalizePsbt,
   signers,
   keyExpressionBIP32,
   keyExpressionLedger,
   scriptExpressions,
   DescriptorsFactory,
-  DescriptorInstance,
-  ledger,
-  LedgerState
+  ledger
 } from '../../dist/';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from 'ledger-bitcoin';
-const { Descriptor, BIP32 } = DescriptorsFactory(ecc);
+const { Output, BIP32 } = DescriptorsFactory(ecc);
 
 import { compilePolicy } from '@bitcoinerlab/miniscript';
 
@@ -103,9 +100,8 @@ if (!issane) throw new Error(`Error: miniscript not sane`);
 let txHex: string;
 let txId: string;
 let vout: number;
-let inputIndex: number;
-//In this array, we will keep track of the descriptors of each input:
-const psbtInputDescriptors: DescriptorInstance[] = [];
+//In this array, we will keep track the previous output of each input:
+const finalizers = [];
 
 (async () => {
   let transport;
@@ -122,13 +118,18 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   });
 
   const ledgerClient = new AppClient(transport);
-  //The Ledger is stateless. We keep state externally (keeps track of masterFingerprint, xpubs, wallet policies, ...)
-  const ledgerState: LedgerState = {};
+  const ledgerManager = {
+    ledgerClient,
+    ledgerState: {},
+    ecc,
+    network: NETWORK
+  };
+  const ledgerState = ledgerManager.ledgerState;
 
   //Let's create the utxos. First create a descriptor expression using a Ledger.
-  //pkhExternalExpression will be something like this:
+  //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
-  const pkhExternalExpression: string = await pkhLedger({
+  const pkhExternalDescriptor: string = await pkhLedger({
     ledgerClient,
     ledgerState,
     network: NETWORK,
@@ -136,24 +137,22 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
     change: 0,
     index: 0
   });
-  const pkhExternalDescriptor = new Descriptor({
+  const pkhExternalOutput = new Output({
     network: NETWORK,
-    expression: pkhExternalExpression
+    descriptor: pkhExternalDescriptor
   });
   //Fund this utxo. regtestUtils communicates with the regtest node manager on port 8080.
   ({ txId, vout } = await regtestUtils.faucet(
-    pkhExternalDescriptor.getAddress(),
+    pkhExternalOutput.getAddress(),
     UTXO_VALUE
   ));
   //Retrieve the tx from the mempool:
   txHex = (await regtestUtils.fetch(txId)).txHex;
   //Now add an input to the psbt. updatePsbt would also update timelock if needed (not in this case).
-  inputIndex = pkhExternalDescriptor.updatePsbt({ psbt, txHex, vout });
-  //Save the descriptor for later, indexed by its psbt input number.
-  psbtInputDescriptors[inputIndex] = pkhExternalDescriptor;
+  finalizers.push(pkhExternalOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Repeat the same for another pkh change address:
-  const pkhChangeExpression = await pkhLedger({
+  const pkhChangeDescriptor = await pkhLedger({
     ledgerClient,
     ledgerState,
     network: NETWORK,
@@ -161,17 +160,16 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
     change: 1,
     index: 0
   });
-  const pkhChangeDescriptor = new Descriptor({
+  const pkhChangeOutput = new Output({
     network: NETWORK,
-    expression: pkhChangeExpression
+    descriptor: pkhChangeDescriptor
   });
   ({ txId, vout } = await regtestUtils.faucet(
-    pkhChangeDescriptor.getAddress(),
+    pkhChangeOutput.getAddress(),
     UTXO_VALUE
   ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
-  inputIndex = pkhChangeDescriptor.updatePsbt({ psbt, txHex, vout });
-  psbtInputDescriptors[inputIndex] = pkhChangeDescriptor;
+  finalizers.push(pkhChangeOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Here we create the BIP32 software wallet that will be used to co-sign the 3rd utxo of this test:
   const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
@@ -195,8 +193,7 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   //[1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
   //Since WSH_ORIGIN_PATH is a non-standard path, the Ledger will warn the user about this.
   const ledgerKeyExpression: string = await keyExpressionLedger({
-    ledgerClient,
-    ledgerState,
+    ledgerManager,
     originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
@@ -205,21 +202,21 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   //Now, we prepare the ranged miniscript descriptor expression for external addresses (change = 0).
   //expression will be something like this:
   //wsh(and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk([1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*),v:pk([73c5da0a/69420'/1'/0']tpubDDB5ZuMuWmdzs7r4h58fwZQ1eYJvziXaLMiAfHYrAev3jFrfLtsYsu7Cp1hji8KcG9z9CcvHe1FfkvpsjbvMd2JTLwFkwXQCYjTZKGy8jWg/0/*)),older(5))))
-  const expression = `wsh(${miniscript
+  const miniscriptDescriptor = `wsh(${miniscript
     .replace('@ledger', ledgerKeyExpression)
     .replace('@soft', softKeyExpression)})`;
   //Get the descriptor for index WSH_RECEIVE_INDEX. Here we need to pass the index because
   //we used range key expressions above. `index` is only necessary when using range expressions.
-  //We also pass the PREIMAGE so that miniscriptDescriptor will be able to finalize the tx later (creating the scriptWitness)
-  const miniscriptDescriptor = new Descriptor({
-    expression,
+  //We also pass the PREIMAGE so that miniscriptOutput will be able to finalize the tx later (creating the scriptWitness)
+  const miniscriptOutput = new Output({
+    descriptor: miniscriptDescriptor,
     index: WSH_RECEIVE_INDEX,
     preimages: [{ digest: `sha256(${SHA256_DIGEST})`, preimage: PREIMAGE }],
     network: NETWORK
   });
   //We can now fund the wsh utxo:
   ({ txId, vout } = await regtestUtils.faucet(
-    miniscriptDescriptor.getAddress(),
+    miniscriptOutput.getAddress(),
     UTXO_VALUE
   ));
   txHex = (await regtestUtils.fetch(txId)).txHex;
@@ -228,9 +225,7 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   //set the tx timelock, if needed.
   //In this case the timelock won't be set since this is a relative-timelock
   //script (it will set the sequence in the input)
-  inputIndex = miniscriptDescriptor.updatePsbt({ psbt, txHex, vout });
-  //Save the descriptor, indexed by input index, for later:
-  psbtInputDescriptors[inputIndex] = miniscriptDescriptor;
+  finalizers.push(miniscriptOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
@@ -246,8 +241,7 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
   await registerLedgerWallet({
-    ledgerClient,
-    ledgerState,
+    ledgerManager,
     descriptor: miniscriptDescriptor,
     policyName: 'BitcoinerLab'
   });
@@ -257,21 +251,17 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   //retrieved from state by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
-  await signLedger({
-    ledgerClient,
-    ledgerState,
-    psbt,
-    descriptors: psbtInputDescriptors
-  });
+  await signLedger({ psbt, ledgerManager });
   //Now sign the PSBT with the BIP32 node (the software wallet)
   signBIP32({ psbt, masterNode });
 
   //=============
   //Finalize the psbt:
-  //descriptors must be indexed wrt its psbt input number.
+  //outputs correspond to the corresponding previous tx output for each input
+  //and must be indexed wrt its psbt input index.
   //finalizePsbt uses the miniscript satisfier from @bitcoinerlab/miniscript to
   //create the scriptWitness among other things.
-  finalizePsbt({ psbt, descriptors: psbtInputDescriptors });
+  finalizers.forEach(finalizer => finalizer({ psbt }));
 
   //Since the miniscript uses a relative-timelock, we need to mine BLOCKS before
   //broadcasting the tx so that it can be accepted by the network

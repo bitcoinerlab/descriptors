@@ -4,7 +4,7 @@
 //npm run test:integration
 
 console.log('Standard output integration tests');
-import { networks, Psbt, address } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
@@ -13,14 +13,13 @@ const NETWORK = networks.regtest;
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
-const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
+//const FINAL_SCRIPTPUBKEY = address.toOutputScript(FINAL_ADDRESS, NETWORK);
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import {
   DescriptorsFactory,
-  DescriptorInstance,
   scriptExpressions,
   keyExpressionBIP32,
   signers
@@ -28,7 +27,7 @@ import {
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Descriptor, BIP32, ECPair } = DescriptorsFactory(ecc);
+const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:
@@ -60,19 +59,20 @@ const expressionsECPair = [
 
 (async () => {
   const psbtMultiInputs = new Psbt();
-  const multiInputsDescriptors: DescriptorInstance[] = [];
-  for (const expression of expressionsBIP32) {
-    const descriptorBIP32 = new Descriptor({ expression, network: NETWORK });
+  const finalizers = [];
+  for (const descriptor of expressionsBIP32) {
+    const outputBIP32 = new Output({ descriptor, network: NETWORK });
 
     let { txId, vout } = await regtestUtils.faucetComplex(
-      descriptorBIP32.getScriptPubKey(),
+      outputBIP32.getScriptPubKey(),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
     const psbt = new Psbt();
     //Add an input and update timelock (if necessary):
-    const index = descriptorBIP32.updatePsbt({ psbt, vout, txHex });
-    if (descriptorBIP32.isSegwit()) {
+    const inputFinalizer = outputBIP32.updatePsbtAsInput({ psbt, vout, txHex });
+    const index = psbt.data.inputs.length - 1;
+    if (outputBIP32.isSegwit()) {
       //Do some additional tests. Create a tmp psbt using txId and value instead
       //of txHex using Segwit. Passing the value instead of the txHex is not
       //recommended anyway. It's the user's responsibility to make sure that
@@ -85,12 +85,13 @@ const expressionsECPair = [
         capturedOutput += message;
       };
       //Add an input and update timelock (if necessary):
-      const indexSegwit = descriptorBIP32.updatePsbt({
+      outputBIP32.updatePsbtAsInput({
         psbt: tmpPsbtSegwit,
         vout,
         txId,
         value: INITIAL_VALUE
       });
+      const indexSegwit = tmpPsbtSegwit.data.inputs.length - 1;
       if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
         throw new Error(`Error: did not warn about fee attacks`);
       console.warn = originalWarn;
@@ -103,9 +104,14 @@ const expressionsECPair = [
           `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
         );
     }
-    psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+    //2 ways to achieve the same:
+    //psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+    new Output({
+      descriptor: `addr(${FINAL_ADDRESS})`,
+      network: NETWORK
+    }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
     signBIP32({ psbt, masterNode });
-    descriptorBIP32.finalizePsbtInput({ index, psbt });
+    inputFinalizer({ psbt });
     const spendTx = psbt.extractTransaction();
     await regtestUtils.broadcast(spendTx.toHex());
     await regtestUtils.verify({
@@ -114,46 +120,49 @@ const expressionsECPair = [
       vout: 0,
       value: FINAL_VALUE
     });
-    console.log(`${expression}: OK`);
+    console.log(`${descriptor}: OK`);
 
     ///Update multiInputs PSBT with a similar BIP32 input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      descriptorBIP32.getScriptPubKey(),
+      outputBIP32.getScriptPubKey(),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
     //Adds an input and updates timelock (if necessary):
-    const bip32Index = descriptorBIP32.updatePsbt({
-      psbt: psbtMultiInputs,
-      vout,
-      txHex
-    });
-    multiInputsDescriptors[bip32Index] = descriptorBIP32;
+    finalizers.push(
+      outputBIP32.updatePsbtAsInput({
+        psbt: psbtMultiInputs,
+        vout,
+        txHex
+      })
+    );
   }
 
-  for (const expression of expressionsECPair) {
-    const descriptorECPair = new Descriptor({
-      expression,
+  for (const descriptor of expressionsECPair) {
+    const outputECPair = new Output({
+      descriptor,
       network: NETWORK
     });
     let { txId, vout } = await regtestUtils.faucetComplex(
-      descriptorECPair.getScriptPubKey(),
+      outputECPair.getScriptPubKey(),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
     const psbtECPair = new Psbt();
     //Adds an input and updates timelock (if necessary):
-    const indexECPair = descriptorECPair.updatePsbt({
+    const inputFinalizer = outputECPair.updatePsbtAsInput({
       psbt: psbtECPair,
       vout,
       txHex
     });
-    psbtECPair.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+    //2 ways to achieve the same:
+    //psbtECPair.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+    new Output({
+      descriptor: `addr(${FINAL_ADDRESS})`,
+      network: NETWORK
+    }).updatePsbtAsOutput({ psbt: psbtECPair, value: FINAL_VALUE });
     signECPair({ psbt: psbtECPair, ecpair });
-    descriptorECPair.finalizePsbtInput({
-      index: indexECPair,
-      psbt: psbtECPair
-    });
+    inputFinalizer({ psbt: psbtECPair });
     const spendTxECPair = psbtECPair.extractTransaction();
     await regtestUtils.broadcast(spendTxECPair.toHex());
     await regtestUtils.verify({
@@ -162,30 +171,34 @@ const expressionsECPair = [
       vout: 0,
       value: FINAL_VALUE
     });
-    console.log(`${expression}: OK`);
+    console.log(`${descriptor}: OK`);
 
     ///Update multiInputs PSBT with a similar ECPair input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      descriptorECPair.getScriptPubKey(),
+      outputECPair.getScriptPubKey(),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
     //Add an input and update timelock (if necessary):
-    const ecpairIndex = descriptorECPair.updatePsbt({
-      psbt: psbtMultiInputs,
-      vout,
-      txHex
-    });
-    multiInputsDescriptors[ecpairIndex] = descriptorECPair;
+    finalizers.push(
+      outputECPair.updatePsbtAsInput({
+        psbt: psbtMultiInputs,
+        vout,
+        txHex
+      })
+    );
   }
 
-  psbtMultiInputs.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+  //2 ways to achieve the same:
+  //psbtMultiInputs.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
+  new Output({
+    descriptor: `addr(${FINAL_ADDRESS})`,
+    network: NETWORK
+  }).updatePsbtAsOutput({ psbt: psbtMultiInputs, value: FINAL_VALUE });
   //Sign and finish psbtMultiInputs
   signECPair({ psbt: psbtMultiInputs, ecpair });
   signBIP32({ psbt: psbtMultiInputs, masterNode });
-  multiInputsDescriptors.forEach((descriptor, index) =>
-    descriptor.finalizePsbtInput({ index, psbt: psbtMultiInputs })
-  );
+  finalizers.forEach(finalizer => finalizer({ psbt: psbtMultiInputs }));
 
   const spendTxMultiInputs = psbtMultiInputs.extractTransaction();
   await regtestUtils.broadcast(spendTxMultiInputs.toHex());

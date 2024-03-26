@@ -128,7 +128,7 @@ fs.readFile(input, 'utf8', (err, data) => {
                 );
               }
               const fixture = {};
-              fixture.expression = expression;
+              fixture.descriptor = expression;
               fixture.script = script;
               if (expression.indexOf('*') !== -1) {
                 fixture.index = index;
@@ -143,7 +143,7 @@ fs.readFile(input, 'utf8', (err, data) => {
           //invalid
           parsed.expressions.forEach(expression => {
             const fixture = {};
-            fixture.expression = expression;
+            fixture.descriptor = expression;
             if (expression.indexOf('#') === -1) {
               fixture.checksumRequired = false;
             }

@@ -13,6 +13,11 @@ const PolyMod = (c: bigint, val: bigint): bigint => {
 };
 
 export const CHECKSUM_CHARSET: string = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+/**
+ * Implements the Bitcoin descriptor's checksum algorithm described in
+ * {@link https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp}
+ */
 export const DescriptorChecksum = (span: string): string => {
   const INPUT_CHARSET =
     '0123456789()[],\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\ ';
