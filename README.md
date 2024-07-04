@@ -84,10 +84,10 @@ To call `updatePsbtAsInput()`, use the following syntax:
 ```javascript
 import { Psbt } from 'bitcoinjs-lib';
 const psbt = new Psbt();
-const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout });
+const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout, rbf });
 ```
 
-Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction.
+Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
 
 The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling `inputFinalizer()`. Detailed [explanations on the `inputFinalizer` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 
