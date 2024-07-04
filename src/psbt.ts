@@ -140,7 +140,8 @@ export function updatePsbt({
   scriptPubKey,
   isSegwit,
   witnessScript,
-  redeemScript
+  redeemScript,
+  rbf
 }: {
   psbt: Psbt;
   vout: number;
@@ -154,8 +155,11 @@ export function updatePsbt({
   isSegwit: boolean;
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
+  rbf: boolean;
 }): number {
   //Some data-sanity checks:
+  if (sequence !== undefined && rbf && sequence > 0xfffffffd)
+    throw new Error(`Error: incompatible sequence and rbf settings`);
   if (!isSegwit && txHex === undefined)
     throw new Error(`Error: txHex is mandatory for Non-Segwit inputs`);
   if (
@@ -209,13 +213,19 @@ export function updatePsbt({
     // this input's sequence < 0xffffffff
     if (sequence === undefined) {
       //NOTE: if sequence is undefined, bitcoinjs-lib uses 0xffffffff as default
-      sequence = 0xfffffffe;
+      sequence = rbf ? 0xfffffffd : 0xfffffffe;
     } else if (sequence > 0xfffffffe) {
       throw new Error(
         `Error: incompatible sequence: ${sequence} and locktime: ${locktime}`
       );
     }
+    if (sequence === undefined && rbf) sequence = 0xfffffffd;
     psbt.setLocktime(locktime);
+  } else {
+    if (sequence === undefined) {
+      if (rbf) sequence = 0xfffffffd;
+      else sequence = 0xffffffff;
+    }
   }
 
   const input: PsbtInputExtended = {

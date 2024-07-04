@@ -1173,6 +1173,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       txId?: string;
       value?: number;
       vout: number;
+      rbf?: boolean;
     }) {
       this.updatePsbtAsInput(params);
       return params.psbt.data.inputs.length - 1;
@@ -1195,6 +1196,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      *
      * When unsure, always use `txHex`, and skip `txId` and `value` for safety.
      *
+     * Use `rbf` to mark whether this tx can be replaced with another with
+     * higher fee while being in the mempool. Note that a tx will automatically
+     * be marked as replacable if a single input requests it.
+     * Note that any transaction using a relative timelock (nSequence < 0x80000000)
+     * also falls within the RBF range (nSequence < 0xFFFFFFFE), making it
+     * inherently replaceable. So don't set `rbf` to false if this is tx uses
+     * relative time locks.
+     *
      * @returns A finalizer function to be used after signing the `psbt`.
      * This function ensures that this input is properly finalized.
      * The finalizer has this signature:
@@ -1207,13 +1216,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       txHex,
       txId,
       value,
-      vout //vector output index
+      vout, //vector output index
+      rbf = true
     }: {
       psbt: Psbt;
       txHex?: string;
       txId?: string;
       value?: number;
       vout: number;
+      rbf?: boolean;
     }) {
       if (txHex === undefined) {
         console.warn(`Warning: missing txHex may allow fee attacks`);
@@ -1237,7 +1248,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         scriptPubKey: this.getScriptPubKey(),
         isSegwit,
         witnessScript: this.getWitnessScript(),
-        redeemScript: this.getRedeemScript()
+        redeemScript: this.getRedeemScript(),
+        rbf
       });
       const finalizer = ({
         psbt,
@@ -1283,16 +1295,23 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         scriptPubKey = out.script;
       }
       const locktime = this.getLockTime() || 0;
-      let sequence = this.getSequence();
-      if (sequence === undefined && locktime !== 0) sequence = 0xfffffffe;
-      if (sequence === undefined && locktime === 0) sequence = 0xffffffff;
+      const sequence = this.getSequence();
+      //We don't know whether the user opted for RBF or not. So check that
+      //at least one of the 2 sequences matches.
+      const sequenceNoRBF =
+        sequence !== undefined
+          ? sequence
+          : locktime === 0
+            ? 0xffffffff
+            : 0xfffffffe;
+      const sequenceRBF = sequence !== undefined ? sequence : 0xfffffffd;
       const eqBuffers = (buf1: Buffer | undefined, buf2: Buffer | undefined) =>
         buf1 instanceof Buffer && buf2 instanceof Buffer
           ? Buffer.compare(buf1, buf2) === 0
           : buf1 === buf2;
       if (
         Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
-        sequence !== inputSequence ||
+        (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
         locktime !== psbt.locktime ||
         !eqBuffers(this.getWitnessScript(), input.witnessScript) ||
         !eqBuffers(this.getRedeemScript(), input.redeemScript)
