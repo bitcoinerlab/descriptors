@@ -139,6 +139,7 @@ export function updatePsbt({
   keysInfo,
   scriptPubKey,
   isSegwit,
+  isTaproot,
   witnessScript,
   redeemScript,
   rbf
@@ -153,6 +154,7 @@ export function updatePsbt({
   keysInfo: KeyInfo[];
   scriptPubKey: Buffer;
   isSegwit: boolean;
+  isTaproot: boolean;
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
   rbf: boolean;

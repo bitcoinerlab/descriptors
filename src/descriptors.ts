@@ -621,6 +621,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //isSegwit true if witnesses are needed to the spend coins sent to this descriptor.
     //may be unset because we may get addr(P2SH) which we don't know if they have segwit.
     readonly #isSegwit?: boolean;
+    readonly #isTaproot?: boolean;
     readonly #expandedExpression?: string;
     readonly #expandedMiniscript?: string;
     readonly #expansionMap?: ExpansionMap;
@@ -729,6 +730,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#expansionMap = expandedResult.expansionMap;
       if (expandedResult.isSegwit !== undefined)
         this.#isSegwit = expandedResult.isSegwit;
+      if (expandedResult.isTaproot !== undefined)
+        this.#isTaproot = expandedResult.isTaproot;
       if (expandedResult.expandedMiniscript !== undefined)
         this.#expandedMiniscript = expandedResult.expandedMiniscript;
       if (expandedResult.redeemScript !== undefined)
@@ -980,6 +983,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      */
     isSegwit(): boolean | undefined {
       return this.#isSegwit;
+    }
+
+    /**
+     * Whether this `Output` is Taproot.
+     */
+    isTaproot(): boolean | undefined {
+      return this.#isTaproot;
     }
 
     /**
@@ -1273,6 +1283,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: could not determine whether this is a segwit descriptor`
         );
       }
+      const isTaproot = this.isTaproot();
+      if (isTaproot === undefined) {
+        //This should only happen when using addr() expressions
+        throw new Error(
+          `Error: could not determine whether this is a taproot descriptor`
+        );
+      }
       const index = updatePsbt({
         psbt,
         vout,
@@ -1284,6 +1301,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
         scriptPubKey: this.getScriptPubKey(),
         isSegwit,
+        isTaproot,
         witnessScript: this.getWitnessScript(),
         redeemScript: this.getRedeemScript(),
         rbf
