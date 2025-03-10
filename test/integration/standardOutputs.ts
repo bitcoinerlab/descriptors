@@ -24,7 +24,7 @@ import {
   keyExpressionBIP32,
   signers
 } from '../../dist/';
-const { wpkhBIP32, shWpkhBIP32, pkhBIP32 } = scriptExpressions;
+const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
 const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
@@ -40,7 +40,14 @@ const expressionsBIP32 = [
   })})`,
   pkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 }),
   wpkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 }),
-  shWpkhBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 })
+  shWpkhBIP32({
+    masterNode,
+    network: NETWORK,
+    account: 0,
+    change: 0,
+    index: 0
+  }),
+  trBIP32({ masterNode, network: NETWORK, account: 0, change: 0, index: 0 })
 ];
 if (
   pkhBIP32({ masterNode, network: NETWORK, account: 0, keyPath: '/0/0' }) !==
