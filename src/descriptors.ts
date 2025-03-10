@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import memoize from 'lodash.memoize';
@@ -10,7 +10,8 @@ import {
   Network,
   Transaction,
   Payment,
-  Psbt
+  Psbt,
+  initEccLib
 } from 'bitcoinjs-lib';
 import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
@@ -165,6 +166,7 @@ function evaluate({
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
 export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
+  initEccLib(ecc); //Taproot requires initEccLib
   const BIP32: BIP32API = BIP32Factory(ecc);
   const ECPair: ECPairAPI = ECPairFactory(ecc);
   const signatureValidator = (
@@ -179,12 +181,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const parseKeyExpression: ParseKeyExpression = ({
     keyExpression,
     isSegwit,
+    isTaproot,
     network = networks.bitcoin
   }) => {
     return globalParseKeyExpression({
       keyExpression,
       network,
       ...(typeof isSegwit === 'boolean' ? { isSegwit } : {}),
+      ...(typeof isTaproot === 'boolean' ? { isTaproot } : {}),
       ECPair,
       BIP32
     });
@@ -268,6 +272,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let miniscript: string | undefined;
     let expansionMap: ExpansionMap | undefined;
     let isSegwit: boolean | undefined;
+    let isTaproot: boolean | undefined;
     let expandedMiniscript: string | undefined;
     let payment: Payment | undefined;
     let witnessScript: Buffer | undefined;
@@ -522,6 +527,33 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         }
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
+    }
+    //tr(KEY) - taproot
+    else if (canonicalExpression.match(RE.rePtrAnchored)) {
+      isSegwit = true;
+      isTaproot = true;
+      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (canonicalExpression !== `tr(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      expandedExpression = 'tr(@0)';
+      const pKE = parseKeyExpression({
+        keyExpression,
+        network,
+        isSegwit,
+        isTaproot
+      });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        console.log('TRACE', { pKE });
+        const pubkey = pKE.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${expression}`
+          );
+        payment = p2tr({ pubkey, network });
+      }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
     }
@@ -532,6 +564,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       ...(miniscript !== undefined ? { miniscript } : {}),
       ...(expansionMap !== undefined ? { expansionMap } : {}),
       ...(isSegwit !== undefined ? { isSegwit } : {}),
+      ...(isTaproot !== undefined ? { isTaproot } : {}),
       ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
       ...(redeemScript !== undefined ? { redeemScript } : {}),
       ...(witnessScript !== undefined ? { witnessScript } : {}),

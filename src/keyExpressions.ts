@@ -50,6 +50,7 @@ const derivePath = (node: BIP32Interface, path: string) => {
 export function parseKeyExpression({
   keyExpression,
   isSegwit,
+  isTaproot,
   ECPair,
   BIP32,
   network = networks.bitcoin
@@ -63,6 +64,13 @@ export function parseKeyExpression({
    * expression) is compressed (33 bytes).
    */
   isSegwit?: boolean;
+  /**
+   * Indicates if this key expression belongs to a Taproot output. For Taproot,
+   * the key must be represented as an x-only public key (32 bytes).
+   * If a 33-byte compressed pubkey is derived, it is converted to its x-only
+   * representation.
+   */
+  isTaproot?: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
@@ -173,6 +181,10 @@ export function parseKeyExpression({
   if (originPath || keyPath) {
     path = `m${originPath ?? ''}${keyPath ?? ''}`;
   }
+  if (pubkey !== undefined && isTaproot && pubkey.length === 33)
+    // If we get a 33-byte compressed key, drop the first byte.
+    pubkey = pubkey.slice(1, 33);
+
   return {
     keyExpression,
     ...(pubkey !== undefined ? { pubkey } : {}),
