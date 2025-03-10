@@ -307,23 +307,28 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       try {
         payment = p2pkh({ output, network });
         isSegwit = false;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2sh({ output, network });
         // It assumes that an addr(SH_ADDRESS) is always a add(SH_WPKH) address
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2wpkh({ output, network });
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2wsh({ output, network });
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2tr({ output, network });
         isSegwit = true;
+        isTaproot = true;
       } catch (e) {}
       if (!payment) {
         throw new Error(`Error: invalid address ${matchedAddress}`);
@@ -332,6 +337,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pk(KEY)
     else if (canonicalExpression.match(RE.rePkAnchored)) {
       isSegwit = false;
+      isTaproot = false;
       const keyExpression = canonicalExpression.match(
         RE.reNonSegwitKeyExp
       )?.[0];
@@ -355,6 +361,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pkh(KEY) - legacy
     else if (canonicalExpression.match(RE.rePkhAnchored)) {
       isSegwit = false;
+      isTaproot = false;
       const keyExpression = canonicalExpression.match(
         RE.reNonSegwitKeyExp
       )?.[0];
@@ -377,6 +384,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //sh(wpkh(KEY)) - nested segwit
     else if (canonicalExpression.match(RE.reShWpkhAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
@@ -402,6 +410,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //wpkh(KEY) - native segwit
     else if (canonicalExpression.match(RE.reWpkhAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
@@ -422,6 +431,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //sh(wsh(miniscript))
     else if (canonicalExpression.match(RE.reShWshMiniscriptAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
@@ -462,6 +472,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //isSegwit false because we know it's a P2SH of a miniscript and not a
       //P2SH that embeds a witness payment.
       isSegwit = false;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
@@ -505,6 +516,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //wsh(miniscript)
     else if (canonicalExpression.match(RE.reWshMiniscriptAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);

@@ -1,7 +1,11 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
+import type {
+  PsbtInput,
+  Bip32Derivation,
+  TapBip32Derivation
+} from 'bip174/src/lib/interfaces';
 import type { KeyInfo } from './types';
 import {
   payments,
@@ -238,22 +242,43 @@ export function updatePsbt({
     input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
   }
 
-  const bip32Derivation = keysInfo
-    .filter(
-      (keyInfo: KeyInfo) =>
-        keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
-    )
-    .map((keyInfo: KeyInfo): Bip32Derivation => {
-      const pubkey = keyInfo.pubkey;
-      if (!pubkey)
-        throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
-      return {
-        masterFingerprint: keyInfo.masterFingerprint!,
-        pubkey,
-        path: keyInfo.path!
-      };
-    });
-  if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+  if (isTaproot) {
+    const tapBip32Derivation = keysInfo
+      .filter(
+        (keyInfo: KeyInfo) =>
+          keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
+      )
+      .map((keyInfo: KeyInfo): TapBip32Derivation => {
+        const pubkey = keyInfo.pubkey;
+        if (!pubkey)
+          throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
+        return {
+          masterFingerprint: keyInfo.masterFingerprint!,
+          pubkey,
+          path: keyInfo.path!,
+          leafHashes: [] // Empty array for basic taproot key spend
+        };
+      });
+    if (tapBip32Derivation.length)
+      input.tapBip32Derivation = tapBip32Derivation;
+  } else {
+    const bip32Derivation = keysInfo
+      .filter(
+        (keyInfo: KeyInfo) =>
+          keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
+      )
+      .map((keyInfo: KeyInfo): Bip32Derivation => {
+        const pubkey = keyInfo.pubkey;
+        if (!pubkey)
+          throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
+        return {
+          masterFingerprint: keyInfo.masterFingerprint!,
+          pubkey,
+          path: keyInfo.path!
+        };
+      });
+    if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+  }
   if (isSegwit && txHex !== undefined) {
     //There's no need to put both witnessUtxo and nonWitnessUtxo
     input.witnessUtxo = { script: scriptPubKey, value };
