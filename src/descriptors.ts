@@ -532,7 +532,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
-    //tr(KEY) - taproot - tr(KEY,SCRIPT) not yet supported
+    //tr(KEY) - taproot - tr(KEY,TREE) not yet supported
     else if (canonicalExpression.match(RE.reTrInternalAnchored)) {
       isSegwit = true;
       isTaproot = true;

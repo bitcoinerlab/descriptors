@@ -34,7 +34,7 @@ export type TimeConstraints = {
  */
 export type KeyInfo = {
   keyExpression: string;
-  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor
+  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
   ecpair?: ECPairInterface;
   bip32?: BIP32Interface;
   masterFingerprint?: Buffer;
