@@ -546,13 +546,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       });
       expansionMap = { '@0': pKE };
       if (!isCanonicalRanged) {
-        console.log('TRACE', { pKE });
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = p2tr({ pubkey, network });
+        
+        // For Taproot, bitcoinjs-lib expects an x-only pubkey (32 bytes)
+        if (pubkey.length !== 32) {
+          throw new Error(
+            `Error: Taproot requires an x-only pubkey (32 bytes), got ${pubkey.length} bytes`
+          );
+        }
+        
+        // Create p2tr payment with the x-only pubkey
+        payment = p2tr({ 
+          internalPubkey: pubkey, // Use as internal pubkey (no script tree)
+          network 
+        });
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);

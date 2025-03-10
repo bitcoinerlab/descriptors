@@ -117,20 +117,31 @@ export function parseKeyExpression({
   if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(RE.rePubKey))) !== null) {
     pubkey = Buffer.from(mPubKey[0], 'hex');
     ecpair = ECPair.fromPublicKey(pubkey, { network });
-    //Validate the pubkey (compressed or uncompressed)
-    if (
-      !ECPair.isPoint(pubkey) ||
-      !(pubkey.length === 33 || pubkey.length === 65)
-    ) {
-      throw new Error(`Error: invalid pubkey`);
-    }
-    //Do an extra check in case we know this pubkey refers to a segwit input
-    if (
-      typeof isSegwit === 'boolean' &&
-      isSegwit &&
-      pubkey.length !== 33 //Inside wpkh and wsh, only compressed public keys are permitted.
-    ) {
-      throw new Error(`Error: invalid pubkey`);
+    // For Taproot, we need to handle x-only pubkeys (32 bytes)
+    if (isTaproot && pubkey.length === 32) {
+      // For x-only keys, we need to check if it's a valid x-coordinate on the curve
+      // We temporarily convert it to a compressed format for validation
+      const compressedPubkey = Buffer.concat([Buffer.from([0x02]), pubkey]);
+      if (!ECPair.isPoint(compressedPubkey)) {
+        throw new Error(`Error: invalid x-only pubkey for Taproot`);
+      }
+    } else {
+      // For non-Taproot keys, validate as usual (compressed or uncompressed)
+      if (
+        !ECPair.isPoint(pubkey) ||
+        !(pubkey.length === 33 || pubkey.length === 65)
+      ) {
+        throw new Error(`Error: invalid pubkey`);
+      }
+      // Do an extra check in case we know this pubkey refers to a segwit input
+      if (
+        typeof isSegwit === 'boolean' &&
+        isSegwit &&
+        pubkey.length !== 33 && // Inside wpkh and wsh, only compressed public keys are permitted.
+        !isTaproot // Skip this check for Taproot which uses x-only keys
+      ) {
+        throw new Error(`Error: invalid pubkey`);
+      }
     }
     //match WIF:
   } else if (
@@ -181,9 +192,17 @@ export function parseKeyExpression({
   if (originPath || keyPath) {
     path = `m${originPath ?? ''}${keyPath ?? ''}`;
   }
-  if (pubkey !== undefined && isTaproot && pubkey.length === 33)
-    // If we get a 33-byte compressed key, drop the first byte.
-    pubkey = pubkey.slice(1, 33);
+  // Handle Taproot keys:
+  // 1. If we have a 33-byte compressed key and isTaproot is true, convert to x-only (32 bytes)
+  // 2. If we already have a 32-byte key and isTaproot is true, keep it as is
+  if (pubkey !== undefined && isTaproot) {
+    if (pubkey.length === 33) {
+      // If we get a 33-byte compressed key, drop the first byte to get x-only format
+      pubkey = pubkey.slice(1, 33);
+    } else if (pubkey.length !== 32) {
+      throw new Error(`Error: Taproot requires an x-only pubkey (32 bytes) or compressed pubkey (33 bytes)`);
+    }
+  }
 
   return {
     keyExpression,
