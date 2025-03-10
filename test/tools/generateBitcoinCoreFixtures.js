@@ -88,7 +88,7 @@ const parseTests = str => {
 const isSupported = parsed => {
   let supported = true;
   parsed.expressions.forEach(expression => {
-    if (expression.match(/tr\(/)) supported = false;
+    if (expression.match(/tr\(.*,.*\)/)) supported = false; // tr(KEY) supported. Disable when 2 param (contains a comma)
     if (expression.match(/^multi\(/)) supported = false; //Top-level multi not supported; It must be within sh or wsh
     if (expression.match(/combo\(/)) supported = false;
     if (expression.match(/sortedmulti\(/)) supported = false;

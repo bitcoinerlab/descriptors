@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import { CHECKSUM_CHARSET } from './checksum';
@@ -24,7 +24,10 @@ export const reChecksum = String.raw`(#[${CHECKSUM_CHARSET}]{8})`;
 //as explained here: github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md#reference
 const reCompressedPubKey = String.raw`((02|03)[0-9a-fA-F]{64})`;
 const reUncompressedPubKey = String.raw`(04[0-9a-fA-F]{128})`;
-export const rePubKey = String.raw`(${reCompressedPubKey}|${reUncompressedPubKey})`;
+const reXOnlyPubKey = String.raw`([0-9a-fA-F]{64})`;
+export const reNonSegwitPubKey = String.raw`(${reCompressedPubKey}|${reUncompressedPubKey})`;
+export const reSegwitPubKey = String.raw`(${reCompressedPubKey})`;
+export const reTaprootPubKey = String.raw`(${reCompressedPubKey}|${reXOnlyPubKey})`;
 
 //https://learnmeabitcoin.com/technical/wif
 //5, K, L for mainnet, 5: uncompressed, {K, L}: compressed
@@ -43,17 +46,22 @@ export const reXpubKey = String.raw`(${reXpub})(${rePath})?`;
 export const reXprvKey = String.raw`(${reXprv})(${rePath})?`;
 
 //actualKey is the keyExpression without optional origin
-const reActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${rePubKey}|${reWIF})`;
+const reNonSegwitActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${reNonSegwitPubKey}|${reWIF})`;
+const reSegwitActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${reSegwitPubKey}|${reWIF})`;
+const reTaprootActualKey = String.raw`(${reXpubKey}|${reXprvKey}|${reTaprootPubKey}|${reWIF})`;
 //reOrigin is optional: Optionally, key origin information, consisting of:
 //Matches a key expression: wif, xpub, xprv or pubkey:
-export const reKeyExp = String.raw`(${reOrigin})?(${reActualKey})`;
+export const reNonSegwitKeyExp = String.raw`(${reOrigin})?(${reNonSegwitActualKey})`;
+export const reSegwitKeyExp = String.raw`(${reOrigin})?(${reSegwitActualKey})`;
+export const reTaprootKeyExp = String.raw`(${reOrigin})?(${reTaprootActualKey})`;
 
 const rePk = String.raw`pk\((.*?)\)`; //Matches anything. We assert later in the code that the pubkey is valid.
 const reAddr = String.raw`addr\((.*?)\)`; //Matches anything. We assert later in the code that the address is valid.
 
-const rePkh = String.raw`pkh\(${reKeyExp}\)`;
-const reWpkh = String.raw`wpkh\(${reKeyExp}\)`;
-const reShWpkh = String.raw`sh\(wpkh\(${reKeyExp}\)\)`;
+const rePkh = String.raw`pkh\(${reNonSegwitKeyExp}\)`;
+const reWpkh = String.raw`wpkh\(${reSegwitKeyExp}\)`;
+const reShWpkh = String.raw`sh\(wpkh\(${reSegwitKeyExp}\)\)`;
+const reTrInternal = String.raw`tr\(${reTaprootKeyExp}\)`; // TODO: tr(KEY,SCRIPT) not yet supported. TrInternal used for tr(KEY)
 
 const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
 
@@ -72,6 +80,9 @@ export const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
 export const rePkhAnchored = anchorStartAndEnd(composeChecksum(rePkh));
 export const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
 export const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
+export const reTrInternalAnchored = anchorStartAndEnd(
+  composeChecksum(reTrInternal)
+);
 
 export const reShMiniscriptAnchored = anchorStartAndEnd(
   composeChecksum(makeReSh(reMiniscript))

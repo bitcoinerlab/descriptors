@@ -108,6 +108,7 @@ export interface TinySecp256k1Interface {
     p: Uint8Array,
     tweak: Uint8Array
   ): XOnlyPointAddTweakResult | null;
+  isXOnlyPoint(p: Uint8Array): boolean;
   privateNegate(d: Uint8Array): Uint8Array;
 }
 
@@ -143,6 +144,11 @@ export type Expansion = {
    * A boolean indicating whether the descriptor uses SegWit.
    */
   isSegwit?: boolean;
+
+  /**
+   * A boolean indicating whether the descriptor uses Taproot.
+   */
+  isTaproot?: boolean;
 
   /**
    * The expanded miniscript, if any.
@@ -207,6 +213,13 @@ export interface ParseKeyExpression {
      * expression) is compressed (33 bytes).
      */
     isSegwit?: boolean;
+    /**
+     * Indicates if this key expression belongs to a Taproot output.
+     * For Taproot, the key must be represented as an x-only public key
+     * (32 bytes). If a 33-byte compressed pubkey is derived, it is converted to
+     * its x-only representation.
+     */
+    isTaproot?: boolean;
     network?: Network;
   }): KeyInfo;
 }

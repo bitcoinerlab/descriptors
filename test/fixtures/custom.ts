@@ -538,6 +538,39 @@ export const fixtures = {
           }
         }
       }
+    },
+    {
+      note: 'Valid Taproot descriptor using an x-only public key - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor:
+        'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)',
+      script:
+        '512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11',
+      checksumRequired: false,
+      expansion: {
+        expandedExpression: 'tr(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd'
+          }
+        }
+      }
+    },
+    {
+      note: 'Valid Taproot descriptor with WIF private key (should be converted to x-only pubkey) - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor: 'tr(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
+      script:
+        '512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11',
+      checksumRequired: false,
+      expansion: {
+        expandedExpression: 'tr(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              'L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1'
+          }
+        }
+      }
     }
   ],
   invalid: [
@@ -596,6 +629,37 @@ export const fixtures = {
         'wsh(sh(pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)))',
       checksumRequired: false,
       throw: 'Error: Miniscript sh(pk(@0)) is not sane'
+    },
+    {
+      note: 'Invalid Taproot descriptor: uncompressed public key not allowed - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor:
+        'tr(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)',
+      checksumRequired: false,
+      throw:
+        'Error: Could not parse descriptor tr(04a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235)'
+    },
+    {
+      note: 'Invalid Taproot descriptor: tr() nested inside wsh() - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor:
+        'wsh(tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))',
+      checksumRequired: false,
+      throw:
+        'Error: Miniscript tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd) is not sane'
+    },
+    {
+      note: 'Invalid Taproot descriptor: tr() nested inside sh() - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor:
+        'sh(tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))',
+      checksumRequired: false,
+      throw: 'Error: Miniscript expressions can only be used in wsh'
+    },
+    {
+      note: 'Invalid Taproot descriptor: script path not yet supported - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
+      descriptor:
+        'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,{pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0)})',
+      checksumRequired: false,
+      throw:
+        'Error: Could not parse descriptor tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,{pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0)})'
     }
   ]
 };

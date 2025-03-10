@@ -332,7 +332,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pk(KEY)
     else if (canonicalExpression.match(RE.rePkAnchored)) {
       isSegwit = false;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(
+        RE.reNonSegwitKeyExp
+      )?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pk(${keyExpression})`)
@@ -353,7 +355,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pkh(KEY) - legacy
     else if (canonicalExpression.match(RE.rePkhAnchored)) {
       isSegwit = false;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(
+        RE.reNonSegwitKeyExp
+      )?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pkh(${keyExpression})`)
@@ -373,7 +377,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //sh(wpkh(KEY)) - nested segwit
     else if (canonicalExpression.match(RE.reShWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `sh(wpkh(${keyExpression}))`)
@@ -398,7 +402,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //wpkh(KEY) - native segwit
     else if (canonicalExpression.match(RE.reWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `wpkh(${keyExpression})`)
@@ -528,11 +532,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
-    //tr(KEY) - taproot
-    else if (canonicalExpression.match(RE.rePtrAnchored)) {
+    //tr(KEY) - taproot - tr(KEY,SCRIPT) not yet supported
+    else if (canonicalExpression.match(RE.reTrInternalAnchored)) {
       isSegwit = true;
       isTaproot = true;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      const keyExpression = canonicalExpression.match(RE.reTaprootKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `tr(${keyExpression})`)
@@ -549,21 +553,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${descriptor}`
+            `Error: could not extract a pubkey from ${expression}`
           );
-        
-        // For Taproot, bitcoinjs-lib expects an x-only pubkey (32 bytes)
-        if (pubkey.length !== 32) {
-          throw new Error(
-            `Error: Taproot requires an x-only pubkey (32 bytes), got ${pubkey.length} bytes`
-          );
-        }
-        
-        // Create p2tr payment with the x-only pubkey
-        payment = p2tr({ 
-          internalPubkey: pubkey, // Use as internal pubkey (no script tree)
-          network 
-        });
+        payment = p2tr({ internalPubkey: pubkey, network });
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
@@ -606,6 +598,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     return globalExpandMiniscript({
       miniscript,
       isSegwit,
+      isTaproot: false, //TODO:
       network,
       BIP32,
       ECPair
