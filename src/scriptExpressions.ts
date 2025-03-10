@@ -79,6 +79,7 @@ export const wpkhBIP32 = standardExpressionsBIP32Maker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+export const trBIP32 = standardExpressionsBIP32Maker(86, 'tr(KEYEXPRESSION)');
 
 function standardExpressionsLedgerMaker(
   purpose: number,
@@ -187,3 +188,4 @@ export const wpkhLedger = standardExpressionsLedgerMaker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');
