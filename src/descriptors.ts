@@ -1024,20 +1024,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
 
     /**
-     * Returns the tuple: `{ isPKH: boolean; isWPKH: boolean; isSH: boolean; }`
-     * for this Output.
-     */
-    /**
-     * Attempts to determine the type of output script by testing it against various payment types.
-     * 
+     * Attempts to determine the type of output script by testing it against
+     * various payment types.
+     *
      * This method tries to identify if the output is one of the following types:
      * - P2SH (Pay to Script Hash)
      * - P2WSH (Pay to Witness Script Hash)
      * - P2WPKH (Pay to Witness Public Key Hash)
      * - P2PKH (Pay to Public Key Hash)
      * - P2TR (Pay to Taproot)
-     * 
-     * @returns An object with boolean properties indicating the detected output type
+     *
+     * @returns An object { isPKH: boolean; isWPKH: boolean; isSH: boolean; isWSH: boolean; isTR: boolean;}
+     * with boolean properties indicating the detected output type
      */
     guessOutput() {
       function guessSH(output: Buffer) {
