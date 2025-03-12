@@ -1036,6 +1036,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
+      function guessWSH(output: Buffer) {
+        try {
+          payments.p2wsh({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
       function guessWPKH(output: Buffer) {
         try {
           payments.p2wpkh({ output });
@@ -1052,14 +1060,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
+      function guessTR(output: Buffer) {
+        try {
+          payments.p2tr({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
       const isPKH = guessPKH(this.getScriptPubKey());
       const isWPKH = guessWPKH(this.getScriptPubKey());
       const isSH = guessSH(this.getScriptPubKey());
+      const isWSH = guessWSH(this.getScriptPubKey());
+      const isTR = guessTR(this.getScriptPubKey());
 
-      if ([isPKH, isWPKH, isSH].filter(Boolean).length > 1)
+      if ([isPKH, isWPKH, isSH, isWSH, isTR].filter(Boolean).length > 1)
         throw new Error('Cannot have multiple output types.');
 
-      return { isPKH, isWPKH, isSH };
+      return { isPKH, isWPKH, isSH, isWSH, isTR };
     }
 
     // References for inputWeight & outputWeight:
