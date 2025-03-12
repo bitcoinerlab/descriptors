@@ -50,6 +50,7 @@ const derivePath = (node: BIP32Interface, path: string) => {
 export function parseKeyExpression({
   keyExpression,
   isSegwit,
+  isTaproot,
   ECPair,
   BIP32,
   network = networks.bitcoin
@@ -63,6 +64,13 @@ export function parseKeyExpression({
    * expression) is compressed (33 bytes).
    */
   isSegwit?: boolean;
+  /**
+   * Indicates if this key expression belongs to a Taproot output. For Taproot,
+   * the key must be represented as an x-only public key (32 bytes).
+   * If a 33-byte compressed pubkey is derived, it is converted to its x-only
+   * representation.
+   */
+  isTaproot?: boolean;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
@@ -75,8 +83,18 @@ export function parseKeyExpression({
   let path: string | undefined;
 
   const isRanged = keyExpression.indexOf('*') !== -1;
+  const reKeyExp = isTaproot
+    ? RE.reTaprootKeyExp
+    : isSegwit
+      ? RE.reSegwitKeyExp
+      : RE.reNonSegwitKeyExp;
+  const rePubKey = isTaproot
+    ? RE.reTaprootPubKey
+    : isSegwit
+      ? RE.reSegwitPubKey
+      : RE.reNonSegwitPubKey;
   //Validate the keyExpression:
-  const keyExpressions = keyExpression.match(RE.reKeyExp);
+  const keyExpressions = keyExpression.match(reKeyExp);
   if (keyExpressions === null || keyExpressions[0] !== keyExpression) {
     throw new Error(`Error: expected a keyExpression but got ${keyExpression}`);
   }
@@ -106,8 +124,12 @@ export function parseKeyExpression({
   const actualKey = keyExpression.replace(reOriginAnchoredStart, '');
   let mPubKey, mWIF, mXpubKey, mXprvKey;
   //match pubkey:
-  if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(RE.rePubKey))) !== null) {
+  if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(rePubKey))) !== null) {
     pubkey = Buffer.from(mPubKey[0], 'hex');
+    if (isTaproot && pubkey.length === 32)
+      //convert the xonly point to a compressed point assuming even parity
+      pubkey = Buffer.concat([Buffer.from([0x02]), pubkey]);
+
     ecpair = ECPair.fromPublicKey(pubkey, { network });
     //Validate the pubkey (compressed or uncompressed)
     if (
@@ -173,6 +195,10 @@ export function parseKeyExpression({
   if (originPath || keyPath) {
     path = `m${originPath ?? ''}${keyPath ?? ''}`;
   }
+  if (pubkey !== undefined && isTaproot && pubkey.length === 33)
+    // If we get a 33-byte compressed key, drop the first byte.
+    pubkey = pubkey.slice(1, 33);
+
   return {
     keyExpression,
     ...(pubkey !== undefined ? { pubkey } : {}),

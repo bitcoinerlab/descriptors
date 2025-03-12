@@ -20,12 +20,14 @@ import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 export function expandMiniscript({
   miniscript,
   isSegwit,
+  isTaproot,
   network = networks.bitcoin,
   ECPair,
   BIP32
 }: {
   miniscript: string;
   isSegwit: boolean;
+  isTaproot: boolean;
   network?: Network;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
@@ -33,9 +35,15 @@ export function expandMiniscript({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
 } {
+  if (isTaproot) throw new Error('Taproot miniscript not yet supported.');
+  const reKeyExp = isTaproot
+    ? RE.reTaprootKeyExp
+    : isSegwit
+      ? RE.reSegwitKeyExp
+      : RE.reNonSegwitKeyExp;
   const expansionMap: ExpansionMap = {};
   const expandedMiniscript = miniscript.replace(
-    RegExp(RE.reKeyExp, 'g'),
+    RegExp(reKeyExp, 'g'),
     (keyExpression: string) => {
       const key = '@' + Object.keys(expansionMap).length;
       expansionMap[key] = parseKeyExpression({

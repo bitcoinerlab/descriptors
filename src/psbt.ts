@@ -1,7 +1,11 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { PsbtInput, Bip32Derivation } from 'bip174/src/lib/interfaces';
+import type {
+  PsbtInput,
+  Bip32Derivation,
+  TapBip32Derivation
+} from 'bip174/src/lib/interfaces';
 import type { KeyInfo } from './types';
 import {
   payments,
@@ -139,6 +143,7 @@ export function updatePsbt({
   keysInfo,
   scriptPubKey,
   isSegwit,
+  tapInternalKey,
   witnessScript,
   redeemScript,
   rbf
@@ -153,6 +158,8 @@ export function updatePsbt({
   keysInfo: KeyInfo[];
   scriptPubKey: Buffer;
   isSegwit: boolean;
+  /** for taproot **/
+  tapInternalKey?: Buffer | undefined;
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
   rbf: boolean;
@@ -236,22 +243,51 @@ export function updatePsbt({
     input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
   }
 
-  const bip32Derivation = keysInfo
-    .filter(
-      (keyInfo: KeyInfo) =>
-        keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
-    )
-    .map((keyInfo: KeyInfo): Bip32Derivation => {
-      const pubkey = keyInfo.pubkey;
-      if (!pubkey)
-        throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
-      return {
-        masterFingerprint: keyInfo.masterFingerprint!,
-        pubkey,
-        path: keyInfo.path!
-      };
-    });
-  if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+  if (tapInternalKey) {
+    //Taproot
+    const tapBip32Derivation = keysInfo
+      .filter(
+        (keyInfo: KeyInfo) =>
+          keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
+      )
+      .map((keyInfo: KeyInfo): TapBip32Derivation => {
+        const pubkey = keyInfo.pubkey;
+        if (!pubkey)
+          throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
+        return {
+          masterFingerprint: keyInfo.masterFingerprint!,
+          pubkey,
+          path: keyInfo.path!,
+          leafHashes: [] // TODO: Empty array for tr(KEY) taproot key spend - this is the only type currently supported
+        };
+      });
+
+    if (tapBip32Derivation.length)
+      input.tapBip32Derivation = tapBip32Derivation;
+    input.tapInternalKey = tapInternalKey;
+
+    //TODO: currently only single-key taproot supported.
+    //https://github.com/bitcoinjs/bitcoinjs-lib/blob/6ba8bb3ce20ba533eeaba6939cfc2891576d9969/test/integration/taproot.spec.ts#L243
+    if (tapBip32Derivation.length > 1)
+      throw new Error('Only single key taproot inputs are currently supported');
+  } else {
+    const bip32Derivation = keysInfo
+      .filter(
+        (keyInfo: KeyInfo) =>
+          keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
+      )
+      .map((keyInfo: KeyInfo): Bip32Derivation => {
+        const pubkey = keyInfo.pubkey;
+        if (!pubkey)
+          throw new Error(`key ${keyInfo.keyExpression} missing pubkey`);
+        return {
+          masterFingerprint: keyInfo.masterFingerprint!,
+          pubkey,
+          path: keyInfo.path!
+        };
+      });
+    if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
+  }
   if (isSegwit && txHex !== undefined) {
     //There's no need to put both witnessUtxo and nonWitnessUtxo
     input.witnessUtxo = { script: scriptPubKey, value };

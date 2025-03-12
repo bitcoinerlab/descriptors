@@ -77,6 +77,16 @@ For miniscript-based descriptors, the `signersPubKeys` parameter in the constuct
 
 The `Output` class [offers various helpful methods](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html), including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
 
+ The library supports a wide range of descriptor types, including:
+ - Pay-to-Public-Key-Hash (P2PKH): `pkh(KEY)`
+ - Pay-to-Witness-Public-Key-Hash (P2WPKH): `wpkh(KEY)`
+ - Pay-to-Script-Hash (P2SH): `sh(SCRIPT)`
+ - Pay-to-Witness-Script-Hash (P2WSH): `wsh(SCRIPT)`
+ - Pay-to-Taproot (P2TR) with single key: `tr(KEY)`
+ - Address-based descriptors: `addr(ADDRESS)`, including Taproot addresses
+
+ These descriptors can be used with various key expressions, including raw public keys, BIP32 derivation paths, and more.
+
 The `updatePsbtAsInput()` method is an essential part of the library, responsible for adding an input to the PSBT corresponding to the UTXO  described by the descriptor. Additionally, when the descriptor expresses an absolute time-spending condition, such as "This UTXO can only be spent after block N", `updatePsbtAsInput()` adds timelock information to the PSBT.
 
 To call `updatePsbtAsInput()`, use the following syntax:

@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import memoize from 'lodash.memoize';
@@ -10,7 +10,8 @@ import {
   Network,
   Transaction,
   Payment,
-  Psbt
+  Psbt,
+  initEccLib
 } from 'bitcoinjs-lib';
 import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
@@ -165,13 +166,27 @@ function evaluate({
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
 export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
+  initEccLib(ecc); //Taproot requires initEccLib
   const BIP32: BIP32API = BIP32Factory(ecc);
   const ECPair: ECPairAPI = ECPairFactory(ecc);
+
   const signatureValidator = (
     pubkey: Buffer,
     msghash: Buffer,
     signature: Buffer
-  ): boolean => ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+  ): boolean => {
+    if (pubkey.length === 32) {
+      //x-only
+      if (!ecc.verifySchnorr) {
+        throw new Error(
+          'TinySecp256k1Interface is not initialized properly: verifySchnorr is missing.'
+        );
+      }
+      return ecc.verifySchnorr(msghash, pubkey, signature);
+    } else {
+      return ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+    }
+  };
 
   /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
@@ -179,12 +194,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const parseKeyExpression: ParseKeyExpression = ({
     keyExpression,
     isSegwit,
+    isTaproot,
     network = networks.bitcoin
   }) => {
     return globalParseKeyExpression({
       keyExpression,
       network,
       ...(typeof isSegwit === 'boolean' ? { isSegwit } : {}),
+      ...(typeof isTaproot === 'boolean' ? { isTaproot } : {}),
       ECPair,
       BIP32
     });
@@ -268,6 +285,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let miniscript: string | undefined;
     let expansionMap: ExpansionMap | undefined;
     let isSegwit: boolean | undefined;
+    let isTaproot: boolean | undefined;
     let expandedMiniscript: string | undefined;
     let payment: Payment | undefined;
     let witnessScript: Buffer | undefined;
@@ -302,23 +320,28 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       try {
         payment = p2pkh({ output, network });
         isSegwit = false;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2sh({ output, network });
         // It assumes that an addr(SH_ADDRESS) is always a add(SH_WPKH) address
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2wpkh({ output, network });
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2wsh({ output, network });
         isSegwit = true;
+        isTaproot = false;
       } catch (e) {}
       try {
         payment = p2tr({ output, network });
         isSegwit = true;
+        isTaproot = true;
       } catch (e) {}
       if (!payment) {
         throw new Error(`Error: invalid address ${matchedAddress}`);
@@ -327,7 +350,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pk(KEY)
     else if (canonicalExpression.match(RE.rePkAnchored)) {
       isSegwit = false;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      isTaproot = false;
+      const keyExpression = canonicalExpression.match(
+        RE.reNonSegwitKeyExp
+      )?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pk(${keyExpression})`)
@@ -348,7 +374,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //pkh(KEY) - legacy
     else if (canonicalExpression.match(RE.rePkhAnchored)) {
       isSegwit = false;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      isTaproot = false;
+      const keyExpression = canonicalExpression.match(
+        RE.reNonSegwitKeyExp
+      )?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `pkh(${keyExpression})`)
@@ -368,7 +397,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //sh(wpkh(KEY)) - nested segwit
     else if (canonicalExpression.match(RE.reShWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      isTaproot = false;
+      const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `sh(wpkh(${keyExpression}))`)
@@ -393,7 +423,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //wpkh(KEY) - native segwit
     else if (canonicalExpression.match(RE.reWpkhAnchored)) {
       isSegwit = true;
-      const keyExpression = canonicalExpression.match(RE.reKeyExp)?.[0];
+      isTaproot = false;
+      const keyExpression = canonicalExpression.match(RE.reSegwitKeyExp)?.[0];
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `wpkh(${keyExpression})`)
@@ -413,6 +444,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //sh(wsh(miniscript))
     else if (canonicalExpression.match(RE.reShWshMiniscriptAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reShWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(wsh(->HERE<-))
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
@@ -453,6 +485,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //isSegwit false because we know it's a P2SH of a miniscript and not a
       //P2SH that embeds a witness payment.
       isSegwit = false;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reShMiniscriptAnchored)?.[1]; //[1]-> whatever is found sh(->HERE<-)
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
@@ -496,6 +529,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //wsh(miniscript)
     else if (canonicalExpression.match(RE.reWshMiniscriptAnchored)) {
       isSegwit = true;
+      isTaproot = false;
       miniscript = canonicalExpression.match(RE.reWshMiniscriptAnchored)?.[1]; //[1]-> whatever is found wsh(->HERE<-)
       if (!miniscript)
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
@@ -522,6 +556,38 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         }
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
+    }
+    //tr(KEY) - taproot - TODO: tr(KEY,TREE) not yet supported
+    else if (canonicalExpression.match(RE.reTrSingleKeyAnchored)) {
+      isSegwit = true;
+      isTaproot = true;
+      const keyExpression = canonicalExpression.match(RE.reTaprootKeyExp)?.[0];
+      if (!keyExpression)
+        throw new Error(`Error: keyExpression could not me extracted`);
+      if (canonicalExpression !== `tr(${keyExpression})`)
+        throw new Error(`Error: invalid expression ${expression}`);
+      expandedExpression = 'tr(@0)';
+      const pKE = parseKeyExpression({
+        keyExpression,
+        network,
+        isSegwit,
+        isTaproot
+      });
+      expansionMap = { '@0': pKE };
+      if (!isCanonicalRanged) {
+        const pubkey = pKE.pubkey;
+        if (!pubkey)
+          throw new Error(
+            `Error: could not extract a pubkey from ${expression}`
+          );
+        payment = p2tr({ internalPubkey: pubkey, network });
+        //console.log('TRACE', {
+        //  pKE,
+        //  pubkey: pubkey?.toString('hex'),
+        //  payment,
+        //  paymentPubKey: payment.pubkey
+        //});
+      }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
     }
@@ -532,6 +598,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       ...(miniscript !== undefined ? { miniscript } : {}),
       ...(expansionMap !== undefined ? { expansionMap } : {}),
       ...(isSegwit !== undefined ? { isSegwit } : {}),
+      ...(isTaproot !== undefined ? { isTaproot } : {}),
       ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
       ...(redeemScript !== undefined ? { redeemScript } : {}),
       ...(witnessScript !== undefined ? { witnessScript } : {}),
@@ -562,6 +629,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     return globalExpandMiniscript({
       miniscript,
       isSegwit,
+      isTaproot: false, //TODO:
       network,
       BIP32,
       ECPair
@@ -584,6 +652,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     //isSegwit true if witnesses are needed to the spend coins sent to this descriptor.
     //may be unset because we may get addr(P2SH) which we don't know if they have segwit.
     readonly #isSegwit?: boolean;
+    readonly #isTaproot?: boolean;
     readonly #expandedExpression?: string;
     readonly #expandedMiniscript?: string;
     readonly #expansionMap?: ExpansionMap;
@@ -692,6 +761,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#expansionMap = expandedResult.expansionMap;
       if (expandedResult.isSegwit !== undefined)
         this.#isSegwit = expandedResult.isSegwit;
+      if (expandedResult.isTaproot !== undefined)
+        this.#isTaproot = expandedResult.isTaproot;
       if (expandedResult.expandedMiniscript !== undefined)
         this.#expandedMiniscript = expandedResult.expandedMiniscript;
       if (expandedResult.redeemScript !== undefined)
@@ -946,13 +1017,38 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     }
 
     /**
-     * Returns the tuple: `{ isPKH: boolean; isWPKH: boolean; isSH: boolean; }`
-     * for this Output.
+     * Whether this `Output` is Taproot.
+     */
+    isTaproot(): boolean | undefined {
+      return this.#isTaproot;
+    }
+
+    /**
+     * Attempts to determine the type of output script by testing it against
+     * various payment types.
+     *
+     * This method tries to identify if the output is one of the following types:
+     * - P2SH (Pay to Script Hash)
+     * - P2WSH (Pay to Witness Script Hash)
+     * - P2WPKH (Pay to Witness Public Key Hash)
+     * - P2PKH (Pay to Public Key Hash)
+     * - P2TR (Pay to Taproot)
+     *
+     * @returns An object { isPKH: boolean; isWPKH: boolean; isSH: boolean; isWSH: boolean; isTR: boolean;}
+     * with boolean properties indicating the detected output type
      */
     guessOutput() {
       function guessSH(output: Buffer) {
         try {
           payments.p2sh({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
+      function guessWSH(output: Buffer) {
+        try {
+          payments.p2wsh({ output });
           return true;
         } catch (err) {
           return false;
@@ -974,14 +1070,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
+      function guessTR(output: Buffer) {
+        try {
+          payments.p2tr({ output });
+          return true;
+        } catch (err) {
+          return false;
+        }
+      }
       const isPKH = guessPKH(this.getScriptPubKey());
       const isWPKH = guessWPKH(this.getScriptPubKey());
       const isSH = guessSH(this.getScriptPubKey());
+      const isWSH = guessWSH(this.getScriptPubKey());
+      const isTR = guessTR(this.getScriptPubKey());
 
-      if ([isPKH, isWPKH, isSH].filter(Boolean).length > 1)
+      if ([isPKH, isWPKH, isSH, isWSH, isTR].filter(Boolean).length > 1)
         throw new Error('Cannot have multiple output types.');
 
-      return { isPKH, isWPKH, isSH };
+      return { isPKH, isWPKH, isSH, isWSH, isTR };
     }
 
     // References for inputWeight & outputWeight:
@@ -989,6 +1095,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     // https://bitcoinops.org/en/tools/calc-size/
     // Look for byteLength: https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/transaction.ts
     // https://github.com/bitcoinjs/coinselect/blob/master/utils.js
+    // https://bitcoin.stackexchange.com/questions/111395/what-is-the-weight-of-a-p2tr-input
 
     /**
      * Computes the Weight Unit contributions of this Output as if it were the
@@ -997,8 +1104,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
      * (Script Hash-Witness Public Key Hash).
+     *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
+     * address (like those defined in BIP86).
      * For inputs using arbitrary scripts (not standard addresses),
-     * use a descriptor in the format `sh(MINISCRIPT)`.
+     * use a descriptor in the format `sh(MINISCRIPT)` or `tr(MINISCRIPT)`.
+     * Note however that tr(MINISCRIPT) is not yet supported for non-single-key
+     * expressions.
      */
     inputWeight(
       /**
@@ -1013,8 +1124,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       /*
        *  Array of `PartialSig`. Each `PartialSig` includes
        *  a public key and its corresponding signature. This parameter
-       *  enables the accurate calculation of signature sizes.
-       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length.
+       *  enables the accurate calculation of signature sizes for ECDSA.
+       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length
+       *  for ECDSA.
+       *  Schnorr signatures are always 64 bytes.
        *  Mainly used for testing.
        */
       signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
@@ -1022,15 +1135,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (this.isSegwit() && !isSegwitTx)
         throw new Error(`a tx is segwit if at least one input is segwit`);
       const errorMsg =
-        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
-    sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
-    addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS).';
+        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
+sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
+addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS).';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
-      const { isPKH, isWPKH, isSH } = this.guessOutput();
-      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+      const { isPKH, isWPKH, isSH, isTR } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
+        throw new Error(errorMsg);
 
       const firstSignature =
         signatures && typeof signatures[0] === 'object'
@@ -1127,6 +1241,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           //Segwit
           vectorSize(payment.witness)
         );
+        //when addr(SINGLE_KEY_ADDRESS) or tr(KEY) (single key):
+        //TODO: only single-key taproot outputs currently supported
+      } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        return (
+          // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
+          41 * 4 +
+          // Segwit: (push_count:1) + (sig_length(1) + schnorr_sig(64): 65)
+          (1 + 65)
+        );
       } else {
         throw new Error(errorMsg);
       }
@@ -1138,15 +1262,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      */
     outputWeight() {
       const errorMsg =
-        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
-    sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
-    addr(SH_WPKH_ADDRESS)';
+        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(ANYTHING), \
+sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
+addr(SH_WPKH_ADDRESS), addr(TR_ADDRESS)';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
-      const { isPKH, isWPKH, isSH } = this.guessOutput();
-      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+      const { isPKH, isWPKH, isSH, isWSH, isTR } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
+        throw new Error(errorMsg);
       if (expansion ? expansion.startsWith('pkh(') : isPKH) {
         // (p2pkh:26) + (amount:8)
         return 34 * 4;
@@ -1156,8 +1281,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } else if (expansion ? expansion.startsWith('sh(') : isSH) {
         // (p2sh:24) + (amount:8)
         return 32 * 4;
-      } else if (expansion?.startsWith('wsh(')) {
+      } else if (expansion ? expansion.startsWith('wsh(') : isWSH) {
         // (p2wsh:35) + (amount:8)
+        return 43 * 4;
+      } else if (expansion ? expansion.startsWith('tr(') : isTR) {
+        // (script_pubKey_length:1) + (p2t2(OP_1 OP_PUSH32 <schnorr_public_key>):34) + (amount:8)
         return 43 * 4;
       } else {
         throw new Error(errorMsg);
@@ -1236,12 +1364,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           `Error: could not determine whether this is a segwit descriptor`
         );
       }
+      const isTaproot = this.isTaproot();
+      if (isTaproot === undefined) {
+        //This should only happen when using addr() expressions
+        throw new Error(
+          `Error: could not determine whether this is a taproot descriptor`
+        );
+      }
       const index = updatePsbt({
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
+        ...(isTaproot
+          ? { tapInternalKey: this.getPayment().internalPubkey }
+          : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
@@ -1379,14 +1517,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //transaction since it is a general Descriptor object. Indices must be kept
       //out of the scope of this class and then passed.
 
-      const signatures = psbt.data.inputs[index]?.partialSig;
-      if (!signatures)
-        throw new Error(`Error: cannot finalize without signatures`);
       this.#assertPsbtInput({ index, psbt });
       if (!this.#miniscript) {
         //Use standard finalizers
         psbt.finalizeInput(index);
       } else {
+        const signatures = psbt.data.inputs[index]?.partialSig;
+        if (!signatures)
+          throw new Error(`Error: cannot finalize without signatures`);
         const scriptSatisfaction = this.getScriptSatisfaction(signatures);
         psbt.finalizeInput(
           index,

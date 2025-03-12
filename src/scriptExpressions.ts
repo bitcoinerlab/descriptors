@@ -43,7 +43,7 @@ function standardExpressionsBIP32Maker(
     /** @default networks.bitcoin */
     network?: Network;
     account: number;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+    change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
     index?: number | undefined | '*';
     keyPath?: string;
     /**
@@ -79,6 +79,7 @@ export const wpkhBIP32 = standardExpressionsBIP32Maker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+export const trBIP32 = standardExpressionsBIP32Maker(86, 'tr(KEYEXPRESSION)');
 
 function standardExpressionsLedgerMaker(
   purpose: number,
@@ -187,3 +188,4 @@ export const wpkhLedger = standardExpressionsLedgerMaker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');

@@ -1,7 +1,10 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+import { isTaprootInput } from 'bitcoinjs-lib/src/psbt/bip371';
+import { tapTweakHash } from 'bitcoinjs-lib/src/payments/bip341';
 import type { Psbt } from 'bitcoinjs-lib';
+
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { DescriptorInstance } from './descriptors';
@@ -16,6 +19,7 @@ import {
   LedgerManager,
   ledgerPolicyFromPsbtInput
 } from './ledger';
+import { applyPR2137 } from './applyPR2137';
 type DefaultDescriptorTemplate =
   | 'pkh(@0/**)'
   | 'sh(wpkh(@0/**))'
@@ -27,6 +31,27 @@ declare class PartialSignature {
   readonly tapleafHash?: Buffer;
   constructor(pubkey: Buffer, signature: Buffer, tapleafHash?: Buffer);
 }
+
+function range(n: number): number[] {
+  return [...Array(n).keys()];
+}
+/**
+ * Signs a specific input of a PSBT with an ECPair.
+ *
+ * Unlike bitcoinjs-lib's native `psbt.signInput()`, this function automatically detects
+ * if the input is a Taproot input and internally tweaks the key if needed.
+ *
+ * This behavior matches how `signInputBIP32` works, where the BIP32 node is automatically
+ * tweaked for Taproot inputs. In contrast, bitcoinjs-lib's native implementation requires
+ * manual pre-tweaking of ECPair signers for Taproot inputs.
+ *
+ * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+ *
+ * @param {Object} params - The parameters object
+ * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {number} params.index - The input index to sign
+ * @param {ECPairInterface} params.ecpair - The ECPair to sign with
+ */
 export function signInputECPair({
   psbt,
   index,
@@ -36,8 +61,40 @@ export function signInputECPair({
   index: number;
   ecpair: ECPairInterface;
 }): void {
-  psbt.signInput(index, ecpair);
+  //psbt.signInput(index, ecpair); <- Replaced for the code below
+  //that can handle taroot inputs automatically.
+  //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+  const input = psbt.data.inputs[index];
+  if (!input) throw new Error('Invalid index');
+  if (isTaprootInput(input)) {
+    const hash = tapTweakHash(
+      Buffer.from(ecpair.publicKey.slice(1, 33)),
+      undefined
+    );
+    const tweakedEcpair = ecpair.tweak(hash);
+    psbt.signInput(index, tweakedEcpair);
+  } else psbt.signInput(index, ecpair);
 }
+/**
+ * Signs all inputs of a PSBT with an ECPair.
+ *
+ * This function improves upon bitcoinjs-lib's native `psbt.signAllInputs()` by automatically
+ * handling Taproot inputs. For each input, it detects if it's a Taproot input and internally
+ * tweaks the key if needed.
+ *
+ * This creates consistency with the BIP32 signing methods (`signBIP32`/`signInputBIP32`),
+ * which also automatically handle key tweaking for Taproot inputs. In contrast, bitcoinjs-lib's
+ * native implementation requires users to manually pre-tweak ECPair signers for Taproot inputs.
+ *
+ * With this implementation, you can use a single ECPair to sign both Taproot and non-Taproot
+ * inputs in the same PSBT, similar to how `signBIP32` allows using a common node for both types.
+ *
+ * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+ *
+ * @param {Object} params - The parameters object
+ * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {ECPairInterface} params.ecpair - The ECPair to sign with
+ */
 export function signECPair({
   psbt,
   ecpair
@@ -45,7 +102,21 @@ export function signECPair({
   psbt: Psbt;
   ecpair: ECPairInterface;
 }): void {
-  psbt.signAllInputs(ecpair);
+  //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
+  //taptoot automatically.
+  //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
+  const results: boolean[] = [];
+  for (const index of range(psbt.data.inputs.length)) {
+    try {
+      signInputECPair({ psbt, index, ecpair });
+      results.push(true);
+    } catch (err) {
+      results.push(false);
+    }
+  }
+  if (results.every(v => v === false)) {
+    throw new Error('No inputs were signed');
+  }
 }
 export function signInputBIP32({
   psbt,
@@ -56,8 +127,10 @@ export function signInputBIP32({
   index: number;
   node: BIP32Interface;
 }): void {
+  applyPR2137(psbt);
   psbt.signInputHD(index, node);
 }
+
 export function signBIP32({
   psbt,
   masterNode
@@ -65,6 +138,7 @@ export function signBIP32({
   psbt: Psbt;
   masterNode: BIP32Interface;
 }): void {
+  applyPR2137(psbt);
   psbt.signAllInputsHD(masterNode);
 }
 
@@ -154,6 +228,8 @@ export async function signInputLedger({
 
   let ledgerSignatures;
   if (ledgerManager) {
+    if (psbt.data.inputs[index]?.tapInternalKey)
+      throw new Error('Taproot inputs not yet supported for the Ledger device');
     const policy = await ledgerPolicyFromPsbtInput({
       psbt,
       index,
@@ -311,6 +387,10 @@ export async function signLedger({
   const ledgerPolicies = [];
   if (ledgerManager)
     for (let index = 0; index < psbt.data.inputs.length; index++) {
+      if (psbt.data.inputs[index]?.tapInternalKey)
+        throw new Error(
+          'Taproot inputs not yet supported for the Ledger device'
+        );
       const policy = await ledgerPolicyFromPsbtInput({
         psbt,
         index,

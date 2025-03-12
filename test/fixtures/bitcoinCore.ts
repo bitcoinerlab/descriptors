@@ -54,6 +54,19 @@ export const fixtures = {
       checksumRequired: false
     },
     {
+      descriptor: 'tr(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
+      script:
+        '512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11',
+      checksumRequired: false
+    },
+    {
+      descriptor:
+        'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd)',
+      script:
+        '512077aab6e066f8a7419c5ab714c12c67d25007ed55a43cadcacb4d7a970a093f11',
+      checksumRequired: false
+    },
+    {
       descriptor: 'pk(5KYZdUEo39z3FPrtuX2QbbwGnNP5zTd7yyr2SC1j299sBCnWjss)',
       script:
         '4104a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd5b8dec5235a0fa8722476c7709c02559e3aa73aa03918ba2d492eea75abea235ac',
