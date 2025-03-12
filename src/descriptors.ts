@@ -1134,15 +1134,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     ) {
       if (this.isSegwit() && !isSegwitTx)
         throw new Error(`a tx is segwit if at least one input is segwit`);
-      const errorMsg =
-        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
-sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
-addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS).';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
       const { isPKH, isWPKH, isSH, isTR } = this.guessOutput();
+      const errorMsg = `Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
+sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
+addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS). \
+expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${isTR}.`;
       if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
         throw new Error(errorMsg);
 
@@ -1261,13 +1261,10 @@ addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_AD
      * output in a tx.
      */
     outputWeight() {
-      const errorMsg =
-        'Output type not implemented. Currently supported: pkh, wpkh, tr, \
-sh and wsh';
-
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const { isPKH, isWPKH, isSH, isWSH, isTR } = this.guessOutput();
+      const errorMsg = `Output type not implemented. Currently supported: pkh=${isPKH}, wpkh=${isWPKH}, tr=${isTR}, sh=${isSH} and wsh=${isWSH}.`;
       if (isPKH) {
         // (p2pkh:26) + (amount:8)
         return 34 * 4;
