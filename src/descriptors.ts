@@ -169,11 +169,24 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   initEccLib(ecc); //Taproot requires initEccLib
   const BIP32: BIP32API = BIP32Factory(ecc);
   const ECPair: ECPairAPI = ECPairFactory(ecc);
+
   const signatureValidator = (
     pubkey: Buffer,
     msghash: Buffer,
     signature: Buffer
-  ): boolean => ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+  ): boolean => {
+    if (pubkey.length === 32) {
+      //x-only
+      if (!ecc.verifySchnorr) {
+        throw new Error(
+          'TinySecp256k1Interface is not initialized properly: verifySchnorr is missing.'
+        );
+      }
+      return ecc.verifySchnorr(msghash, pubkey, signature);
+    } else {
+      return ECPair.fromPublicKey(pubkey).verify(msghash, signature);
+    }
+  };
 
   /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
@@ -544,7 +557,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
-    //tr(KEY) - taproot - tr(KEY,TREE) not yet supported
+    //tr(KEY) - taproot - TODO: tr(KEY,TREE) not yet supported
     else if (canonicalExpression.match(RE.reTrInternalAnchored)) {
       isSegwit = true;
       isTaproot = true;
@@ -568,6 +581,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: could not extract a pubkey from ${expression}`
           );
         payment = p2tr({ internalPubkey: pubkey, network });
+        //console.log('TRACE', {
+        //  pKE,
+        //  pubkey: pubkey?.toString('hex'),
+        //  payment,
+        //  paymentPubKey: payment.pubkey
+        //});
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
@@ -1308,12 +1327,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
+        ...(isTaproot
+          ? { tapInternalKey: this.getPayment().internalPubkey }
+          : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
         scriptPubKey: this.getScriptPubKey(),
         isSegwit,
-        isTaproot,
         witnessScript: this.getWitnessScript(),
         redeemScript: this.getRedeemScript(),
         rbf
@@ -1446,14 +1467,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //transaction since it is a general Descriptor object. Indices must be kept
       //out of the scope of this class and then passed.
 
-      const signatures = psbt.data.inputs[index]?.partialSig;
-      if (!signatures)
-        throw new Error(`Error: cannot finalize without signatures`);
       this.#assertPsbtInput({ index, psbt });
       if (!this.#miniscript) {
         //Use standard finalizers
         psbt.finalizeInput(index);
       } else {
+        const signatures = psbt.data.inputs[index]?.partialSig;
+        if (!signatures)
+          throw new Error(`Error: cannot finalize without signatures`);
         const scriptSatisfaction = this.getScriptSatisfaction(signatures);
         psbt.finalizeInput(
           index,

@@ -43,7 +43,7 @@ function standardExpressionsBIP32Maker(
     /** @default networks.bitcoin */
     network?: Network;
     account: number;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
+    change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
     index?: number | undefined | '*';
     keyPath?: string;
     /**

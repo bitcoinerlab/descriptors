@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 import type {
@@ -143,7 +143,7 @@ export function updatePsbt({
   keysInfo,
   scriptPubKey,
   isSegwit,
-  isTaproot,
+  tapInternalKey,
   witnessScript,
   redeemScript,
   rbf
@@ -158,7 +158,8 @@ export function updatePsbt({
   keysInfo: KeyInfo[];
   scriptPubKey: Buffer;
   isSegwit: boolean;
-  isTaproot: boolean;
+  /** for taproot **/
+  tapInternalKey?: Buffer | undefined;
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
   rbf: boolean;
@@ -242,7 +243,8 @@ export function updatePsbt({
     input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
   }
 
-  if (isTaproot) {
+  if (tapInternalKey) {
+    //Taproot
     const tapBip32Derivation = keysInfo
       .filter(
         (keyInfo: KeyInfo) =>
@@ -256,11 +258,18 @@ export function updatePsbt({
           masterFingerprint: keyInfo.masterFingerprint!,
           pubkey,
           path: keyInfo.path!,
-          leafHashes: [] // Empty array for basic taproot key spend
+          leafHashes: [] // TODO: Empty array for tr(KEY) taproot key spend - this is the only type currently supported
         };
       });
+
     if (tapBip32Derivation.length)
       input.tapBip32Derivation = tapBip32Derivation;
+    input.tapInternalKey = tapInternalKey;
+
+    //TODO: currently only single-key taproot supported.
+    //https://github.com/bitcoinjs/bitcoinjs-lib/blob/6ba8bb3ce20ba533eeaba6939cfc2891576d9969/test/integration/taproot.spec.ts#L243
+    if (tapBip32Derivation.length > 1)
+      throw new Error('Only single key taproot inputs are currently supported');
   } else {
     const bip32Derivation = keysInfo
       .filter(

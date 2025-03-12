@@ -61,7 +61,8 @@ const expressionsECPair = [
   `pk(${ecpair.publicKey.toString('hex')})`,
   `pkh(${ecpair.publicKey.toString('hex')})`,
   `wpkh(${ecpair.publicKey.toString('hex')})`,
-  `sh(wpkh(${ecpair.publicKey.toString('hex')}))`
+  `sh(wpkh(${ecpair.publicKey.toString('hex')}))`,
+  `tr(${ecpair.publicKey.slice(1, 33).toString('hex')})`
 ];
 
 (async () => {
