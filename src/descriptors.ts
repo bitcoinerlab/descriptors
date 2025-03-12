@@ -1007,8 +1007,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      *
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
-     * (Script Hash-Witness Public Key Hash), and any `addr(TR_TYPE_ADDRESS)` 
-     * is a single key Taproot address (like those defined in BIP86).
+     * (Script Hash-Witness Public Key Hash).
      * For inputs using arbitrary scripts (not standard addresses),
      * use a descriptor in the format `sh(MINISCRIPT)`.
      *
@@ -1096,6 +1095,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     // https://bitcoinops.org/en/tools/calc-size/
     // Look for byteLength: https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/transaction.ts
     // https://github.com/bitcoinjs/coinselect/blob/master/utils.js
+    // https://bitcoin.stackexchange.com/questions/111395/what-is-the-weight-of-a-p2tr-input
 
     /**
      * Computes the Weight Unit contributions of this Output as if it were the
@@ -1104,8 +1104,12 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
      * (Script Hash-Witness Public Key Hash).
+     *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
+     * address (like those defined in BIP86).
      * For inputs using arbitrary scripts (not standard addresses),
-     * use a descriptor in the format `sh(MINISCRIPT)`.
+     * use a descriptor in the format `sh(MINISCRIPT)` or `tr(MINISCRIPT)`.
+     * Note however that tr(MINISCRIPT) is not yet supported for non-single-key
+     * expressions.
      */
     inputWeight(
       /**
@@ -1120,8 +1124,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       /*
        *  Array of `PartialSig`. Each `PartialSig` includes
        *  a public key and its corresponding signature. This parameter
-       *  enables the accurate calculation of signature sizes.
-       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length.
+       *  enables the accurate calculation of signature sizes for ECDSA.
+       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length
+       *  for ECDSA.
+       *  Schnorr signatures are always 64 bytes.
        *  Mainly used for testing.
        */
       signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
@@ -1129,9 +1135,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (this.isSegwit() && !isSegwitTx)
         throw new Error(`a tx is segwit if at least one input is segwit`);
       const errorMsg =
-        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
-    sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
-    addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS).';
+        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
+sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
+addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS).';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
@@ -1235,6 +1241,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           //Segwit
           vectorSize(payment.witness)
         );
+        //when addr(SINGLE_KEY_ADDRESS) or tr(KEY) (single key):
+        //TODO: only single-key taproot outputs currently supported
+      } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        return (
+          // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
+          41 * 4 +
+          // Segwit: (push_count:1) + (sig_length(1) + schnorr_sig(64): 65)
+          (1 + 65)
+        );
       } else {
         throw new Error(errorMsg);
       }
@@ -1246,15 +1262,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      */
     outputWeight() {
       const errorMsg =
-        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), \
-    sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
-    addr(SH_WPKH_ADDRESS)';
+        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(ANYTHING), \
+sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
+addr(SH_WPKH_ADDRESS), addr(TR_ADDRESS)';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
-      const { isPKH, isWPKH, isSH } = this.guessOutput();
-      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+      const { isPKH, isWPKH, isSH, isWSH, isTR } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
+        throw new Error(errorMsg);
       if (expansion ? expansion.startsWith('pkh(') : isPKH) {
         // (p2pkh:26) + (amount:8)
         return 34 * 4;
@@ -1264,8 +1281,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       } else if (expansion ? expansion.startsWith('sh(') : isSH) {
         // (p2sh:24) + (amount:8)
         return 32 * 4;
-      } else if (expansion?.startsWith('wsh(')) {
+      } else if (expansion ? expansion.startsWith('wsh(') : isWSH) {
         // (p2wsh:35) + (amount:8)
+        return 43 * 4;
+      } else if (expansion ? expansion.startsWith('tr(') : isTR) {
+        // (script_pubKey_length:1) + (p2t2(OP_1 OP_PUSH32 <schnorr_public_key>):34) + (amount:8)
         return 43 * 4;
       } else {
         throw new Error(errorMsg);
