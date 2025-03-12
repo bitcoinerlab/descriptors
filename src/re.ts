@@ -61,7 +61,7 @@ const reAddr = String.raw`addr\((.*?)\)`; //Matches anything. We assert later in
 const rePkh = String.raw`pkh\(${reNonSegwitKeyExp}\)`;
 const reWpkh = String.raw`wpkh\(${reSegwitKeyExp}\)`;
 const reShWpkh = String.raw`sh\(wpkh\(${reSegwitKeyExp}\)\)`;
-const reTrInternal = String.raw`tr\(${reTaprootKeyExp}\)`; // TODO: tr(KEY,TREE) not yet supported. TrInternal used for tr(KEY)
+const reTrSingleKey = String.raw`tr\(${reTaprootKeyExp}\)`; // TODO: tr(KEY,TREE) not yet supported. TrSingleKey used for tr(KEY)
 
 const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
 
@@ -80,8 +80,8 @@ export const reAddrAnchored = anchorStartAndEnd(composeChecksum(reAddr));
 export const rePkhAnchored = anchorStartAndEnd(composeChecksum(rePkh));
 export const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
 export const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
-export const reTrInternalAnchored = anchorStartAndEnd(
-  composeChecksum(reTrInternal)
+export const reTrSingleKeyAnchored = anchorStartAndEnd(
+  composeChecksum(reTrSingleKey)
 );
 
 export const reShMiniscriptAnchored = anchorStartAndEnd(

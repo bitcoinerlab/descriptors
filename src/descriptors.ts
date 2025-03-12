@@ -558,7 +558,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
     }
     //tr(KEY) - taproot - TODO: tr(KEY,TREE) not yet supported
-    else if (canonicalExpression.match(RE.reTrInternalAnchored)) {
+    else if (canonicalExpression.match(RE.reTrSingleKeyAnchored)) {
       isSegwit = true;
       isTaproot = true;
       const keyExpression = canonicalExpression.match(RE.reTaprootKeyExp)?.[0];
