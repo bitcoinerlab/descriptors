@@ -37,16 +37,16 @@ function range(n: number): number[] {
 }
 /**
  * Signs a specific input of a PSBT with an ECPair.
- * 
+ *
  * Unlike bitcoinjs-lib's native `psbt.signInput()`, this function automatically detects
  * if the input is a Taproot input and internally tweaks the key if needed.
- * 
+ *
  * This behavior matches how `signInputBIP32` works, where the BIP32 node is automatically
  * tweaked for Taproot inputs. In contrast, bitcoinjs-lib's native implementation requires
  * manual pre-tweaking of ECPair signers for Taproot inputs.
- * 
+ *
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
- * 
+ *
  * @param {Object} params - The parameters object
  * @param {Psbt} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
@@ -77,20 +77,20 @@ export function signInputECPair({
 }
 /**
  * Signs all inputs of a PSBT with an ECPair.
- * 
+ *
  * This function improves upon bitcoinjs-lib's native `psbt.signAllInputs()` by automatically
  * handling Taproot inputs. For each input, it detects if it's a Taproot input and internally
  * tweaks the key if needed.
- * 
- * This creates consistency with the BIP32 signing methods (`signBIP32`/`signInputBIP32`), 
+ *
+ * This creates consistency with the BIP32 signing methods (`signBIP32`/`signInputBIP32`),
  * which also automatically handle key tweaking for Taproot inputs. In contrast, bitcoinjs-lib's
  * native implementation requires users to manually pre-tweak ECPair signers for Taproot inputs.
- * 
+ *
  * With this implementation, you can use a single ECPair to sign both Taproot and non-Taproot
  * inputs in the same PSBT, similar to how `signBIP32` allows using a common node for both types.
- * 
+ *
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
- * 
+ *
  * @param {Object} params - The parameters object
  * @param {Psbt} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
