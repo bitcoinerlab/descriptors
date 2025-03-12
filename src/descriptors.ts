@@ -1135,8 +1135,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
-      const { isPKH, isWPKH, isSH } = this.guessOutput();
-      if (!expansion && !isPKH && !isWPKH && !isSH) throw new Error(errorMsg);
+      const { isPKH, isWPKH, isSH, isTR } = this.guessOutput();
+      if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
+        throw new Error(errorMsg);
 
       const firstSignature =
         signatures && typeof signatures[0] === 'object'
