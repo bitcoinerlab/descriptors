@@ -1007,7 +1007,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      *
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
-     * (Script Hash-Witness Public Key Hash).
+     * (Script Hash-Witness Public Key Hash), and any `addr(TR_TYPE_ADDRESS)` 
+     * is a single key Taproot address (like those defined in BIP86).
      * For inputs using arbitrary scripts (not standard addresses),
      * use a descriptor in the format `sh(MINISCRIPT)`.
      *
