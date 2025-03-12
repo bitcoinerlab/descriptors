@@ -1134,15 +1134,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     ) {
       if (this.isSegwit() && !isSegwitTx)
         throw new Error(`a tx is segwit if at least one input is segwit`);
-      const errorMsg =
-        'Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
-sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
-addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS).';
 
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
       const expansion = this.expand().expandedExpression;
       const { isPKH, isWPKH, isSH, isTR } = this.guessOutput();
+      const errorMsg = `Input type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(KEY), \
+sh(wpkh(KEY)), sh(wsh(MINISCRIPT)), sh(MINISCRIPT), wsh(MINISCRIPT), \
+addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_ADDRESS). \
+expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${isTR}.`;
       if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
         throw new Error(errorMsg);
 
@@ -1261,30 +1261,23 @@ addr(PKH_ADDRESS), addr(WPKH_ADDRESS), addr(SH_WPKH_ADDRESS), addr(SINGLE_KEY_AD
      * output in a tx.
      */
     outputWeight() {
-      const errorMsg =
-        'Output type not implemented. Currently supported: pkh(KEY), wpkh(KEY), tr(ANYTHING), \
-sh(ANYTHING), wsh(ANYTHING), addr(PKH_ADDRESS), addr(WPKH_ADDRESS), \
-addr(SH_WPKH_ADDRESS), addr(TR_ADDRESS)';
-
       //expand any miniscript-based descriptor. If not miniscript-based, then it's
       //an addr() descriptor. For those, we can only guess their type.
-      const expansion = this.expand().expandedExpression;
       const { isPKH, isWPKH, isSH, isWSH, isTR } = this.guessOutput();
-      if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
-        throw new Error(errorMsg);
-      if (expansion ? expansion.startsWith('pkh(') : isPKH) {
+      const errorMsg = `Output type not implemented. Currently supported: pkh=${isPKH}, wpkh=${isWPKH}, tr=${isTR}, sh=${isSH} and wsh=${isWSH}.`;
+      if (isPKH) {
         // (p2pkh:26) + (amount:8)
         return 34 * 4;
-      } else if (expansion ? expansion.startsWith('wpkh(') : isWPKH) {
+      } else if (isWPKH) {
         // (p2wpkh:23) + (amount:8)
         return 31 * 4;
-      } else if (expansion ? expansion.startsWith('sh(') : isSH) {
+      } else if (isSH) {
         // (p2sh:24) + (amount:8)
         return 32 * 4;
-      } else if (expansion ? expansion.startsWith('wsh(') : isWSH) {
+      } else if (isWSH) {
         // (p2wsh:35) + (amount:8)
         return 43 * 4;
-      } else if (expansion ? expansion.startsWith('tr(') : isTR) {
+      } else if (isTR) {
         // (script_pubKey_length:1) + (p2t2(OP_1 OP_PUSH32 <schnorr_public_key>):34) + (amount:8)
         return 43 * 4;
       } else {
