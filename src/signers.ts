@@ -111,6 +111,7 @@ export function signECPair({
       signInputECPair({ psbt, index, ecpair });
       results.push(true);
     } catch (err) {
+      void err;
       results.push(false);
     }
   }

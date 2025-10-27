@@ -315,34 +315,45 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       try {
         output = address.toOutputScript(matchedAddress, network);
       } catch (e) {
+        void e;
         throw new Error(`Error: invalid address ${matchedAddress}`);
       }
       try {
         payment = p2pkh({ output, network });
         isSegwit = false;
         isTaproot = false;
-      } catch (e) {}
+      } catch (e) {
+        void e;
+      }
       try {
         payment = p2sh({ output, network });
         // It assumes that an addr(SH_ADDRESS) is always a add(SH_WPKH) address
         isSegwit = true;
         isTaproot = false;
-      } catch (e) {}
+      } catch (e) {
+        void e;
+      }
       try {
         payment = p2wpkh({ output, network });
         isSegwit = true;
         isTaproot = false;
-      } catch (e) {}
+      } catch (e) {
+        void e;
+      }
       try {
         payment = p2wsh({ output, network });
         isSegwit = true;
         isTaproot = false;
-      } catch (e) {}
+      } catch (e) {
+        void e;
+      }
       try {
         payment = p2tr({ output, network });
         isSegwit = true;
         isTaproot = true;
-      } catch (e) {}
+      } catch (e) {
+        void e;
+      }
       if (!payment) {
         throw new Error(`Error: invalid address ${matchedAddress}`);
       }
@@ -1043,6 +1054,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           payments.p2sh({ output });
           return true;
         } catch (err) {
+          void err;
           return false;
         }
       }
@@ -1051,6 +1063,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           payments.p2wsh({ output });
           return true;
         } catch (err) {
+          void err;
           return false;
         }
       }
@@ -1059,6 +1072,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           payments.p2wpkh({ output });
           return true;
         } catch (err) {
+          void err;
           return false;
         }
       }
@@ -1067,6 +1081,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           payments.p2pkh({ output });
           return true;
         } catch (err) {
+          void err;
           return false;
         }
       }
@@ -1075,6 +1090,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           payments.p2tr({ output });
           return true;
         } catch (err) {
+          void err;
           return false;
         }
       }

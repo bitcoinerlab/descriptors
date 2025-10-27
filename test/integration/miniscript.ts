@@ -5,7 +5,9 @@
 
 import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
