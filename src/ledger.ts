@@ -71,8 +71,10 @@ export async function importAndValidateLedgerBitcoin(
     // 'ledger-bitcoin' is not installed (given it's an optional peerDependency).
 
     // To bypass this, we directly use require:
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     ledgerBitcoinModule = require('ledger-bitcoin');
   } catch (error) {
+    void error;
     throw new Error(
       'Could not import "ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
     );
@@ -302,6 +304,7 @@ export async function getLedgerXpub({
       //Try getting the xpub without user confirmation
       xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, false);
     } catch (err) {
+      void err;
       xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, true);
     }
     if (typeof xpub !== 'string')

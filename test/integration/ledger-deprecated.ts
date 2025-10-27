@@ -46,6 +46,7 @@ console.log(
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
@@ -112,6 +113,7 @@ const psbtInputDescriptors: DescriptorInstance[] = [];
   try {
     transport = await Transport.create(3000, 3000);
   } catch (err) {
+    void err;
     throw new Error(`Error: Ledger device not detected`);
   }
   //Throw if not running Bitcoin Test >= 2.1.0

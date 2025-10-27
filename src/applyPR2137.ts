@@ -189,6 +189,7 @@ export const applyPR2137 = (psbt: Psbt) => {
         psbt.signInputHD(i, hdKeyPair, sighashTypes);
         results.push(true);
       } catch (err) {
+        void err;
         results.push(false);
       }
     }
