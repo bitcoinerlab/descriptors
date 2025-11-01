@@ -8,14 +8,27 @@
 // a small patch for environments (like Hermes) with partial implementations.
 //
 // More information: https://github.com/browserify/hash-base/issues/21#issuecomment-3476608003
+const g: typeof globalThis =
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : typeof global !== 'undefined'
+      ? global
+      : ({} as typeof globalThis);
 if (
-  typeof global.process !== 'undefined' &&
-  typeof global.process.version === 'undefined'
+  typeof g.process !== 'undefined' &&
+  typeof g.process.version === 'undefined'
 ) {
-  console.warn(
-    `[bitcoinerlab/descriptors] Polyfilled process.version (missing in this non-Node environment).
+  const isDev =
+    (g as Record<string, unknown>)['__DEV__'] === true ||
+    (g.process as NodeJS.Process)?.env?.['NODE_ENV'] === 'development';
+
+  if (isDev) {
+    //only WARN while developing
+    console.warn(
+      `[bitcoinerlab/descriptors] Polyfilled process.version (missing in this non-Node environment).
 Learn more: https://github.com/bitcoinerlab/descriptors/blob/main/src/index.ts#L4`
-  );
+    );
+  }
   // @ts-expect-error Polyfill for environments missing process.version
   global.process.version = '';
 }
