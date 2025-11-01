@@ -1,6 +1,25 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// Some dependencies (like hash-base) assume process.version exists.
+// In React Native / Hermes, process is defined but version is not.
+// Note: we only polyfill if process already exists but is incomplete.
+// The user is responsible for providing the process polyfill; this is just
+// a small patch for environments (like Hermes) with partial implementations.
+//
+// More information: https://github.com/browserify/hash-base/issues/21#issuecomment-3476608003
+if (
+  typeof global.process !== 'undefined' &&
+  typeof global.process.version === 'undefined'
+) {
+  console.warn(
+    `[bitcoinerlab/descriptors] Polyfilled process.version (missing in this non-Node environment).
+Learn more: https://github.com/bitcoinerlab/descriptors/blob/main/src/index.ts#L4`
+  );
+  // @ts-expect-error Polyfill for environments missing process.version
+  global.process.version = '';
+}
+
 export type { KeyInfo, Expansion } from './types';
 import type { Psbt } from 'bitcoinjs-lib';
 import type { DescriptorInstance, OutputInstance } from './descriptors';
