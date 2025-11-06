@@ -208,14 +208,16 @@ export type LedgerManager = {
   network: Network;
 };
 
-/** Retrieves the masterFingerPrint of a Ledger device */
+/**
+ * Retrieves the masterFingerPrint of a Ledger device
+ */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
 }: {
   ledgerManager: LedgerManager;
 }): Promise<Buffer>;
 
-/** @deprecated @hidden */
+/** @hidden */
 export async function getLedgerMasterFingerPrint({
   ledgerClient,
   ledgerState
@@ -224,7 +226,7 @@ export async function getLedgerMasterFingerPrint({
   ledgerState: LedgerState;
 }): Promise<Buffer>;
 
-/** @hidden */
+/** @overload */
 export async function getLedgerMasterFingerPrint({
   ledgerClient,
   ledgerState,
@@ -255,7 +257,9 @@ export async function getLedgerMasterFingerPrint({
   return masterFingerprint;
 }
 
-/** Retrieves the xpub of a certain originPath of a Ledger device */
+/**
+ * Retrieves the xpub of a certain originPath of a Ledger device
+ */
 export async function getLedgerXpub({
   originPath,
   ledgerManager
@@ -611,7 +615,6 @@ export async function ledgerPolicyFromOutput({
  *   all addresses (both external and internal).
  * - This means that the registered Ledger Policy is a generalized version of the descriptor,
  *   not assuming specific values for the keyPath.
- *
  */
 export async function registerLedgerWallet({
   descriptor,
@@ -625,7 +628,6 @@ export async function registerLedgerWallet({
 }): Promise<void>;
 
 /**
- * @deprecated
  * @hidden
  */
 export async function registerLedgerWallet({
@@ -643,7 +645,7 @@ export async function registerLedgerWallet({
 /**
  * To be removed in v3.0 and replaced by a version that does not accept
  * descriptors
- * @hidden
+ * @overload
  **/
 export async function registerLedgerWallet({
   descriptor,

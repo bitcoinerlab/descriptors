@@ -69,16 +69,19 @@ function standardExpressionsBIP32Maker(
   }
   return standardScriptExpressionBIP32;
 }
-
+/** @function */
 export const pkhBIP32 = standardExpressionsBIP32Maker(44, 'pkh(KEYEXPRESSION)');
+/** @function */
 export const shWpkhBIP32 = standardExpressionsBIP32Maker(
   49,
   'sh(wpkh(KEYEXPRESSION))'
 );
+/** @function */
 export const wpkhBIP32 = standardExpressionsBIP32Maker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+/** @function */
 export const trBIP32 = standardExpressionsBIP32Maker(86, 'tr(KEYEXPRESSION)');
 
 function standardExpressionsLedgerMaker(
@@ -111,7 +114,7 @@ function standardExpressionsLedgerMaker(
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
   }): Promise<string>;
-  /** @deprecated @hidden */
+  /** @hidden */
   async function standardScriptExpressionLedger({
     ledgerClient,
     ledgerState,
@@ -130,7 +133,7 @@ function standardExpressionsLedgerMaker(
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
   }): Promise<string>;
-  /** @hidden */
+  /** @overload */
   async function standardScriptExpressionLedger({
     ledgerClient,
     ledgerState,
@@ -176,16 +179,20 @@ function standardExpressionsLedgerMaker(
   return standardScriptExpressionLedger;
 }
 
+/** @function */
 export const pkhLedger = standardExpressionsLedgerMaker(
   44,
   'pkh(KEYEXPRESSION)'
 );
+/** @function */
 export const shWpkhLedger = standardExpressionsLedgerMaker(
   49,
   'sh(wpkh(KEYEXPRESSION))'
 );
+/** @function */
 export const wpkhLedger = standardExpressionsLedgerMaker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+/** @function */
 export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');

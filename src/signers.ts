@@ -171,7 +171,6 @@ export async function signInputLedger({
 }): Promise<void>;
 
 /**
- * @deprecated
  * @hidden
  */
 export async function signInputLedger({
@@ -191,7 +190,7 @@ export async function signInputLedger({
 /**
  * To be removed in v3.0 and replaced by a version that does not accept
  * descriptor
- * @hidden
+ * @overload
  */
 export async function signInputLedger({
   psbt,
@@ -333,7 +332,6 @@ export async function signLedger({
 }): Promise<void>;
 
 /**
- * @deprecated
  * @hidden
  */
 export async function signLedger({
@@ -351,7 +349,7 @@ export async function signLedger({
 /**
  * To be removed in v3.0 and replaced by a version that does not accept
  * descriptors
- * @hidden
+ * @overload
  */
 export async function signLedger({
   psbt,

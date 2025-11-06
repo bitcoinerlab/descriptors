@@ -112,10 +112,16 @@ import {
   assertLedgerApp,
   LedgerManager
 } from './ledger';
+
+/** @namespace */
 export const ledger = {
+  /** @function */
   getLedgerMasterFingerPrint,
+  /** @function */
   getLedgerXpub,
+  /** @function */
   registerLedgerWallet,
+  /** @function */
   assertLedgerApp
 };
 
