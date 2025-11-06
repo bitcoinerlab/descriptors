@@ -7,8 +7,7 @@ import type { Payment, Network } from 'bitcoinjs-lib';
 
 /**
  * Preimage
- * @alias Preimage
- * @memberof Descriptor
+ * See {@link Output}
  */
 export type Preimage = {
   /**

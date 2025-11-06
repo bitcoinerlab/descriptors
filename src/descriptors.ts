@@ -245,7 +245,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   }): Expansion;
 
   /**
-   * @deprecated
    * @hidden
    * To be removed in version 3.0
    */
@@ -258,7 +257,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   }): Expansion;
 
   /**
-   * @hidden
+   * @overload
    * To be removed in v3.0 and replaced by the version with the signature that
    * does not accept descriptors
    */
@@ -1415,9 +1414,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     /**
      * Adds this output as an output of the provided `psbt` with the given
      * value.
-     *
-     * @param psbt - The Partially Signed Bitcoin Transaction.
-     * @param value - The value for the output in satoshis.
+     * @param params - The parameters for the method.
+     * @param params.psbt - The Partially Signed Bitcoin Transaction.
+     * @param params.value - The value for the output in satoshis.
      */
     updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: number }) {
       psbt.addOutput({ script: this.getScriptPubKey(), value });
@@ -1586,7 +1585,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 
   return {
     // deprecated TAG must also be below so it is exported to descriptors.d.ts
-    /** @deprecated */ Descriptor,
+    /** @deprecated @hidden */ Descriptor,
     Output,
     parseKeyExpression,
     expand,

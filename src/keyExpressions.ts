@@ -259,8 +259,7 @@ export async function keyExpressionLedger({
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
 }): Promise<string>;
-
-/** @deprecated @hidden */
+/** @hidden */
 export async function keyExpressionLedger({
   ledgerClient,
   ledgerState,
@@ -276,7 +275,7 @@ export async function keyExpressionLedger({
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
 }): Promise<string>;
-/** @hidden */
+/** @overload */
 export async function keyExpressionLedger({
   ledgerClient,
   ledgerState,
