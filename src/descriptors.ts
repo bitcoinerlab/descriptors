@@ -140,6 +140,32 @@ function evaluate({
   return evaluatedDescriptor;
 }
 
+// Helper: parse sortedmulti(M, k1, k2,...)
+function parseSortedMulti(inner: string) {
+  // inner: "2,key1,key2,key3"
+
+  const parts = inner.split(',').map(p => p.trim());
+  if (parts.length < 2)
+    throw new Error(
+      `sortedmulti(): must contain M and at least one key: ${inner}`
+    );
+
+  const m = Number(parts[0]);
+  if (!Number.isInteger(m) || m < 1 || m > 20)
+    throw new Error(`sortedmulti(): invalid M=${parts[0]}`);
+
+  const keyExpressions = parts.slice(1);
+  if (keyExpressions.length < m)
+    throw new Error(`sortedmulti(): M cannot exceed number of keys: ${inner}`);
+
+  if (keyExpressions.length > 20)
+    throw new Error(
+      `sortedmulti(): descriptors support up to 20 keys (per BIP 380/383).`
+    );
+
+  return { m, keyExpressions };
+}
+
 /**
  * Constructs the necessary functions and classes for working with descriptors
  * using an external elliptic curve (ecc) library.
@@ -449,6 +475,125 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2wpkh({ pubkey, network });
+      }
+    }
+    // sortedmulti script expressions
+    // sh(sortedmulti())
+    else if (canonicalExpression.match(RE.reShSortedMultiAnchored)) {
+      isSegwit = false;
+      isTaproot = false;
+
+      const inner = canonicalExpression.match(RE.reShSortedMultiAnchored)?.[1];
+      if (!inner)
+        throw new Error(`Error extracting sortedmulti() in ${descriptor}`);
+
+      const { m, keyExpressions } = parseSortedMulti(inner);
+
+      const pKEs = keyExpressions.map(k =>
+        parseKeyExpression({ keyExpression: k, network, isSegwit: false })
+      );
+
+      const map: ExpansionMap = {};
+      pKEs.forEach((pke, i) => (map['@' + i] = pke));
+      expansionMap = map;
+
+      expandedExpression =
+        'sh(sortedmulti(' +
+        [m, ...Object.keys(expansionMap).map(k => k)].join(',') +
+        '))';
+
+      if (!isCanonicalRanged) {
+        const pubkeys = pKEs.map(p => {
+          if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
+          return p.pubkey;
+        });
+        pubkeys.sort((a, b) => a.compare(b));
+
+        const redeem = payments.p2ms({ m, pubkeys, network });
+        redeemScript = redeem.output;
+        if (!redeemScript) throw new Error(`Error creating redeemScript`);
+
+        payment = payments.p2sh({ redeem, network });
+      }
+    }
+    // wsh(sortedmulti())
+    else if (canonicalExpression.match(RE.reWshSortedMultiAnchored)) {
+      isSegwit = true;
+      isTaproot = false;
+
+      const inner = canonicalExpression.match(RE.reWshSortedMultiAnchored)?.[1];
+      if (!inner)
+        throw new Error(`Error extracting sortedmulti() in ${descriptor}`);
+
+      const { m, keyExpressions } = parseSortedMulti(inner);
+
+      const pKEs = keyExpressions.map(k =>
+        parseKeyExpression({ keyExpression: k, network, isSegwit: true })
+      );
+
+      const map: ExpansionMap = {};
+      pKEs.forEach((pke, i) => (map['@' + i] = pke));
+      expansionMap = map;
+
+      expandedExpression =
+        'wsh(sortedmulti(' +
+        [m, ...Object.keys(expansionMap).map(k => k)].join(',') +
+        '))';
+
+      if (!isCanonicalRanged) {
+        const pubkeys = pKEs.map(p => {
+          if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
+          return p.pubkey;
+        });
+        pubkeys.sort((a, b) => a.compare(b));
+
+        const redeem = payments.p2ms({ m, pubkeys, network });
+        witnessScript = redeem.output;
+        if (!witnessScript) throw new Error(`Error computing witnessScript`);
+
+        payment = payments.p2wsh({ redeem, network });
+      }
+    }
+    // sh(wsh(sortedmulti()))
+    else if (canonicalExpression.match(RE.reShWshSortedMultiAnchored)) {
+      isSegwit = true;
+      isTaproot = false;
+
+      const inner = canonicalExpression.match(
+        RE.reShWshSortedMultiAnchored
+      )?.[1];
+      if (!inner)
+        throw new Error(`Error extracting sortedmulti() in ${descriptor}`);
+
+      const { m, keyExpressions } = parseSortedMulti(inner);
+
+      const pKEs = keyExpressions.map(k =>
+        parseKeyExpression({ keyExpression: k, network, isSegwit: true })
+      );
+
+      const map: ExpansionMap = {};
+      pKEs.forEach((pke, i) => (map['@' + i] = pke));
+      expansionMap = map;
+
+      expandedExpression =
+        'sh(wsh(sortedmulti(' +
+        [m, ...Object.keys(expansionMap).map(k => k)].join(',') +
+        ')))';
+
+      if (!isCanonicalRanged) {
+        const pubkeys = pKEs.map(p => {
+          if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
+          return p.pubkey;
+        });
+        pubkeys.sort((a, b) => a.compare(b));
+
+        const redeem = payments.p2ms({ m, pubkeys, network });
+        const wsh = payments.p2wsh({ redeem, network });
+
+        witnessScript = redeem.output;
+        redeemScript = wsh.output;
+
+        payment = payments.p2sh({ redeem: wsh, network });
       }
     }
     //sh(wsh(miniscript))

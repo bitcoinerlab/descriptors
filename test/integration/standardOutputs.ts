@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-//npm run test:integration
+//npm run test:integration:soft
 
 console.log('Standard output integration tests');
 import { networks, Psbt } from 'bitcoinjs-lib';
