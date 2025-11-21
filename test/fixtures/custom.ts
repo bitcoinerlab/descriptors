@@ -571,6 +571,58 @@ export const fixtures = {
           }
         }
       }
+    },
+    {
+      note: 'Native SegWit (P2WSH) sortedmulti descriptor with 2 keys',
+      descriptor:
+        'wsh(sortedmulti(2,03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600))',
+      checksumRequired: false,
+      script:
+        '0020a18e1931caa82844ddb8294107de1b3e15f1c603983df8d9b6caa0ef6419c5d2',
+      address: 'bc1q5x8pjvw24q5yfhdc99qs0hsm8c2lr3srnq7l3kdke2sw7eqechfq62zxqh',
+      expansion: {
+        expandedExpression: 'wsh(multi(2,@0,@1))',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              '0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600'
+          },
+          '@1': {
+            keyExpression:
+              '03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd'
+          }
+        }
+      }
+    },
+    {
+      note: 'Nested SegWit (P2SH-P2WSH) sortedmulti descriptor with 2 of 3',
+      descriptor:
+        "sh(wsh(sortedmulti(2,[d34db33f/44'/0'/0]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/0/0,[00000000/44'/0'/0]xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0/0/0,[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0)))",
+      checksumRequired: false,
+      address: '3FZBUGnutPpKWrhGSRXwcMCv7M2ekUva5c',
+      expansion: {
+        expandedExpression: 'sh(wsh(multi(2,@0,@1,@2)))',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0",
+            originPath: "/44'/0'/0",
+            path: "m/44'/0'/0/0/0/0"
+          },
+          '@1': {
+            keyExpression:
+              "[d34db33f/44'/0'/0]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/0/0",
+            originPath: "/44'/0'/0",
+            path: "m/44'/0'/0/1/0/0"
+          },
+          '@2': {
+            keyExpression:
+              "[00000000/44'/0'/0]xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0/0/0",
+            originPath: "/44'/0'/0",
+            path: "m/44'/0'/0/0/0/0"
+          }
+        }
+      }
     }
   ],
   invalid: [

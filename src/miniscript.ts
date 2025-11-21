@@ -36,6 +36,16 @@ export function expandMiniscript({
   expansionMap: ExpansionMap;
 } {
   if (isTaproot) throw new Error('Taproot miniscript not yet supported.');
+
+  miniscript = preprocessSortedMulti(
+    miniscript,
+    isSegwit,
+    isTaproot,
+    network,
+    ECPair,
+    BIP32
+  );
+
   const reKeyExp = isTaproot
     ? RE.reTaprootKeyExp
     : isSegwit
@@ -75,6 +85,59 @@ export function expandMiniscript({
     );
   }
   return { expandedMiniscript, expansionMap };
+}
+
+function sortPublicKeysFromExpressions(
+  keyExpressions: string[],
+  isSegwit: boolean,
+  isTaproot: boolean,
+  network: Network,
+  ECPair: ECPairAPI,
+  BIP32: BIP32API
+): string[] {
+  const keyInfos = keyExpressions.map(keyExpression => {
+    const keyInfo = parseKeyExpression({
+      keyExpression,
+      isSegwit,
+      isTaproot,
+      network,
+      ECPair,
+      BIP32
+    });
+    if (!keyInfo.pubkey) {
+      throw new Error(
+        `Error: keyExpression ${keyExpression} does not have a pubkey`
+      );
+    }
+    return { keyExpression, pubkey: keyInfo.pubkey };
+  });
+
+  keyInfos.sort((a, b) => a.pubkey.compare(b.pubkey));
+
+  return keyInfos.map(info => info.keyExpression);
+}
+
+function preprocessSortedMulti(
+  miniscript: string,
+  isSegwit: boolean,
+  isTaproot: boolean,
+  network: Network,
+  ECPair: ECPairAPI,
+  BIP32: BIP32API
+): string {
+  const sortedMultiRegex = /sortedmulti\(\s*(\d+)\s*,\s*([^)]+)\s*\)/g;
+  return miniscript.replace(sortedMultiRegex, (_match, threshold, keysStr) => {
+    const keyExpressions = keysStr.split(',').map((k: string) => k.trim());
+    const sortedKeys = sortPublicKeysFromExpressions(
+      keyExpressions,
+      isSegwit,
+      isTaproot,
+      network,
+      ECPair,
+      BIP32
+    );
+    return `multi(${threshold},${sortedKeys.join(',')})`;
+  });
 }
 
 /**
