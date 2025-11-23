@@ -91,7 +91,7 @@ const isSupported = parsed => {
     if (expression.match(/tr\(.*,.*\)/)) supported = false; // tr(KEY) supported. Disable when 2 param (contains a comma)
     if (expression.match(/^multi\(/)) supported = false; //Top-level multi not supported; It must be within sh or wsh
     if (expression.match(/combo\(/)) supported = false;
-    if (expression.match(/sortedmulti\(/)) supported = false;
+    if (expression.match(/^sortedmulti\(/)) supported = false; //Top-level sortedmulti not supported; It must be within sh or wsh
     if (expression.match(/raw\(/)) supported = false;
   });
   return supported;

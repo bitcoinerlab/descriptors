@@ -63,6 +63,9 @@ const reWpkh = String.raw`wpkh\(${reSegwitKeyExp}\)`;
 const reShWpkh = String.raw`sh\(wpkh\(${reSegwitKeyExp}\)\)`;
 const reTrSingleKey = String.raw`tr\(${reTaprootKeyExp}\)`; // TODO: tr(KEY,TREE) not yet supported. TrSingleKey used for tr(KEY)
 
+export const reNonSegwitSortedMulti = String.raw`sortedmulti\(((?:1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20)(?:,${reNonSegwitKeyExp})+)\)`;
+export const reSegwitSortedMulti = String.raw`sortedmulti\(((?:1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20)(?:,${reSegwitKeyExp})+)\)`;
+
 const reMiniscript = String.raw`(.*?)`; //Matches anything. We assert later in the code that miniscripts are valid and sane.
 
 //RegExp makers:
@@ -82,6 +85,16 @@ export const reWpkhAnchored = anchorStartAndEnd(composeChecksum(reWpkh));
 export const reShWpkhAnchored = anchorStartAndEnd(composeChecksum(reShWpkh));
 export const reTrSingleKeyAnchored = anchorStartAndEnd(
   composeChecksum(reTrSingleKey)
+);
+
+export const reShSortedMultiAnchored = anchorStartAndEnd(
+  composeChecksum(makeReSh(reNonSegwitSortedMulti))
+);
+export const reWshSortedMultiAnchored = anchorStartAndEnd(
+  composeChecksum(makeReWsh(reSegwitSortedMulti))
+);
+export const reShWshSortedMultiAnchored = anchorStartAndEnd(
+  composeChecksum(makeReShWsh(reSegwitSortedMulti))
 );
 
 export const reShMiniscriptAnchored = anchorStartAndEnd(

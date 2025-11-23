@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "2.3.4",
+  "version": "2.3.5",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -36,13 +36,13 @@
     "build": "npm run build:src && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
-    "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\\n\\n\" && node test/integration/miniscript.js",
+    "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledger.js",
-    "test:integration:deprecated": "npm run ensureTester && node test/integration/standardOutputs-deprecated.js && echo \"\\n\\n\" && node test/integration/miniscript-deprecated.js && echo \"\\n\\n\" && node test/integration/ledger-deprecated.js",
+    "test:integration:deprecated": "npm run ensureTester && node test/integration/standardOutputs-deprecated.js && echo \"\n\n\" && node test/integration/miniscript-deprecated.js && echo \"\n\n\" && node test/integration/ledger-deprecated.js",
     "test:unit": "jest",
     "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
     "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
-    "prepublishOnly": "npm run test && echo \"\\n\\n\" && npm run test:integration:deprecated && npm run test:integration:ledger"
+    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:deprecated && npm run test:integration:ledger"
   },
   "files": [
     "dist"
