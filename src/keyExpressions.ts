@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import { networks, Network } from 'bitcoinjs-lib';
+import * as bs58check from 'bs58check';
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
@@ -13,6 +14,49 @@ import {
 } from './ledger';
 
 import * as RE from './re';
+
+// SLIP-132 version bytes mapping to standard BIP32 xpub/tpub
+// See: https://github.com/satoshilabs/slips/blob/master/slip-0132.md
+const XPUB_VERSION_BYTES: Record<string, Uint8Array> = {
+  // Mainnet -> xpub (0x0488B21E)
+  '04b24746': new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // zpub (BIP84 P2WPKH)
+  '049d7cb2': new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // ypub (BIP49 P2SH-P2WPKH)
+  '02aa7ed3': new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // Zpub (BIP84 P2WSH multisig)
+  '0295b43f': new Uint8Array([0x04, 0x88, 0xb2, 0x1e]), // Ypub (BIP49 P2SH-P2WSH multisig)
+  // Testnet -> tpub (0x043587CF)
+  '045f1cf6': new Uint8Array([0x04, 0x35, 0x87, 0xcf]), // vpub (BIP84 P2WPKH testnet)
+  '044a5262': new Uint8Array([0x04, 0x35, 0x87, 0xcf]), // upub (BIP49 P2SH-P2WPKH testnet)
+  '02575483': new Uint8Array([0x04, 0x35, 0x87, 0xcf]), // Vpub (BIP84 P2WSH multisig testnet)
+  '024289ef': new Uint8Array([0x04, 0x35, 0x87, 0xcf]) // Upub (BIP49 P2SH-P2WSH multisig testnet)
+};
+
+/**
+ * Converts SLIP-132 extended public keys (zpub, ypub, vpub, upub, etc.)
+ * to standard BIP32 xpub/tpub format for compatibility with the bip32 library.
+ *
+ * @param extPubKey - The extended public key string (may be zpub, ypub, xpub, etc.)
+ * @returns The same key encoded as xpub (mainnet) or tpub (testnet)
+ */
+const convertToStandardXpub = (extPubKey: string): string => {
+  // Already standard BIP32 format
+  if (/^[xtXT]pub/.test(extPubKey)) {
+    return extPubKey;
+  }
+
+  const decoded = bs58check.decode(extPubKey);
+  const versionHex = Buffer.from(decoded.slice(0, 4)).toString('hex');
+  const newVersion = XPUB_VERSION_BYTES[versionHex];
+
+  if (!newVersion) {
+    // Unknown format - return as-is, will fail later with clear error from BIP32
+    return extPubKey;
+  }
+
+  const newKey = new Uint8Array(decoded.length);
+  newKey.set(newVersion, 0);
+  newKey.set(decoded.slice(4), 4);
+  return bs58check.encode(newKey);
+};
 
 const derivePath = (node: BIP32Interface, path: string) => {
   if (typeof path !== 'string') {
@@ -160,7 +204,9 @@ export function parseKeyExpression({
     const xPubKey = mXpubKey[0];
     const xPub = xPubKey.match(RE.reXpub)?.[0];
     if (!xPub) throw new Error(`Error: xpub could not be matched`);
-    bip32 = BIP32.fromBase58(xPub, network);
+    // Convert SLIP-132 formats (zpub, ypub, vpub, upub, etc.) to standard xpub/tpub
+    const standardXpub = convertToStandardXpub(xPub);
+    bip32 = BIP32.fromBase58(standardXpub, network);
     const mPath = xPubKey.match(RE.rePath);
     if (mPath !== null) {
       keyPath = xPubKey.match(RE.rePath)?.[0];
