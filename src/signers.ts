@@ -62,17 +62,22 @@ export function signInputECPair({
   ecpair: ECPairInterface;
 }): void {
   //psbt.signInput(index, ecpair); <- Replaced for the code below
-  //that can handle taroot inputs automatically.
+  //that can handle taproot inputs automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
   const input = psbt.data.inputs[index];
   if (!input) throw new Error('Invalid index');
   if (isTaprootInput(input)) {
-    const hash = tapTweakHash(
-      Buffer.from(ecpair.publicKey.slice(1, 33)),
-      undefined
-    );
-    const tweakedEcpair = ecpair.tweak(hash);
-    psbt.signInput(index, tweakedEcpair);
+    // If script-path (tapLeafScript present) -> DO NOT TWEAK
+    if (input.tapLeafScript && input.tapLeafScript.length > 0)
+      psbt.signInput(index, ecpair);
+    else {
+      const hash = tapTweakHash(
+        Buffer.from(ecpair.publicKey.slice(1, 33)),
+        undefined
+      );
+      const tweakedEcpair = ecpair.tweak(hash);
+      psbt.signInput(index, tweakedEcpair);
+    }
   } else psbt.signInput(index, ecpair);
 }
 /**

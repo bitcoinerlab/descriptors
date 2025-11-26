@@ -1,5 +1,6 @@
 //While this PR is not merged: https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137
 //The Async functions have not been "fixed"
+//Note that a further fix (look for FIX BITCOINERLAB) was done
 import type { Psbt, Signer } from 'bitcoinjs-lib';
 import { checkForInput } from 'bip174/src/lib/utils';
 import type { SignerAsync } from 'ecpair';
@@ -113,6 +114,16 @@ function getTweakSignersFromHD(
     if (!bipDv!.pubkey.equals(toXOnly(node.publicKey))) {
       throw new Error('pubkey did not match tapBip32Derivation');
     }
+
+    //FIX BITCOINERLAB:
+    //The 3 lines below detect script-path spends and disable key-path tweaking.
+    //Reasoning:
+    //- In Taproot, key-path spends require tweaking the internal key.
+    //- Script-path spends MUST NOT tweak the key; signatures use the raw internal key.
+    const input = inputs[inputIndex];
+    if (!input) throw new Error('could not find the input');
+    if (input.tapLeafScript && input.tapLeafScript.length > 0) return node;
+
     const h = calculateScriptTreeMerkleRoot(bipDv!.leafHashes);
     const tweakValue = tapTweakHash(toXOnly(node.publicKey), h);
 
