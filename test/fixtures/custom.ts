@@ -581,15 +581,15 @@ export const fixtures = {
         '0020a18e1931caa82844ddb8294107de1b3e15f1c603983df8d9b6caa0ef6419c5d2',
       address: 'bc1q5x8pjvw24q5yfhdc99qs0hsm8c2lr3srnq7l3kdke2sw7eqechfq62zxqh',
       expansion: {
-        expandedExpression: 'wsh(sortedmulti(2,@0,@1))',
+        expandedExpression: 'wsh(multi(2,@0,@1))',
         expansionMap: {
           '@0': {
             keyExpression:
-              '03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd'
+              '0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600'
           },
           '@1': {
             keyExpression:
-              '0260b2003c386519fc9eadf2b5cf124dd8eea4c4e68d5e154050a9346ea98ce600'
+              '03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd'
           }
         }
       }
@@ -597,29 +597,120 @@ export const fixtures = {
     {
       note: 'Nested SegWit (P2SH-P2WSH) sortedmulti descriptor with 2 of 3',
       descriptor:
-        "sh(wsh(sortedmulti(2,[d34db33f/44'/0'/0]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/0/0,[00000000/44'/0'/0]xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0/0/0,[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0)))",
+        "sh(wsh(sortedmulti(2,[d34db33f/44'/0'/0]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/0/0,[00000000/44'/0'/0]xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0/0,[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0)))",
       checksumRequired: false,
       address: '3FZBUGnutPpKWrhGSRXwcMCv7M2ekUva5c',
       expansion: {
-        expandedExpression: 'sh(wsh(sortedmulti(2,@0,@1,@2)))',
+        expandedExpression: 'sh(wsh(multi(2,@0,@1,@2)))',
         expansionMap: {
           '@0': {
+            keyExpression:
+              "[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0",
+            originPath: "/44'/0'/0",
+            path: "m/44'/0'/0/0/0/0"
+          },
+          '@1': {
             keyExpression:
               "[d34db33f/44'/0'/0]xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/0/0",
             originPath: "/44'/0'/0",
             path: "m/44'/0'/0/1/0/0"
           },
-          '@1': {
+          '@2': {
             keyExpression:
               "[00000000/44'/0'/0]xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y/0/0/0",
             originPath: "/44'/0'/0",
             path: "m/44'/0'/0/0/0/0"
-          },
-          '@2': {
+          }
+        }
+      }
+    },
+
+    // SLIP-132 extended public key format tests (zpub, ypub, vpub, upub)
+    // These use alternative version bytes but encode the same underlying keys
+    {
+      note: 'SLIP-132: vpub (BIP84 P2WPKH testnet) - equivalent to tpubDCdxmvzJ5QBjTN8...',
+      network: networks.testnet,
+      descriptor:
+        "wpkh([de41e56d/84'/1'/0']vpub5YboeMpn4m9KUyZi5qBdpvxhT7b23XXcNuZue5MByUr9ioKKoVaqgcvwRKnTbad6LZpWMqqzM76938Lx6wAANQ1qgBt9zzkqAK78Ra8nEUV/0/*)",
+      checksumRequired: false,
+      index: 23,
+      // Same address as the tpub test above - proves conversion works
+      address: 'tb1q7a6n3dadstfjpp6p56nxklxac6efz0lyy0rgss',
+      expansion: {
+        expandedExpression: 'wpkh(@0)',
+        expansionMap: {
+          '@0': {
             keyExpression:
-              "[11111111/44'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/0/0",
-            originPath: "/44'/0'/0",
-            path: "m/44'/0'/0/0/0/0"
+              "[de41e56d/84'/1'/0']vpub5YboeMpn4m9KUyZi5qBdpvxhT7b23XXcNuZue5MByUr9ioKKoVaqgcvwRKnTbad6LZpWMqqzM76938Lx6wAANQ1qgBt9zzkqAK78Ra8nEUV/0/*",
+            keyPath: '/0/*',
+            originPath: "/84'/1'/0'",
+            path: "m/84'/1'/0'/0/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: upub (BIP49 P2SH-P2WPKH testnet) - equivalent to tpubDCdxmvzJ5QBjTN8...',
+      network: networks.testnet,
+      descriptor:
+        "wpkh([de41e56d/84'/1'/0']upub5DmYLh9rv5bqdgNbFUQ1cqsCH9Sa6uY7To3grgTJbUUGfhW6YqRH4ZGoQ7psbfyAvvhhcNFRtSjb9qjPPEk9aALEorBjR5wLtb3V2yegMLN/0/*)",
+      checksumRequired: false,
+      index: 23,
+      // Same address as the tpub test above - proves conversion works
+      address: 'tb1q7a6n3dadstfjpp6p56nxklxac6efz0lyy0rgss',
+      expansion: {
+        expandedExpression: 'wpkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[de41e56d/84'/1'/0']upub5DmYLh9rv5bqdgNbFUQ1cqsCH9Sa6uY7To3grgTJbUUGfhW6YqRH4ZGoQ7psbfyAvvhhcNFRtSjb9qjPPEk9aALEorBjR5wLtb3V2yegMLN/0/*",
+            keyPath: '/0/*',
+            originPath: "/84'/1'/0'",
+            path: "m/84'/1'/0'/0/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: zpub (BIP84 P2WPKH mainnet) - equivalent to xpub6ERApfZwUNrhLCk...',
+      network: networks.bitcoin,
+      descriptor:
+        "pkh([d34db33f/44'/0'/0']zpub6t5hRzummjwf2o8TZKri38p7RMttKFdcuHJSuXyF3RF3WXU9s52oqtcsbqg2gPEua6CCaFmQS5F9vuWfU5gCru6mx3PFWSKHTnSCLjbc4XQ/1/2/3/4/*)",
+      checksumRequired: false,
+      index: 11,
+      // Same address as the xpub test above - proves conversion works
+      address: '1Dnsk4Tswt8D1whJBE2KBDc4mv6f3kZBGU',
+      expansion: {
+        expandedExpression: 'pkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[d34db33f/44'/0'/0']zpub6t5hRzummjwf2o8TZKri38p7RMttKFdcuHJSuXyF3RF3WXU9s52oqtcsbqg2gPEua6CCaFmQS5F9vuWfU5gCru6mx3PFWSKHTnSCLjbc4XQ/1/2/3/4/*",
+            keyPath: '/1/2/3/4/*',
+            originPath: "/44'/0'/0'",
+            path: "m/44'/0'/0'/1/2/3/4/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: ypub (BIP49 P2SH-P2WPKH mainnet) - equivalent to xpub6ERApfZwUNrhLCk...',
+      network: networks.bitcoin,
+      descriptor:
+        "pkh([d34db33f/44'/0'/0']ypub6ZFS8LErd4QBBVwLiy55q3icFPkSNde7zAnE895MfQsATRevcQsFDpxjadiSgUazAT5PpnAqyQtc3cu6kPGC4fRB5hgpvXVoC4NYx7B2Uih/1/2/3/4/*)",
+      checksumRequired: false,
+      index: 11,
+      // Same address as the xpub test above - proves conversion works
+      address: '1Dnsk4Tswt8D1whJBE2KBDc4mv6f3kZBGU',
+      expansion: {
+        expandedExpression: 'pkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[d34db33f/44'/0'/0']ypub6ZFS8LErd4QBBVwLiy55q3icFPkSNde7zAnE895MfQsATRevcQsFDpxjadiSgUazAT5PpnAqyQtc3cu6kPGC4fRB5hgpvXVoC4NYx7B2Uih/1/2/3/4/*",
+            keyPath: '/1/2/3/4/*',
+            originPath: "/44'/0'/0'",
+            path: "m/44'/0'/0'/1/2/3/4/*"
           }
         }
       }
@@ -646,16 +737,6 @@ export const fixtures = {
       checksumRequired: true,
       throw:
         "Error: descriptor wpkh([de41e56d/84'/1'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*) has not checksum"
-    },
-    {
-      note: 'using a upub (which does not make sense using descriptors anymore; only xpub and tpub are supported)',
-      network: networks.testnet,
-      descriptor:
-        "wpkh([de41e56d/84'/1'/0']upubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*)",
-      checksumRequired: false,
-      index: 23,
-      throw:
-        "Error: Could not parse descriptor wpkh([de41e56d/84'/1'/0']upubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/0/*)"
     },
     {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L445',

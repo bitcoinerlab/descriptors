@@ -35,7 +35,8 @@ export const reTaprootPubKey = String.raw`(${reCompressedPubKey}|${reXOnlyPubKey
 export const reWIF = String.raw`([5KLc9][1-9A-HJ-NP-Za-km-z]{50,51})`;
 
 //x for mainnet, t for testnet
-export const reXpub = String.raw`([xXtT]pub[1-9A-HJ-NP-Za-km-z]{79,108})`;
+//Also support SLIP-132 variants: z/y (BIP84/BIP49 mainnet), v/u (BIP84/BIP49 testnet)
+export const reXpub = String.raw`([xXtTzZyYvVuU]pub[1-9A-HJ-NP-Za-km-z]{79,108})`;
 export const reXprv = String.raw`([xXtT]prv[1-9A-HJ-NP-Za-km-z]{79,108})`;
 //reRangeLevel is like reLevel but using a wildcard "*"
 const reRangeLevel = String.raw`(\*(${reHardened})?)`;
