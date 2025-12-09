@@ -714,6 +714,97 @@ export const fixtures = {
           }
         }
       }
+    },
+
+    // SLIP-132 multisig extended public key format tests (Zpub, Ypub, Vpub, Upub)
+    // These are uppercase variants used for multisig wallets (P2WSH, P2SH-P2WSH)
+    {
+      note: 'SLIP-132: Zpub (BIP84 P2WSH multisig mainnet) - equivalent to xpub6ERApfZwUNrhLCk...',
+      network: networks.bitcoin,
+      descriptor:
+        "pkh([d34db33f/44'/0'/0']Zpub74ynZEeDLhW2TNHqVzKgsD9v99w9XcKDDYx7poEnRC5T8i34dUR5w1UoQYdWEpTooZGBSqmXKHdf458RmJqA1PDSnWVeuqnHMWi4vf8xWkc/1/2/3/4/*)",
+      checksumRequired: false,
+      index: 11,
+      // Same address as the xpub/zpub tests above
+      address: '1Dnsk4Tswt8D1whJBE2KBDc4mv6f3kZBGU',
+      expansion: {
+        expandedExpression: 'pkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[d34db33f/44'/0'/0']Zpub74ynZEeDLhW2TNHqVzKgsD9v99w9XcKDDYx7poEnRC5T8i34dUR5w1UoQYdWEpTooZGBSqmXKHdf458RmJqA1PDSnWVeuqnHMWi4vf8xWkc/1/2/3/4/*",
+            keyPath: '/1/2/3/4/*',
+            originPath: "/44'/0'/0'",
+            path: "m/44'/0'/0'/1/2/3/4/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: Ypub (BIP49 P2SH-P2WSH multisig mainnet) - equivalent to xpub6ERApfZwUNrhLCk...',
+      network: networks.bitcoin,
+      descriptor:
+        "pkh([d34db33f/44'/0'/0']Ypub6k9XFZyJC1xYc56ifdY4f84QyBnhazKiJSRu3QLu3Bha5cDqNpFXJwpfPLfvEuotPv9NhNAxrdH7AnWs3cR9D9XqvAoEKvxo5neRY3LoQ4m/1/2/3/4/*)",
+      checksumRequired: false,
+      index: 11,
+      // Same address as the xpub/ypub tests above
+      address: '1Dnsk4Tswt8D1whJBE2KBDc4mv6f3kZBGU',
+      expansion: {
+        expandedExpression: 'pkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[d34db33f/44'/0'/0']Ypub6k9XFZyJC1xYc56ifdY4f84QyBnhazKiJSRu3QLu3Bha5cDqNpFXJwpfPLfvEuotPv9NhNAxrdH7AnWs3cR9D9XqvAoEKvxo5neRY3LoQ4m/1/2/3/4/*",
+            keyPath: '/1/2/3/4/*',
+            originPath: "/44'/0'/0'",
+            path: "m/44'/0'/0'/1/2/3/4/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: Vpub (BIP84 P2WSH multisig testnet) - equivalent to tpubDCdxmvzJ5QBjTN8...',
+      network: networks.testnet,
+      descriptor:
+        "wpkh([de41e56d/84'/1'/0']Vpub5jVtmbZDdihguYj62Vecf1JWAudHFtDChBDaZLcjMFgZLytEZty7mjnsE2jwA1qza2tVERr7EKUeAHxiQAK7Wt8WWezZQQDq43P11XF4GTc/0/*)",
+      checksumRequired: false,
+      index: 23,
+      // Same address as the tpub/vpub tests above
+      address: 'tb1q7a6n3dadstfjpp6p56nxklxac6efz0lyy0rgss',
+      expansion: {
+        expandedExpression: 'wpkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[de41e56d/84'/1'/0']Vpub5jVtmbZDdihguYj62Vecf1JWAudHFtDChBDaZLcjMFgZLytEZty7mjnsE2jwA1qza2tVERr7EKUeAHxiQAK7Wt8WWezZQQDq43P11XF4GTc/0/*",
+            keyPath: '/0/*',
+            originPath: "/84'/1'/0'",
+            path: "m/84'/1'/0'/0/*"
+          }
+        }
+      }
+    },
+    {
+      note: 'SLIP-132: Upub (BIP49 P2SH-P2WSH multisig testnet) - equivalent to tpubDCdxmvzJ5QBjTN8...',
+      network: networks.testnet,
+      descriptor:
+        "wpkh([de41e56d/84'/1'/0']Upub5QfdTvtJV3AD4FXyC8rzSvCzzwUqKGDhn4hMmwiqyFJgHt51KEoZ9g8jCpnMA7C5APmgUxFYmf86H1M9gTu6ieSueKJ8pVQLnKKMcyba9sr/0/*)",
+      checksumRequired: false,
+      index: 23,
+      // Same address as the tpub/upub tests above
+      address: 'tb1q7a6n3dadstfjpp6p56nxklxac6efz0lyy0rgss',
+      expansion: {
+        expandedExpression: 'wpkh(@0)',
+        expansionMap: {
+          '@0': {
+            keyExpression:
+              "[de41e56d/84'/1'/0']Upub5QfdTvtJV3AD4FXyC8rzSvCzzwUqKGDhn4hMmwiqyFJgHt51KEoZ9g8jCpnMA7C5APmgUxFYmf86H1M9gTu6ieSueKJ8pVQLnKKMcyba9sr/0/*",
+            keyPath: '/0/*',
+            originPath: "/84'/1'/0'",
+            path: "m/84'/1'/0'/0/*"
+          }
+        }
+      }
     }
   ],
   invalid: [
