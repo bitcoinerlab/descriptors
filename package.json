@@ -38,11 +38,10 @@
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledger.js",
-    "test:integration:deprecated": "npm run ensureTester && node test/integration/standardOutputs-deprecated.js && echo \"\n\n\" && node test/integration/miniscript-deprecated.js && echo \"\n\n\" && node test/integration/ledger-deprecated.js",
     "test:unit": "jest",
     "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
     "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
-    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:deprecated && npm run test:integration:ledger"
+    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger"
   },
   "files": [
     "dist"

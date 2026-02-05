@@ -6,7 +6,6 @@ import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
-  LedgerState,
   LedgerManager,
   getLedgerMasterFingerPrint,
   getLedgerXpub
@@ -261,51 +260,25 @@ export async function keyExpressionLedger({
 }): Promise<string>;
 /** @hidden */
 export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @overload */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
   ledgerManager,
   originPath,
   keyPath,
   change,
   index
 }: {
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
+  ledgerManager: LedgerManager;
   originPath: string;
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
 }) {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
   assertChangeIndexKeyPath({ change, index, keyPath });
 
   const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerClient,
-    ledgerState
+    ledgerManager
   });
   const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerClient, ledgerState });
+  const xpub = await getLedgerXpub({ originPath, ledgerManager });
 
   const keyRoot = `${origin}${xpub}`;
   if (keyPath !== undefined) return `${keyRoot}${keyPath}`;

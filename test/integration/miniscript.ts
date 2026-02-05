@@ -73,7 +73,7 @@ const keys: {
         //to spend the script.
         //Here we decide how are we going to spend the script.
         //spendingBranch is either @olderKey or @afterKey.
-        //Use signersPubKeys in Descriptor's constructor to account for this
+        //Use signersPubKeys in Output's constructor to account for this
         let miniscript = expandedMiniscript;
         const signersPubKeys: Buffer[] = [];
         for (const key in keys) {

@@ -28,7 +28,7 @@ import type {
   ParseKeyExpression
 } from './types';
 
-import { finalScriptsFuncFactory, updatePsbt } from './psbt';
+import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
 import { DescriptorChecksum } from './checksum';
 
 import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
@@ -174,10 +174,6 @@ function parseSortedMulti(inner: string) {
  * provides methods to create, sign, and finalize PSBTs based on descriptor
  * expressions.
  *
- * While this Factory function includes the `Descriptor` class, note that
- * this class was deprecated in v2.0 in favor of `Output`. For backward
- * compatibility, the `Descriptor` class remains, but using `Output` is advised.
- *
  * The Factory also returns utility methods like `expand` (detailed below)
  * and `parseKeyExpression` (see {@link ParseKeyExpression}).
  *
@@ -270,41 +266,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     allowMiniscriptInP2SH?: boolean;
   }): Expansion;
 
-  /**
-   * @hidden
-   * To be removed in version 3.0
-   */
-  function expand(params: {
-    expression: string;
-    index?: number;
-    checksumRequired?: boolean;
-    network?: Network;
-    allowMiniscriptInP2SH?: boolean;
-  }): Expansion;
-
-  /**
-   * @overload
-   * To be removed in v3.0 and replaced by the version with the signature that
-   * does not accept descriptors
-   */
   function expand({
     descriptor,
-    expression,
     index,
     checksumRequired = false,
     network = networks.bitcoin,
     allowMiniscriptInP2SH = false
   }: {
-    descriptor?: string;
-    expression?: string;
+    descriptor: string;
     index?: number;
     checksumRequired?: boolean;
     network?: Network;
     allowMiniscriptInP2SH?: boolean;
   }): Expansion {
-    if (descriptor && expression)
-      throw new Error(`expression param has been deprecated`);
-    descriptor = descriptor || expression;
     if (!descriptor) throw new Error(`descriptor not provided`);
     let expandedExpression: string | undefined;
     let miniscript: string | undefined;
@@ -720,7 +694,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (!keyExpression)
         throw new Error(`Error: keyExpression could not me extracted`);
       if (canonicalExpression !== `tr(${keyExpression})`)
-        throw new Error(`Error: invalid expression ${expression}`);
+        throw new Error(`Error: invalid descriptor ${descriptor}`);
       expandedExpression = 'tr(@0)';
       const pKE = parseKeyExpression({
         keyExpression,
@@ -733,7 +707,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
-            `Error: could not extract a pubkey from ${expression}`
+            `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2tr({ internalPubkey: pubkey, network });
         //console.log('TRACE', {
@@ -1445,21 +1419,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       }
     }
 
-    /** @deprecated - Use updatePsbtAsInput instead
-     * @hidden
-     */
-    updatePsbt(params: {
-      psbt: Psbt;
-      txHex?: string;
-      txId?: string;
-      value?: number;
-      vout: number;
-      rbf?: boolean;
-    }) {
-      this.updatePsbtAsInput(params);
-      return params.psbt.data.inputs.length - 1;
-    }
-
     /**
      * Sets this output as an input of the provided `psbt` and updates the
      * `psbt` locktime if required by the descriptor.
@@ -1487,6 +1446,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      *
      * @returns A finalizer function to be used after signing the `psbt`.
      * This function ensures that this input is properly finalized.
+     * The finalizer completes the PSBT input by adding the unlocking script
+     * (`scriptWitness` or `scriptSig`) that satisfies this `Output`'s spending
+     * conditions. Because these scripts include signatures, you should finish
+     * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
      * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
@@ -1524,7 +1487,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           `Error: could not determine whether this is a taproot descriptor`
         );
       }
-      const index = updatePsbt({
+      const index = addPsbtInput({
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
@@ -1542,6 +1505,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         redeemScript: this.getRedeemScript(),
         rbf
       });
+      //The finalizer adds the unlocking script (scriptSig/scriptWitness) once
+      //signatures are ready.
       const finalizer = ({
         psbt,
         validate = true
@@ -1552,7 +1517,36 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
          * be valid.
          * @default true */
         validate?: boolean | undefined;
-      }) => this.finalizePsbtInput({ index, psbt, validate });
+      }) => {
+        if (
+          validate &&
+          !psbt.validateSignaturesOfInput(index, signatureValidator)
+        ) {
+          throw new Error(`Error: invalid signatures on input ${index}`);
+        }
+        //An index must be passed since finding the index in the psbt cannot be
+        //done:
+        //Imagine the case where you received money twice to
+        //the same miniscript-based address. You would have the same scriptPubKey,
+        //same sequences, ... The descriptor does not store the hash of the previous
+        //transaction since it is a general Output instance. Indices must be kept
+        //out of the scope of this class and then passed.
+
+        this.#assertPsbtInput({ index, psbt });
+        if (!this.#miniscript) {
+          //Use standard finalizers
+          psbt.finalizeInput(index);
+        } else {
+          const signatures = psbt.data.inputs[index]?.partialSig;
+          if (!signatures)
+            throw new Error(`Error: cannot finalize without signatures`);
+          const scriptSatisfaction = this.getScriptSatisfaction(signatures);
+          psbt.finalizeInput(
+            index,
+            finalScriptsFuncFactory(scriptSatisfaction, this.#network)
+          );
+        }
+      };
       return finalizer;
     }
 
@@ -1614,78 +1608,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
 
     /**
-     * Finalizes a PSBT input by adding the necessary unlocking script that satisfies this `Output`'s
-     * spending conditions.
-     *
-     * 🔴 IMPORTANT 🔴
-     * It is STRONGLY RECOMMENDED to use the finalizer function returned by
-     * {@link _Internal_.Output.updatePsbtAsInput | `updatePsbtAsInput`} instead
-     * of calling this method directly.
-     * This approach eliminates the need to manage the `Output` instance and the
-     * input's index, simplifying the process.
-     *
-     * The `finalizePsbtInput` method completes a PSBT input by adding the
-     * unlocking script (`scriptWitness` or `scriptSig`) that satisfies
-     * this `Output`'s spending conditions. Bear in mind that both
-     * `scriptSig` and `scriptWitness` incorporate signatures. As such, you
-     * should complete all necessary signing operations before calling this
-     * method.
-     *
-     * For each unspent output from a previous transaction that you're
-     * referencing in a `psbt` as an input to be spent, apply this method as
-     * follows: `output.finalizePsbtInput({ index, psbt })`.
-     *
-     * It's essential to specify the exact position (or `index`) of the input in
-     * the `psbt` that references this unspent `Output`. This `index` should
-     * align with the value returned by the `updatePsbtAsInput` method.
-     * Note:
-     * The `index` corresponds to the position of the input in the `psbt`.
-     * To get this index, right after calling `updatePsbtAsInput()`, use:
-     * `index = psbt.data.inputs.length - 1`.
-     */
-    finalizePsbtInput({
-      index,
-      psbt,
-      validate = true
-    }: {
-      index: number;
-      psbt: Psbt;
-      /** Runs further test on the validity of the signatures.
-       * It speeds down the finalization process but makes sure the psbt will
-       * be valid.
-       * @default true */
-      validate?: boolean | undefined;
-    }): void {
-      if (
-        validate &&
-        !psbt.validateSignaturesOfInput(index, signatureValidator)
-      ) {
-        throw new Error(`Error: invalid signatures on input ${index}`);
-      }
-      //An index must be passed since finding the index in the psbt cannot be
-      //done:
-      //Imagine the case where you received money twice to
-      //the same miniscript-based address. You would have the same scriptPubKey,
-      //same sequences, ... The descriptor does not store the hash of the previous
-      //transaction since it is a general Descriptor object. Indices must be kept
-      //out of the scope of this class and then passed.
-
-      this.#assertPsbtInput({ index, psbt });
-      if (!this.#miniscript) {
-        //Use standard finalizers
-        psbt.finalizeInput(index);
-      } else {
-        const signatures = psbt.data.inputs[index]?.partialSig;
-        if (!signatures)
-          throw new Error(`Error: cannot finalize without signatures`);
-        const scriptSatisfaction = this.getScriptSatisfaction(signatures);
-        psbt.finalizeInput(
-          index,
-          finalScriptsFuncFactory(scriptSatisfaction, this.#network)
-        );
-      }
-    }
-    /**
      * Decomposes the descriptor used to form this `Output` into its elemental
      * parts. See {@link ExpansionMap ExpansionMap} for a detailed explanation.
      */
@@ -1707,30 +1629,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
   }
 
-  /**
-   * @hidden
-   * @deprecated Use `Output` instead
-   */
-  class Descriptor extends Output {
-    constructor({
-      expression,
-      ...rest
-    }: {
-      expression: string;
-      index?: number;
-      checksumRequired?: boolean;
-      allowMiniscriptInP2SH?: boolean;
-      network?: Network;
-      preimages?: Preimage[];
-      signersPubKeys?: Buffer[];
-    }) {
-      super({ descriptor: expression, ...rest });
-    }
-  }
-
   return {
-    // deprecated TAG must also be below so it is exported to descriptors.d.ts
-    /** @deprecated @hidden */ Descriptor,
     Output,
     parseKeyExpression,
     expand,
@@ -1739,18 +1638,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
   };
 }
 
-/** @hidden @deprecated */
-type DescriptorConstructor = ReturnType<
-  typeof DescriptorsFactory
->['Descriptor'];
-/** @hidden  @deprecated */
-type DescriptorInstance = InstanceType<DescriptorConstructor>;
-export { DescriptorInstance, DescriptorConstructor };
-
 type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
 /**
  * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally
- * creates and returns the {@link _Internal_.Output | `Descriptor`} class.
+ * creates and returns the {@link _Internal_.Output | `Output`} class.
  * This class is specialized for the provided `TinySecp256k1Interface`.
  * Use `OutputInstance` to declare instances for this class:
  * `const: OutputInstance = new Output();`

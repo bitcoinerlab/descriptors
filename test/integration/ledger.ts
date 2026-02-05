@@ -126,15 +126,12 @@ const finalizers = [];
     ecc,
     network: NETWORK
   };
-  const ledgerState = ledgerManager.ledgerState;
 
   //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
   const pkhExternalDescriptor: string = await pkhLedger({
-    ledgerClient,
-    ledgerState,
-    network: NETWORK,
+    ledgerManager,
     account: 0,
     change: 0,
     index: 0
@@ -155,9 +152,7 @@ const finalizers = [];
 
   //Repeat the same for another pkh change address:
   const pkhChangeDescriptor = await pkhLedger({
-    ledgerClient,
-    ledgerState,
-    network: NETWORK,
+    ledgerManager,
     account: 0,
     change: 1,
     index: 0

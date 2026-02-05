@@ -130,9 +130,9 @@ export function finalScriptsFuncFactory(
 }
 
 /**
- * Important: Read comments on descriptor.updatePsbt regarding not passing txHex
+ * Important: Read comments on Output.updatePsbtAsInput regarding not passing txHex
  */
-export function updatePsbt({
+export function addPsbtInput({
   psbt,
   vout,
   txHex,
