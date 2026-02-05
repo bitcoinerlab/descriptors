@@ -28,7 +28,7 @@ console.log(
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
-import { compilePolicy } from '@bitcoinerlab/miniscript';
+import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 const { signBIP32, signECPair } = signers;
 
 const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
@@ -47,6 +47,7 @@ const keys: {
 };
 
 (async () => {
+  await ready;
   //The 3 for loops below test all possible combinations of
   //signer type (BIP32 or ECPair), top-level scripts (sh, wsh, sh-wsh) and
   //who is spending the tx: the "older" or the "after" branch

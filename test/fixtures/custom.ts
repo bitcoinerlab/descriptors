@@ -666,21 +666,21 @@ export const fixtures = {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L447',
       descriptor: 'wsh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)',
       checksumRequired: false,
-      throw: 'Error: Miniscript @0 is not sane'
+      throw: 'Invalid miniscript expression: @0'
     },
     {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L448',
       descriptor:
         'wsh(wpkh(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1))',
       checksumRequired: false,
-      throw: 'Error: Miniscript wpkh(@0) is not sane'
+      throw: 'Unknown miniscript fragment: wpkh'
     },
     {
       note: 'https://github.com/bitcoin/bitcoin/blob/392dc68e37be9fc7adb32496b13d9b50262e317d/src/test/descriptor_tests.cpp#L449',
       descriptor:
         'wsh(sh(pk(L4rK1yDtCWekvXuE6oXD9jCYfFNV2cWRpVuPLBcCU2z8TrisoyY1)))',
       checksumRequired: false,
-      throw: 'Error: Miniscript sh(pk(@0)) is not sane'
+      throw: 'Unknown miniscript fragment: sh'
     },
     {
       note: 'Invalid Taproot descriptor: uncompressed public key not allowed - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
@@ -695,8 +695,7 @@ export const fixtures = {
       descriptor:
         'wsh(tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd))',
       checksumRequired: false,
-      throw:
-        'Error: Miniscript tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd) is not sane'
+      throw: 'Unknown miniscript fragment: tr'
     },
     {
       note: 'Invalid Taproot descriptor: tr() nested inside sh() - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',

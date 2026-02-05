@@ -86,17 +86,10 @@ const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from 'ledger-bitcoin';
 const { Output, BIP32 } = DescriptorsFactory(ecc);
 
-import { compilePolicy } from '@bitcoinerlab/miniscript';
+import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 
 //Create the psbt that will spend the pkh and wsh outputs and send funds to FINAL_ADDRESS:
 const psbt = new Psbt({ network: NETWORK });
-
-//Build the miniscript-based descriptor.
-//POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
-//and miniscript: 'and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk(@ledger),v:pk(@soft)),older(5)))'
-const { miniscript, issane }: { miniscript: string; issane: boolean } =
-  compilePolicy(POLICY);
-if (!issane) throw new Error(`Error: miniscript not sane`);
 
 let txHex: string;
 let txId: string;
@@ -105,6 +98,7 @@ let vout: number;
 const finalizers = [];
 
 (async () => {
+  await ready;
   let transport;
   try {
     transport = await Transport.create(3000, 3000);
@@ -126,6 +120,13 @@ const finalizers = [];
     ecc,
     network: NETWORK
   };
+
+  //Build the miniscript-based descriptor.
+  //POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
+  //and miniscript: 'and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk(@ledger),v:pk(@soft)),older(5)))'
+  const { miniscript, issane }: { miniscript: string; issane: boolean } =
+    compilePolicy(POLICY);
+  if (!issane) throw new Error(`Error: miniscript not sane`);
 
   //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalDescriptor will be something like this:
