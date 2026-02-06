@@ -73,6 +73,8 @@ export function parseKeyExpression({
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
+  if (isTaproot && isSegwit !== true)
+    throw new Error(`Error: taproot key expressions require isSegwit`);
   let pubkey: Buffer | undefined; //won't be computed for ranged keyExpressions
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
@@ -138,6 +140,7 @@ export function parseKeyExpression({
       throw new Error(`Error: invalid pubkey`);
     }
     //Do an extra check in case we know this pubkey refers to a segwit input
+    //Taproot x-only keys are converted to 33-byte compressed form above.
     if (
       typeof isSegwit === 'boolean' &&
       isSegwit &&
