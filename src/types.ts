@@ -4,7 +4,7 @@
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { Payment, Network } from 'bitcoinjs-lib';
-import type { TapTreeNode } from './tapTree';
+import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
 /**
  * Preimage
@@ -158,14 +158,46 @@ export type Expansion = {
   expandedMiniscript?: string;
 
   /**
-   * The taproot tree expression, if any.
+   * The taproot tree expression, if any. Only defined for `tr(KEY, TREE)`.
+   * Example: `{pk(02aa...),{pk(03bb...),pk(02cc...)}}`.
    */
   tapTreeExpression?: string;
 
   /**
-   * The parsed taproot tree, if any.
+   * The parsed taproot tree, if any. Only defined for `tr(KEY, TREE)`.
+   * Example:
+   * ```
+   * {
+   *   left: { miniscript: 'pk(02aa...)' },
+   *   right: {
+   *     left: { miniscript: 'pk(03bb...)' },
+   *     right: { miniscript: 'pk(02cc...)' }
+   *   }
+   * }
+   * ```
    */
   tapTree?: TapTreeNode;
+
+  /**
+   * The compiled taproot tree metadata, if any. Only defined for `tr(KEY, TREE)`.
+   * Same as tapTree, but each leaf includes the expanded miniscript, key
+   * expansion map, compiled tapscript (`tapScript`), and leaf version.
+   * Note: `@i` placeholders in `expandedMiniscript` are scoped per leaf, since
+   * each leaf is expanded and satisfied independently.
+   *
+   * Example:
+   * ```
+   * {
+   *   left: {
+   *     miniscript: 'pk(02aa...)',
+   *     expandedMiniscript: 'pk(@0)',
+   *     expansionMap: ExpansionMap;
+   *     tapScript: Buffer;
+   *     version: number;
+   *   },
+   *   right: ....
+   */
+  tapTreeInfo?: TapTreeInfoNode;
 
   /**
    * The redeem script for the descriptor, if applicable.

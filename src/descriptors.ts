@@ -39,7 +39,7 @@ import {
   satisfyMiniscript
 } from './miniscript';
 import { parseTapTreeExpression } from './tapTree';
-import type { TapTreeNode } from './tapTree';
+import type { TapTreeInfoNode, TapTreeNode } from './tapTree';
 import { splitTopLevelComma } from './parseUtils';
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
@@ -47,6 +47,7 @@ import { splitTopLevelComma } from './parseUtils';
 const MAX_SCRIPT_ELEMENT_SIZE = 520;
 const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
 const MAX_OPS_PER_SCRIPT = 201;
+const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
 function countNonPushOnlyOPs(script: Buffer): number {
   const decompile = bscript.decompile(script);
@@ -309,6 +310,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let expandedMiniscript: string | undefined;
     let tapTreeExpression: string | undefined;
     let tapTree: TapTreeNode | undefined;
+    let tapTreeInfo: TapTreeInfoNode | undefined;
     let payment: Payment | undefined;
     let witnessScript: Buffer | undefined;
     let redeemScript: Buffer | undefined;
@@ -728,6 +730,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (treeExpression) {
         tapTreeExpression = treeExpression;
         tapTree = parseTapTreeExpression(treeExpression);
+        if (!isCanonicalRanged) {
+          tapTreeInfo = buildTapTreeInfo({ tapTree, network });
+        }
       }
       if (!isCanonicalRanged && !treeExpression) {
         const pubkey = pKE.pubkey;
@@ -751,6 +756,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
       ...(tapTreeExpression !== undefined ? { tapTreeExpression } : {}),
       ...(tapTree !== undefined ? { tapTree } : {}),
+      ...(tapTreeInfo !== undefined ? { tapTreeInfo } : {}),
       ...(redeemScript !== undefined ? { redeemScript } : {}),
       ...(witnessScript !== undefined ? { witnessScript } : {}),
       isRanged,
@@ -787,6 +793,58 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     });
   }
 
+  function expandTaprootMiniscript({
+    miniscript,
+    network = networks.bitcoin
+  }: {
+    miniscript: string;
+    network?: Network;
+  }): {
+    expandedMiniscript: string;
+    expansionMap: ExpansionMap;
+  } {
+    return globalExpandMiniscript({
+      miniscript,
+      isSegwit: true,
+      isTaproot: true,
+      network,
+      BIP32,
+      ECPair
+    });
+  }
+
+  function buildTapTreeInfo({
+    tapTree,
+    network
+  }: {
+    tapTree: TapTreeNode;
+    network: Network;
+  }): TapTreeInfoNode {
+    if ('miniscript' in tapTree) {
+      const miniscript = tapTree.miniscript;
+      const { expandedMiniscript, expansionMap } = expandTaprootMiniscript({
+        miniscript,
+        network
+      });
+      const script = miniscript2Script({
+        expandedMiniscript,
+        expansionMap,
+        tapscript: true
+      });
+      return {
+        miniscript,
+        expandedMiniscript,
+        expansionMap,
+        tapScript: script,
+        version: TAPROOT_LEAF_VERSION_TAPSCRIPT
+      };
+    }
+    return {
+      left: buildTapTreeInfo({ tapTree: tapTree.left, network }),
+      right: buildTapTreeInfo({ tapTree: tapTree.right, network })
+    };
+  }
+
   /**
    * The `Output` class is the central component for managing descriptors.
    * It facilitates the creation of outputs to receive funds and enables the
@@ -808,6 +866,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     readonly #expandedMiniscript?: string;
     readonly #tapTreeExpression?: string;
     readonly #tapTree?: TapTreeNode;
+    readonly #tapTreeInfo?: TapTreeInfoNode;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
@@ -922,6 +981,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#tapTreeExpression = expandedResult.tapTreeExpression;
       if (expandedResult.tapTree !== undefined)
         this.#tapTree = expandedResult.tapTree;
+      if (expandedResult.tapTreeInfo !== undefined)
+        this.#tapTreeInfo = expandedResult.tapTreeInfo;
       if (expandedResult.redeemScript !== undefined)
         this.#redeemScript = expandedResult.redeemScript;
       if (expandedResult.witnessScript !== undefined)
@@ -1654,6 +1715,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           ? { tapTreeExpression: this.#tapTreeExpression }
           : {}),
         ...(this.#tapTree !== undefined ? { tapTree: this.#tapTree } : {}),
+        ...(this.#tapTreeInfo !== undefined
+          ? { tapTreeInfo: this.#tapTreeInfo }
+          : {}),
         ...(this.#expansionMap !== undefined
           ? { expansionMap: this.#expansionMap }
           : {})

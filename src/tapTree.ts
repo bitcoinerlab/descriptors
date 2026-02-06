@@ -1,15 +1,25 @@
 import { splitTopLevelComma } from './parseUtils';
+import type { ExpansionMap } from './types';
+
+export type TreeNode<TLeaf> =
+  | TLeaf
+  | { left: TreeNode<TLeaf>; right: TreeNode<TLeaf> };
 
 export type TapLeaf = {
   miniscript: string;
 };
 
-export type TapBranch = {
-  left: TapTreeNode;
-  right: TapTreeNode;
+export type TapTreeNode = TreeNode<TapLeaf>;
+
+export type TapLeafInfo = {
+  miniscript: string;
+  expandedMiniscript: string;
+  expansionMap: ExpansionMap;
+  tapScript: Buffer;
+  version: number;
 };
 
-export type TapTreeNode = TapLeaf | TapBranch;
+export type TapTreeInfoNode = TreeNode<TapLeafInfo>;
 
 function tapTreeError(expression: string): Error {
   return new Error(`Error: invalid taproot tree expression: ${expression}`);

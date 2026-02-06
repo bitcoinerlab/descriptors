@@ -35,7 +35,6 @@ export function expandMiniscript({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
 } {
-  if (isTaproot) throw new Error('Taproot miniscript not yet supported.');
   const reKeyExp = isTaproot
     ? RE.reTaprootKeyExp
     : isSegwit
@@ -49,6 +48,7 @@ export function expandMiniscript({
       expansionMap[key] = parseKeyExpression({
         keyExpression,
         isSegwit,
+        isTaproot,
         network,
         ECPair,
         BIP32
@@ -127,12 +127,14 @@ function substituteAsm({
 
 export function miniscript2Script({
   expandedMiniscript,
-  expansionMap
+  expansionMap,
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
+  tapscript?: boolean;
 }): Buffer {
-  const compiled = compileMiniscript(expandedMiniscript);
+  const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
@@ -162,13 +164,15 @@ export function satisfyMiniscript({
   expansionMap,
   signatures = [],
   preimages = [],
-  timeConstraints
+  timeConstraints,
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   signatures?: PartialSig[];
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
+  tapscript?: boolean;
 }): {
   scriptSatisfaction: Buffer;
   nLockTime: number | undefined;
@@ -196,7 +200,10 @@ export function satisfyMiniscript({
   const knowns = Object.keys(expandedKnownsMap);
 
   //satisfier verifies again internally whether expandedKnownsMap with given knowns is sane
-  const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
+  const { nonMalleableSats } = satisfier(expandedMiniscript, {
+    knowns,
+    tapscript
+  });
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
     throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
