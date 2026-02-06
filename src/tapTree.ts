@@ -1,3 +1,5 @@
+import { splitTopLevelComma } from './parseUtils';
+
 export type TapLeaf = {
   miniscript: string;
 };
@@ -22,37 +24,9 @@ function splitTapTreeExpression(expression: string): {
   left: string;
   right: string;
 } {
-  let braceDepth = 0;
-  let parenDepth = 0;
-  let commaIndex = -1;
-  for (let i = 0; i < expression.length; i++) {
-    const char = expression[i];
-    if (!char) continue;
-    if (char === '{') {
-      braceDepth++;
-    } else if (char === '}') {
-      if (braceDepth === 0) throw tapTreeError(expression);
-      braceDepth--;
-    } else if (char === '(') {
-      //Track miniscript argument lists so we don't split on commas inside them
-      //to discard commas inside miniscripts, e.g.: and_v(pk(@0),pk(@1)),pk(@2)
-      parenDepth++;
-    } else if (char === ')') {
-      if (parenDepth === 0) throw tapTreeError(expression);
-      parenDepth--;
-    } else if (char === ',') {
-      if (braceDepth === 0 && parenDepth === 0) {
-        if (commaIndex !== -1) throw tapTreeError(expression);
-        commaIndex = i;
-      }
-    }
-  }
-  if (braceDepth !== 0 || parenDepth !== 0 || commaIndex === -1)
-    throw tapTreeError(expression);
-  const left = expression.slice(0, commaIndex).trim();
-  const right = expression.slice(commaIndex + 1).trim();
-  if (!left || !right) throw tapTreeError(expression);
-  return { left, right };
+  const result = splitTopLevelComma({ expression, onError: tapTreeError });
+  if (!result) throw tapTreeError(expression);
+  return result;
 }
 
 /**
@@ -67,11 +41,11 @@ function splitTapTreeExpression(expression: string): {
  *   }
  */
 function parseTapTreeNode(expression: string): TapTreeNode {
-  const trimmed = expression.trim();
-  if (!trimmed) throw tapTreeError(expression);
-  if (trimmed.startsWith('{')) {
-    if (!trimmed.endsWith('}')) throw tapTreeError(expression);
-    const inner = trimmed.slice(1, -1).trim();
+  const trimmedExpression = expression.trim();
+  if (!trimmedExpression) throw tapTreeError(expression);
+  if (trimmedExpression.startsWith('{')) {
+    if (!trimmedExpression.endsWith('}')) throw tapTreeError(expression);
+    const inner = trimmedExpression.slice(1, -1).trim();
     if (!inner) throw tapTreeError(expression);
     const { left, right } = splitTapTreeExpression(inner);
     return {
@@ -79,9 +53,9 @@ function parseTapTreeNode(expression: string): TapTreeNode {
       right: parseTapTreeNode(right)
     };
   }
-  if (trimmed.includes('{') || trimmed.includes('}'))
+  if (trimmedExpression.includes('{') || trimmedExpression.includes('}'))
     throw tapTreeError(expression);
-  return { miniscript: trimmed };
+  return { miniscript: trimmedExpression };
 }
 
 export function parseTapTreeExpression(expression: string): TapTreeNode {

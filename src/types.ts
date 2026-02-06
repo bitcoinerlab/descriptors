@@ -4,6 +4,7 @@
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { Payment, Network } from 'bitcoinjs-lib';
+import type { TapTreeNode } from './tapTree';
 
 /**
  * Preimage
@@ -155,6 +156,16 @@ export type Expansion = {
    * expression.
    */
   expandedMiniscript?: string;
+
+  /**
+   * The taproot tree expression, if any.
+   */
+  tapTreeExpression?: string;
+
+  /**
+   * The parsed taproot tree, if any.
+   */
+  tapTree?: TapTreeNode;
 
   /**
    * The redeem script for the descriptor, if applicable.

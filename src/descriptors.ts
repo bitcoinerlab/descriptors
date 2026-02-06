@@ -38,6 +38,9 @@ import {
   miniscript2Script,
   satisfyMiniscript
 } from './miniscript';
+import { parseTapTreeExpression } from './tapTree';
+import type { TapTreeNode } from './tapTree';
+import { splitTopLevelComma } from './parseUtils';
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -166,6 +169,24 @@ function parseSortedMulti(inner: string) {
   return { m, keyExpressions };
 }
 
+function parseTrExpression(expression: string): {
+  keyExpression: string;
+  treeExpression?: string;
+} {
+  if (!expression.startsWith('tr(') || !expression.endsWith(')'))
+    throw new Error(`Error: invalid descriptor ${expression}`);
+  const innerExpression = expression.slice(3, -1).trim();
+  if (!innerExpression)
+    throw new Error(`Error: invalid descriptor ${expression}`);
+  const splitResult = splitTopLevelComma({
+    expression: innerExpression,
+    onError: () => new Error(`Error: invalid descriptor ${expression}`)
+  });
+  //if no commas: innerExpression === keyExpression
+  if (!splitResult) return { keyExpression: innerExpression };
+  return { keyExpression: splitResult.left, treeExpression: splitResult.right };
+}
+
 /**
  * Constructs the necessary functions and classes for working with descriptors
  * using an external elliptic curve (ecc) library.
@@ -286,6 +307,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let isSegwit: boolean | undefined;
     let isTaproot: boolean | undefined;
     let expandedMiniscript: string | undefined;
+    let tapTreeExpression: string | undefined;
+    let tapTree: TapTreeNode | undefined;
     let payment: Payment | undefined;
     let witnessScript: Buffer | undefined;
     let redeemScript: Buffer | undefined;
@@ -686,16 +709,15 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
-    //tr(KEY) - taproot - TODO: tr(KEY,TREE) not yet supported
-    else if (canonicalExpression.match(RE.reTrSingleKeyAnchored)) {
+    //tr(KEY) or tr(KEY,TREE) - taproot
+    else if (canonicalExpression.startsWith('tr(')) {
       isSegwit = true;
       isTaproot = true;
-      const keyExpression = canonicalExpression.match(RE.reTaprootKeyExp)?.[0];
-      if (!keyExpression)
-        throw new Error(`Error: keyExpression could not me extracted`);
-      if (canonicalExpression !== `tr(${keyExpression})`)
-        throw new Error(`Error: invalid descriptor ${descriptor}`);
-      expandedExpression = 'tr(@0)';
+      const { keyExpression, treeExpression } =
+        parseTrExpression(canonicalExpression);
+      expandedExpression = treeExpression
+        ? `tr(@0,${treeExpression})`
+        : 'tr(@0)';
       const pKE = parseKeyExpression({
         keyExpression,
         network,
@@ -703,19 +725,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         isTaproot
       });
       expansionMap = { '@0': pKE };
-      if (!isCanonicalRanged) {
+      if (treeExpression) {
+        tapTreeExpression = treeExpression;
+        tapTree = parseTapTreeExpression(treeExpression);
+      }
+      if (!isCanonicalRanged && !treeExpression) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
         payment = p2tr({ internalPubkey: pubkey, network });
-        //console.log('TRACE', {
-        //  pKE,
-        //  pubkey: pubkey?.toString('hex'),
-        //  payment,
-        //  paymentPubKey: payment.pubkey
-        //});
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
@@ -729,6 +749,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       ...(isSegwit !== undefined ? { isSegwit } : {}),
       ...(isTaproot !== undefined ? { isTaproot } : {}),
       ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
+      ...(tapTreeExpression !== undefined ? { tapTreeExpression } : {}),
+      ...(tapTree !== undefined ? { tapTree } : {}),
       ...(redeemScript !== undefined ? { redeemScript } : {}),
       ...(witnessScript !== undefined ? { witnessScript } : {}),
       isRanged,
@@ -784,6 +806,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     readonly #isTaproot?: boolean;
     readonly #expandedExpression?: string;
     readonly #expandedMiniscript?: string;
+    readonly #tapTreeExpression?: string;
+    readonly #tapTree?: TapTreeNode;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
@@ -894,6 +918,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#isTaproot = expandedResult.isTaproot;
       if (expandedResult.expandedMiniscript !== undefined)
         this.#expandedMiniscript = expandedResult.expandedMiniscript;
+      if (expandedResult.tapTreeExpression !== undefined)
+        this.#tapTreeExpression = expandedResult.tapTreeExpression;
+      if (expandedResult.tapTree !== undefined)
+        this.#tapTree = expandedResult.tapTree;
       if (expandedResult.redeemScript !== undefined)
         this.#redeemScript = expandedResult.redeemScript;
       if (expandedResult.witnessScript !== undefined)
@@ -1622,6 +1650,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         ...(this.#expandedMiniscript !== undefined
           ? { expandedMiniscript: this.#expandedMiniscript }
           : {}),
+        ...(this.#tapTreeExpression !== undefined
+          ? { tapTreeExpression: this.#tapTreeExpression }
+          : {}),
+        ...(this.#tapTree !== undefined ? { tapTree: this.#tapTree } : {}),
         ...(this.#expansionMap !== undefined
           ? { expansionMap: this.#expansionMap }
           : {})
