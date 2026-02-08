@@ -1,7 +1,7 @@
-// Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import memoize from 'lodash.memoize';
+import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
 import {
   address,
   networks,
@@ -13,6 +13,9 @@ import {
   Psbt,
   initEccLib
 } from 'bitcoinjs-lib';
+// NOTE: Internal imports for taproot script-path finalization.
+import { tapleafHash } from 'bitcoinjs-lib/src/payments/bip341';
+import { witnessStackToScriptWitness } from 'bitcoinjs-lib/src/psbt/psbtutils';
 import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
@@ -22,7 +25,6 @@ import { ECPairFactory, ECPairAPI } from 'ecpair';
 import type {
   TinySecp256k1Interface,
   Preimage,
-  TimeConstraints,
   Expansion,
   ExpansionMap,
   ParseKeyExpression
@@ -40,6 +42,12 @@ import {
 } from './miniscript';
 import { parseTapTreeExpression } from './tapTree';
 import type { TapTreeInfoNode, TapTreeNode } from './tapTree';
+import {
+  buildTapTreeInfo,
+  collectTapTreePubkeys,
+  satisfyTapTree
+} from './tapMiniscript';
+import type { TaprootLeafSatisfaction } from './tapMiniscript';
 import { splitTopLevelComma } from './parseUtils';
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
@@ -47,7 +55,8 @@ import { splitTopLevelComma } from './parseUtils';
 const MAX_SCRIPT_ELEMENT_SIZE = 520;
 const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
 const MAX_OPS_PER_SCRIPT = 201;
-const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
+const ECDSA_FAKE_SIGNATURE_SIZE = 72;
+const TAPROOT_FAKE_SIGNATURE_SIZE = 64;
 
 function countNonPushOnlyOPs(script: Buffer): number {
   const decompile = bscript.decompile(script);
@@ -71,21 +80,6 @@ function vectorSize(someVector: Buffer[]): number {
 function varSliceSize(someScript: Buffer): number {
   const length = someScript.length;
 
-  return encodingLength(length) + length;
-}
-
-/**
- * This function will typically return 73; since it assumes a signature size of
- * 72 bytes (this is the max size of a DER encoded signature) and it adds 1
- * extra byte for encoding its length
- */
-function signatureSize(
-  signature: PartialSig | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-) {
-  const length =
-    signature === 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-      ? 72
-      : signature.signature.length;
   return encodingLength(length) + length;
 }
 
@@ -730,8 +724,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (treeExpression) {
         tapTreeExpression = treeExpression;
         tapTree = parseTapTreeExpression(treeExpression);
+        //FIXME: isCanonicalRanged is tricky here cause we may have
+        //ranged script paths that we dont take and can also spend
+        //using the internal key...
         if (!isCanonicalRanged) {
-          tapTreeInfo = buildTapTreeInfo({ tapTree, network });
+          tapTreeInfo = buildTapTreeInfo({ tapTree, network, BIP32, ECPair });
         }
       }
       if (!isCanonicalRanged && !treeExpression) {
@@ -793,58 +790,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     });
   }
 
-  function expandTaprootMiniscript({
-    miniscript,
-    network = networks.bitcoin
-  }: {
-    miniscript: string;
-    network?: Network;
-  }): {
-    expandedMiniscript: string;
-    expansionMap: ExpansionMap;
-  } {
-    return globalExpandMiniscript({
-      miniscript,
-      isSegwit: true,
-      isTaproot: true,
-      network,
-      BIP32,
-      ECPair
-    });
-  }
-
-  function buildTapTreeInfo({
-    tapTree,
-    network
-  }: {
-    tapTree: TapTreeNode;
-    network: Network;
-  }): TapTreeInfoNode {
-    if ('miniscript' in tapTree) {
-      const miniscript = tapTree.miniscript;
-      const { expandedMiniscript, expansionMap } = expandTaprootMiniscript({
-        miniscript,
-        network
-      });
-      const script = miniscript2Script({
-        expandedMiniscript,
-        expansionMap,
-        tapscript: true
-      });
-      return {
-        miniscript,
-        expandedMiniscript,
-        expansionMap,
-        tapScript: script,
-        version: TAPROOT_LEAF_VERSION_TAPSCRIPT
-      };
-    }
-    return {
-      left: buildTapTreeInfo({ tapTree: tapTree.left, network }),
-      right: buildTapTreeInfo({ tapTree: tapTree.right, network })
-    };
-  }
-
   /**
    * The `Output` class is the central component for managing descriptors.
    * It facilitates the creation of outputs to receive funds and enables the
@@ -854,7 +799,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   class Output {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
-    readonly #signersPubKeys: Buffer[];
+    readonly #signersPubKeys?: Buffer[];
     readonly #miniscript?: string;
     readonly #witnessScript?: Buffer;
     readonly #redeemScript?: Buffer;
@@ -939,6 +884,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * or if all the public keys involved in the descriptor will sign the
        * transaction. In the latter case, the satisfier will automatically
        * choose the most optimal spending path (if more than one is available).
+       * If omitted, this library assumes that all keys in the miniscript can
+       * sign. For taproot script-path spends, keys are inferred per leaf.
        *
        * For more details on using this parameter, refer to [this Stack Exchange
        * answer](https://bitcoin.stackexchange.com/a/118036/89665).
@@ -988,30 +935,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (expandedResult.witnessScript !== undefined)
         this.#witnessScript = expandedResult.witnessScript;
 
-      if (signersPubKeys) {
-        this.#signersPubKeys = signersPubKeys;
-      } else {
-        if (this.#expansionMap) {
-          this.#signersPubKeys = Object.values(this.#expansionMap).map(
-            keyInfo => {
-              const pubkey = keyInfo.pubkey;
-              if (!pubkey)
-                throw new Error(
-                  `Error: could not extract a pubkey from ${descriptor}`
-                );
-              return pubkey;
-            }
-          );
-        } else {
-          //We should only miss expansionMap in addr() expressions:
-          if (!expandedResult.canonicalExpression.match(RE.reAddrAnchored)) {
-            throw new Error(
-              `Error: expansionMap not available for expression ${descriptor} that is not an address`
-            );
-          }
-          this.#signersPubKeys = [this.getScriptPubKey()];
-        }
-      }
+      if (signersPubKeys) this.#signersPubKeys = signersPubKeys;
       this.getSequence = memoize(this.getSequence);
       this.getLockTime = memoize(this.getLockTime);
       const getSignaturesKey = (
@@ -1025,31 +949,166 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
                   `${s.pubkey.toString('hex')}-${s.signature.toString('hex')}`
               )
               .join('|');
-      this.getScriptSatisfaction = memoize(
-        this.getScriptSatisfaction,
-        // resolver function:
-        getSignaturesKey
-      );
       this.guessOutput = memoize(this.guessOutput);
       this.inputWeight = memoize(
         this.inputWeight,
         // resolver function:
         (
           isSegwitTx: boolean,
-          signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+          signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES',
+          options?: {
+            taprootSighash?: 'SIGHASH_DEFAULT' | 'non-SIGHASH_DEFAULT';
+          }
         ) => {
           const segwitKey = isSegwitTx ? 'segwit' : 'non-segwit';
           const signaturesKey = getSignaturesKey(signatures);
-          return `${segwitKey}-${signaturesKey}`;
+          const taprootSighashKey =
+            options?.taprootSighash ?? 'SIGHASH_DEFAULT';
+          return `${segwitKey}-${signaturesKey}-taprootSighash:${taprootSighashKey}`;
         }
       );
       this.outputWeight = memoize(this.outputWeight);
     }
 
+    #resolveMiniscriptSignersPubKeys(): Buffer[] {
+      //If the user did not provide a pubkey subset (signersPubKeys), assume all
+      //miniscript pubkeys can sign.
+      if (this.#signersPubKeys) return this.#signersPubKeys;
+      const expansionMap = this.#expansionMap;
+      if (!expansionMap)
+        throw new Error(`Error: expansionMap not available for miniscript`);
+      return Object.values(expansionMap).map(keyInfo => {
+        const pubkey = keyInfo.pubkey;
+        if (!pubkey) throw new Error(`Error: miniscript key missing pubkey`);
+        return pubkey;
+      });
+    }
+
     /**
-     * Gets the TimeConstraints (nSequence and nLockTime) of the miniscript
-     * descriptor as passed in the constructor, just using the expression,
-     * the signersPubKeys and preimages.
+     * Returns the compiled Script Satisfaction for a miniscript-based Output.
+     * The satisfaction is the unlocking script, derived by the Satisfier
+     * algorithm (https://bitcoin.sipa.be/miniscript/).
+     *
+     * This method uses a two-pass flow:
+     * 1) Planning: constraints (nLockTime/nSequence) are computed using fake
+     *    signatures. This is done since the final solution may not need all the
+     *    signatures in signersPubKeys. And we may avoid the user do extra
+     *    signing (tedious op with HWW).
+     * 2) Signing: the provided signatures are used to build the final
+     *    satisfaction, while enforcing the planned constraints so the same
+     *    solution is selected. Not all the signatures of signersPubKeys may
+     *    be required.
+     *
+     * The return value includes the satisfaction script and the constraints.
+     */
+
+    getScriptSatisfaction(
+      /**
+       * An array with all the signatures needed to
+       * build the Satisfaction of this miniscript-based `Output`.
+       *
+       * `signatures` must be passed using this format (pairs of `pubKey/signature`):
+       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       */
+      signatures: PartialSig[]
+    ): {
+      scriptSatisfaction: Buffer;
+      nLockTime: number | undefined;
+      nSequence: number | undefined;
+    } {
+      const miniscript = this.#miniscript;
+      const expandedMiniscript = this.#expandedMiniscript;
+      const expansionMap = this.#expansionMap;
+      if (
+        miniscript === undefined ||
+        expandedMiniscript === undefined ||
+        expansionMap === undefined
+      )
+        throw new Error(
+          `Error: cannot get satisfaction from not expanded miniscript ${miniscript}`
+        );
+      //This crates the plans using fake signatures
+      const constraints = this.#getConstraints();
+      return satisfyMiniscript({
+        expandedMiniscript,
+        expansionMap,
+        signatures,
+        preimages: this.#preimages,
+        //Here we pass the TimeConstraints obtained using signersPubKeys to
+        //verify that the solutions found using the final signatures have not
+        //changed
+        timeConstraints: {
+          nLockTime: constraints?.nLockTime,
+          nSequence: constraints?.nSequence
+        }
+      });
+    }
+
+    #resolveTapTreeSignersPubKeys(): Buffer[] {
+      //If the user did not provide a pubkey subset (signersPubKeys), assume all
+      //taproot leaf pubkeys can sign.
+      const tapTreeInfo = this.#tapTreeInfo;
+      if (!tapTreeInfo)
+        throw new Error(`Error: taproot tree info not available`);
+      const normalizeTaprootPubkey = (pubkey: Buffer): Buffer => {
+        if (pubkey.length === 32) return pubkey;
+        if (pubkey.length === 33) return pubkey.slice(1, 33);
+        throw new Error(`Error: invalid taproot pubkey length`);
+      };
+      const candidatePubkeys = this.#signersPubKeys
+        ? this.#signersPubKeys.map(normalizeTaprootPubkey)
+        : collectTapTreePubkeys(tapTreeInfo);
+      return Array.from(
+        new Set(candidatePubkeys.map(pubkey => pubkey.toString('hex')))
+      ).map(hex => Buffer.from(hex, 'hex'));
+    }
+
+    /**
+     * Returns the taproot script‑path satisfaction for a tap miniscript
+     * descriptor. This mirrors {@link getScriptSatisfaction} and uses the same
+     * two‑pass plan/sign flow.
+     *
+     * In addition to nLockTime/nSequence, it returns the selected tapLeafHash
+     * (the leaf chosen during planning) and the leaf’s tapscript.
+     */
+
+    getTapScriptSatisfaction(
+      /**
+       * An array with all the signatures needed to
+       * build the Satisfaction of this miniscript-based `Output`.
+       *
+       * `signatures` must be passed using this format (pairs of `pubKey/signature`):
+       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       */
+      signatures: PartialSig[]
+    ): TaprootLeafSatisfaction {
+      const tapTreeInfo = this.#tapTreeInfo;
+      if (!tapTreeInfo)
+        throw new Error(`Error: taproot tree info not available`);
+      const constraints = this.#getConstraints();
+      return satisfyTapTree({
+        tapTreeInfo,
+        preimages: this.#preimages,
+        signatures,
+        ...(constraints?.tapLeafHash
+          ? { tapLeaf: constraints.tapLeafHash }
+          : {}),
+        ...(constraints
+          ? {
+              timeConstraints: {
+                nLockTime: constraints.nLockTime,
+                nSequence: constraints.nSequence
+              }
+            }
+          : {})
+      });
+    }
+
+    /**
+     * Gets the planning constraints (nSequence and nLockTime) derived from the
+     * descriptor, just using the expression, signersPubKeys and preimages
+     * (using fake signatures).
+     * For taproot script-path spends, it also returns the selected tapLeafHash.
      *
      * We just need to know which will be the signatures that will be
      * used (signersPubKeys) but final signatures are not necessary for
@@ -1057,15 +1116,21 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      *
      * Remember: nSequence and nLockTime are part of the hash that is signed.
      * Thus, they must not change after computing the signatures.
-     * When running getScriptSatisfaction, using the final signatures,
+     * When running miniscript satisfactions with final signatures,
      * satisfyMiniscript verifies that the time constraints did not change.
      */
-    #getTimeConstraints(): TimeConstraints | undefined {
+    #getConstraints():
+      | {
+          nLockTime: number | undefined;
+          nSequence: number | undefined;
+          tapLeafHash: Buffer | undefined;
+        }
+      | undefined {
       const miniscript = this.#miniscript;
       const preimages = this.#preimages;
       const expandedMiniscript = this.#expandedMiniscript;
       const expansionMap = this.#expansionMap;
-      const signersPubKeys = this.#signersPubKeys;
+      const tapTreeInfo = this.#tapTreeInfo;
       //Create a method. solvePreimages to solve them.
       if (miniscript) {
         if (expandedMiniscript === undefined || expansionMap === undefined)
@@ -1075,19 +1140,35 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         //We create some fakeSignatures since we may not have them yet.
         //We only want to retrieve the nLockTime and nSequence of the satisfaction and
         //signatures don't matter
-        const fakeSignatures = signersPubKeys.map(pubkey => ({
-          pubkey,
-          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
-          signature: Buffer.alloc(72, 0)
-        }));
+        const fakeSignatures = this.#resolveMiniscriptSignersPubKeys().map(
+          pubkey => ({
+            pubkey,
+            signature: Buffer.alloc(ECDSA_FAKE_SIGNATURE_SIZE, 0)
+          })
+        );
         const { nLockTime, nSequence } = satisfyMiniscript({
           expandedMiniscript,
           expansionMap,
           signatures: fakeSignatures,
           preimages
         });
-        return { nLockTime, nSequence };
-      } else return undefined;
+        return { nLockTime, nSequence, tapLeafHash: undefined };
+      } else if (tapTreeInfo) {
+        const fakeSignatures = this.#resolveTapTreeSignersPubKeys().map(
+          pubkey => ({
+            pubkey,
+            signature: Buffer.alloc(TAPROOT_FAKE_SIGNATURE_SIZE, 0)
+          })
+        );
+        const { nLockTime, nSequence, tapLeafHash } = satisfyTapTree({
+          tapTreeInfo,
+          preimages: this.#preimages,
+          signatures: fakeSignatures
+        });
+        return { nLockTime, nSequence, tapLeafHash };
+      }
+
+      return undefined;
     }
 
     /**
@@ -1114,91 +1195,26 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       return this.#payment.output;
     }
     /**
-     * Returns the compiled Script Satisfaction if this `Output` was created
-     * using a miniscript-based descriptor.
-     *
-     * The Satisfaction is the unlocking script that fulfills
-     * (satisfies) this `Output` and it is derived using the Safisfier algorithm
-     * [described here](https://bitcoin.sipa.be/miniscript/).
-     *
-     * Important: As mentioned above, note that this function only applies to
-     * miniscript descriptors.
-     */
-    getScriptSatisfaction(
-      /**
-       * An array with all the signatures needed to
-       * build the Satisfaction of this miniscript-based `Output`.
-       *
-       * `signatures` must be passed using this format (pairs of `pubKey/signature`):
-       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
-       *
-       *  * Alternatively, if you do not have the signatures, you can use the option
-       * `'DANGEROUSLY_USE_FAKE_SIGNATURES'`. This will generate script satisfactions
-       * using 72-byte zero-padded signatures. While this can be useful in
-       * modules like coinselector that require estimating transaction size before
-       * signing, it is critical to understand the risks:
-       * - Using this option generales invalid unlocking scripts.
-       * - It should NEVER be used with real transactions.
-       * - Its primary use is for testing and size estimation purposes only.
-       *
-       * ⚠️ Warning: Misuse of 'DANGEROUSLY_USE_FAKE_SIGNATURES' can lead to security
-       * vulnerabilities, including but not limited to invalid transaction generation.
-       * Ensure you fully understand the implications before use.
-       *
-       */
-      signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-    ): Buffer {
-      if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES')
-        signatures = this.#signersPubKeys.map(pubkey => ({
-          pubkey,
-          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
-          signature: Buffer.alloc(72, 0)
-        }));
-      const miniscript = this.#miniscript;
-      const expandedMiniscript = this.#expandedMiniscript;
-      const expansionMap = this.#expansionMap;
-      if (
-        miniscript === undefined ||
-        expandedMiniscript === undefined ||
-        expansionMap === undefined
-      )
-        throw new Error(
-          `Error: cannot get satisfaction from not expanded miniscript ${miniscript}`
-        );
-      //Note that we pass the nLockTime and nSequence that is deduced
-      //using preimages and signersPubKeys.
-      //satisfyMiniscript will make sure
-      //that the actual solution given, using real signatures, still meets the
-      //same nLockTime and nSequence constraints
-      const scriptSatisfaction = satisfyMiniscript({
-        expandedMiniscript,
-        expansionMap,
-        signatures,
-        preimages: this.#preimages,
-        //Here we pass the TimeConstraints obtained using signersPubKeys to
-        //verify that the solutions found using the final signatures have not
-        //changed
-        timeConstraints: {
-          nLockTime: this.getLockTime(),
-          nSequence: this.getSequence()
-        }
-      }).scriptSatisfaction;
-
-      if (!scriptSatisfaction)
-        throw new Error(`Error: could not produce a valid satisfaction`);
-      return scriptSatisfaction;
-    }
-    /**
      * Gets the nSequence required to fulfill this `Output`.
      */
     getSequence(): number | undefined {
-      return this.#getTimeConstraints()?.nSequence;
+      return this.#getConstraints()?.nSequence;
     }
     /**
      * Gets the nLockTime required to fulfill this `Output`.
      */
     getLockTime(): number | undefined {
-      return this.#getTimeConstraints()?.nLockTime;
+      return this.#getConstraints()?.nLockTime;
+    }
+
+    /**
+     * Returns the tapleaf hash selected during planning for taproot script-path
+     * spends. If signersPubKeys are provided, selection is optimized for those
+     * pubkeys. If a specific tapLeaf selector is used in spending calls, this
+     * reflects that selection.
+     */
+    getTapLeafHash(): Buffer | undefined {
+      return this.#getConstraints()?.tapLeafHash;
     }
     /**
      * Gets the witnessScript required to fulfill this `Output`. Only applies to
@@ -1334,6 +1350,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * Note however that tr(MINISCRIPT) is not yet supported for non-single-key
      * expressions.
      */
+    // TODO:(taproot-weight): Pending questions to resolve:
+    // - tr(@0,...) estimates: should we always assume script-path spend, or take
+    //   min(key-path, script-path), or allow caller selection?
+    // - Leaf selection: inputWeight currently auto-selects the smallest witness
+    //   leaf; if a specific leaf is intended (policy or external tapLeaf
+    //   selector), we need an option to pass a tapLeaf hash or miniscript string.
+    // - Ranged tapTree descriptors: expand() skips tapTreeInfo for canonical
+    //   ranged trees; inputWeight should handle per-index compilation or provide
+    //   a safe estimate without tapTreeInfo.
+    // - Annex: not modeled; if annex is used, add witness item sizing.
+    // - Taproot sighash defaults: options.taprootSighash currently drives fake
+    //   signature sizing; ensure coinselector passes the intended mode.
     inputWeight(
       /**
        * Indicates if the transaction is a Segwit transaction.
@@ -1348,13 +1376,26 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        *  Array of `PartialSig`. Each `PartialSig` includes
        *  a public key and its corresponding signature. This parameter
        *  enables the accurate calculation of signature sizes for ECDSA.
-       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume 72 bytes in length
-       *  for ECDSA.
-       *  Schnorr signatures are always 64 bytes.
+       *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume
+       *  72 bytes for ECDSA.
+       *  For taproot, the fake signature size is controlled by
+       *  options.taprootSighash (64 for 'SIGHASH_DEFAULT', 65
+       *  for 'non-SIGHASH_DEFAULT'). default value is SIGHASH_DEFAULT
        *  Mainly used for testing.
        */
-      signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES'
+      signatures: PartialSig[] | 'DANGEROUSLY_USE_FAKE_SIGNATURES',
+      /*
+       *  Options that affect taproot fake signature sizing.
+       *  taprootSighash: 'SIGHASH_DEFAULT' | 'non-SIGHASH_DEFAULT' (default: 'SIGHASH_DEFAULT').
+       *  This is only used when signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES'.
+       */
+      options: {
+        taprootSighash?: 'SIGHASH_DEFAULT' | 'non-SIGHASH_DEFAULT';
+      } = {
+        taprootSighash: 'SIGHASH_DEFAULT'
+      }
     ) {
+      const taprootSighash = options.taprootSighash ?? 'SIGHASH_DEFAULT';
       if (this.isSegwit() && !isSegwitTx)
         throw new Error(`a tx is segwit if at least one input is segwit`);
 
@@ -1369,15 +1410,57 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       if (!expansion && !isPKH && !isWPKH && !isSH && !isTR)
         throw new Error(errorMsg);
 
-      const firstSignature =
-        signatures && typeof signatures[0] === 'object'
-          ? signatures[0]
-          : 'DANGEROUSLY_USE_FAKE_SIGNATURES';
+      const resolveEcdsaSignatureSize = (): number => {
+        if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES')
+          return (
+            encodingLength(ECDSA_FAKE_SIGNATURE_SIZE) +
+            ECDSA_FAKE_SIGNATURE_SIZE
+          );
+        if (signatures.length !== 1)
+          throw new Error('More than one signture was not expected');
+        const singleSignature = signatures[0];
+        if (!singleSignature) throw new Error('Signatures not present');
+        const length = singleSignature.signature.length;
+        return encodingLength(length) + length;
+      };
+      const resolveMiniscriptSignatures = (): PartialSig[] => {
+        if (signatures !== 'DANGEROUSLY_USE_FAKE_SIGNATURES') return signatures;
+        return this.#resolveMiniscriptSignersPubKeys().map(pubkey => ({
+          pubkey,
+          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
+          signature: Buffer.alloc(ECDSA_FAKE_SIGNATURE_SIZE, 0)
+        }));
+      };
+
+      const taprootFakeSignatureSize =
+        taprootSighash === 'SIGHASH_DEFAULT'
+          ? TAPROOT_FAKE_SIGNATURE_SIZE
+          : TAPROOT_FAKE_SIGNATURE_SIZE + 1;
+      const resolveTaprootSignatures = (): PartialSig[] => {
+        if (signatures !== 'DANGEROUSLY_USE_FAKE_SIGNATURES') return signatures;
+        return this.#resolveTapTreeSignersPubKeys().map(pubkey => ({
+          pubkey,
+          signature: Buffer.alloc(taprootFakeSignatureSize, 0)
+        }));
+      };
+      const resolveTaprootSignatureSize = (): number => {
+        let length: number;
+        if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES') {
+          length = taprootFakeSignatureSize;
+        } else {
+          if (signatures.length !== 1)
+            throw new Error('More than one signture was not expected');
+          const singleSignature = signatures[0];
+          if (!singleSignature) throw new Error('Signatures not present');
+          length = singleSignature.signature.length;
+        }
+        return encodingLength(length) + length;
+      };
 
       if (expansion ? expansion.startsWith('pkh(') : isPKH) {
         return (
           // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1) + (sig:73) + (pubkey:34)
-          (32 + 4 + 4 + 1 + signatureSize(firstSignature) + 34) * 4 +
+          (32 + 4 + 4 + 1 + resolveEcdsaSignatureSize() + 34) * 4 +
           //Segwit:
           (isSegwitTx ? 1 : 0)
         );
@@ -1387,7 +1470,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
           41 * 4 +
           // Segwit: (push_count:1) + (sig:73) + (pubkey:34)
-          (1 + signatureSize(firstSignature) + 34)
+          (1 + resolveEcdsaSignatureSize() + 34)
         );
       } else if (expansion ? expansion.startsWith('sh(wpkh(') : isSH) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
@@ -1397,7 +1480,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           //  -> p2wpkh: (script_len:1) + (script:22)
           64 * 4 +
           // Segwit: (push_count:1) + (sig:73) + (pubkey:34)
-          (1 + signatureSize(firstSignature) + 34)
+          (1 + resolveEcdsaSignatureSize() + 34)
         );
       } else if (expansion?.startsWith('sh(wsh(')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
@@ -1407,9 +1490,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const payment = payments.p2sh({
           redeem: payments.p2wsh({
             redeem: {
-              input: this.getScriptSatisfaction(
-                signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-              ),
+              input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
+                .scriptSatisfaction,
               output: witnessScript
             }
           })
@@ -1427,9 +1509,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         if (!redeemScript) throw new Error('sh() must provide redeemScript');
         const payment = payments.p2sh({
           redeem: {
-            input: this.getScriptSatisfaction(
-              signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-            ),
+            input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
+              .scriptSatisfaction,
             output: redeemScript
           }
         });
@@ -1450,9 +1531,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         if (!witnessScript) throw new Error('wsh must provide witnessScript');
         const payment = payments.p2wsh({
           redeem: {
-            input: this.getScriptSatisfaction(
-              signatures || 'DANGEROUSLY_USE_FAKE_SIGNATURES'
-            ),
+            input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
+              .scriptSatisfaction,
             output: witnessScript
           }
         });
@@ -1466,13 +1546,24 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         );
         //when addr(SINGLE_KEY_ADDRESS) or tr(KEY) (single key):
         //TODO: only single-key taproot outputs currently supported
+      } else if (expansion?.startsWith('tr(@0,')) {
+        if (!isSegwitTx) throw new Error('Should be SegwitTx');
+        const tapTreeInfo = this.#tapTreeInfo;
+        if (!tapTreeInfo)
+          throw new Error(`Error: taproot tree info not available`);
+        const taprootSatisfaction = satisfyTapTree({
+          tapTreeInfo,
+          preimages: this.#preimages,
+          signatures: resolveTaprootSignatures()
+        });
+        return 41 * 4 + taprootSatisfaction.totalWitnessSize;
       } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
         return (
           // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
           41 * 4 +
-          // Segwit: (push_count:1) + (sig_length(1) + schnorr_sig(64): 65)
-          (1 + 65)
+          // Segwit: (push_count:1) + (sig_length(1) + schnorr_sig(64/65))
+          (1 + resolveTaprootSignatureSize())
         );
       } else {
         throw new Error(errorMsg);
@@ -1622,14 +1713,56 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         //out of the scope of this class and then passed.
 
         this.#assertPsbtInput({ index, psbt });
-        if (!this.#miniscript) {
+        if (this.#tapTreeInfo) {
+          const input = psbt.data.inputs[index];
+          const tapLeafScript = input?.tapLeafScript;
+          if (!tapLeafScript || tapLeafScript.length === 0)
+            throw new Error(
+              `Error: cannot finalize taproot script-path without tapLeafScript`
+            );
+          const tapScriptSig = input?.tapScriptSig;
+          if (!tapScriptSig || tapScriptSig.length === 0)
+            throw new Error(
+              `Error: cannot finalize taproot script-path without tapScriptSig`
+            );
+          const taprootSatisfaction =
+            this.getTapScriptSatisfaction(tapScriptSig);
+          const matchingLeaf = tapLeafScript.find(leafScript =>
+            tapleafHash({
+              output: leafScript.script,
+              version: leafScript.leafVersion
+            }).equals(taprootSatisfaction.tapLeafHash)
+          );
+          if (!matchingLeaf)
+            throw new Error(
+              `Error: tapLeafScript does not match planned tapLeafHash`
+            );
+          if (
+            !matchingLeaf.script.equals(taprootSatisfaction.leaf.tapScript) ||
+            matchingLeaf.leafVersion !== taprootSatisfaction.leaf.version
+          )
+            throw new Error(
+              `Error: tapLeafScript does not match planned leaf script`
+            );
+          const witness = [
+            ...taprootSatisfaction.stackItems,
+            matchingLeaf.script,
+            matchingLeaf.controlBlock
+          ];
+          const finalScriptWitness = witnessStackToScriptWitness(witness);
+          psbt.finalizeTaprootInput(
+            index,
+            taprootSatisfaction.tapLeafHash,
+            () => ({ finalScriptWitness })
+          );
+        } else if (!this.#miniscript) {
           //Use standard finalizers
           psbt.finalizeInput(index);
         } else {
           const signatures = psbt.data.inputs[index]?.partialSig;
           if (!signatures)
             throw new Error(`Error: cannot finalize without signatures`);
-          const scriptSatisfaction = this.getScriptSatisfaction(signatures);
+          const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
           psbt.finalizeInput(
             index,
             finalScriptsFuncFactory(scriptSatisfaction, this.#network)

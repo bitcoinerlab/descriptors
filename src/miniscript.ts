@@ -41,19 +41,55 @@ export function expandMiniscript({
       ? RE.reSegwitKeyExp
       : RE.reNonSegwitKeyExp;
   const expansionMap: ExpansionMap = {};
+  let keyIndex = 0;
+  const keyExpressionRegex = new RegExp(String.raw`^${reKeyExp}$`);
+  const replaceKeyExpression = (keyExpression: string) => {
+    const trimmed = keyExpression.trim();
+    if (!trimmed)
+      throw new Error(
+        `Error: expected a keyExpression but got ${keyExpression}`
+      );
+    if (!keyExpressionRegex.test(trimmed))
+      throw new Error(`Error: expected a keyExpression but got ${trimmed}`);
+    const key = `@${keyIndex}`;
+    keyIndex += 1;
+    expansionMap[key] = parseKeyExpression({
+      keyExpression: trimmed,
+      isSegwit,
+      isTaproot,
+      network,
+      ECPair,
+      BIP32
+    });
+    return key;
+  };
+
+  //These are the fragments where keys are allowed. Note that we only look
+  //inside these fragments to avoid problems in pregimages like sha256 which can
+  //contain hex values which could be confussed with a key
+
+  const keyFragmentRegex =
+    /\b(pk|pkh|sortedmulti_a|sortedmulti|multi_a|multi)\(([^()]*)\)/g;
   const expandedMiniscript = miniscript.replace(
-    RegExp(reKeyExp, 'g'),
-    (keyExpression: string) => {
-      const key = '@' + Object.keys(expansionMap).length;
-      expansionMap[key] = parseKeyExpression({
-        keyExpression,
-        isSegwit,
-        isTaproot,
-        network,
-        ECPair,
-        BIP32
-      });
-      return key;
+    keyFragmentRegex,
+    (_, name: string, inner: string) => {
+      if (name === 'pk' || name === 'pkh')
+        return `${name}(${replaceKeyExpression(inner)})`;
+      //now do *multi* which has arguments:
+      const parts = inner.split(',').map(part => part.trim());
+      if (parts.length < 2)
+        throw new Error(
+          `Error: invalid miniscript ${miniscript} (missing keys)`
+        );
+      const k = parts[0] ?? '';
+      if (!k)
+        throw new Error(
+          `Error: invalid miniscript ${miniscript} (missing threshold)`
+        );
+      const replacedKeys = parts
+        .slice(1)
+        .map(keyExpression => replaceKeyExpression(keyExpression));
+      return `${name}(${[k, ...replacedKeys].join(',')})`;
     }
   );
 
@@ -153,6 +189,18 @@ export function miniscript2Script({
  *
  * Pass timeConstraints to search for the first solution with this nLockTime and
  * nSequence. Throw if no solution is possible using these constraints.
+ *
+ * Time constraints are used to keep the chosen satisfaction stable between the
+ * planning pass (fake signatures) and the signing pass (real signatures).
+ * We run the satisfier once with fake signatures to discover the implied
+ * nLockTime/nSequence without requiring user signatures. If real signatures
+ * had the same length, the satisfier would typically pick the same
+ * minimal-weight solution again. But ECDSA signature sizes can vary (71–73
+ * bytes), which may change which solution is considered "smallest".
+ *
+ * Passing the previously derived timeConstraints in the second pass forces the
+ * same solution to be selected, ensuring locktime/sequence do not change
+ * between planning and finalization.
  *
  * Don't pass timeConstraints (this is the default) if you want to get the
  * smallest size solution altogether.

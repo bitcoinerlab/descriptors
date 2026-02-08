@@ -1,8 +1,14 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { parseTapTreeExpression } from '../dist/tapTree';
+import { createHash } from 'crypto';
+import {
+  parseTapTreeExpression,
+  selectTapLeafCandidates
+} from '../dist/tapTree';
+import type { TapLeafSelection } from '../dist/tapTree';
 import { DescriptorsFactory } from '../dist/descriptors';
+import { satisfyTapTree } from '../dist/tapMiniscript';
 import * as ecc from '@bitcoinerlab/secp256k1';
 
 describe('taproot tree parser', () => {
@@ -51,5 +57,98 @@ describe('taproot tree compilation', () => {
     });
     const { tapTreeInfo } = output.expand();
     expect(tapTreeInfo).toBeDefined();
+  });
+});
+
+describe('taproot tree satisfactions', () => {
+  const INTERNAL_KEY =
+    'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
+  const LEAF_KEY =
+    '669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0';
+  const PREIMAGE = Buffer.alloc(32, 1);
+  const DIGEST = createHash('sha256').update(PREIMAGE).digest('hex');
+  const DIGEST_EXPR = `sha256(${DIGEST})`;
+
+  const TREE_EXPRESSION = `{and_v(v:pk(${LEAF_KEY}),${DIGEST_EXPR}),pk(${LEAF_KEY})}`;
+  const DESCRIPTOR = `tr(${INTERNAL_KEY},${TREE_EXPRESSION})`;
+
+  const buildTapTreeInfo = () => {
+    const { expand } = DescriptorsFactory(ecc);
+    const { tapTreeInfo } = expand({ descriptor: DESCRIPTOR });
+    if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
+    return tapTreeInfo;
+  };
+
+  test('auto-selects the smallest witness leaf', () => {
+    const tapTreeInfo = buildTapTreeInfo();
+    const signatures = [
+      {
+        pubkey: Buffer.from(LEAF_KEY, 'hex'),
+        signature: Buffer.alloc(64, 2)
+      }
+    ];
+    const best = satisfyTapTree({
+      tapTreeInfo,
+      signatures,
+      preimages: [
+        {
+          digest: DIGEST_EXPR,
+          preimage: PREIMAGE.toString('hex')
+        }
+      ]
+    });
+    expect(best.leaf.miniscript).toEqual(`pk(${LEAF_KEY})`);
+  });
+
+  test('selects leaf by tapLeafHash', () => {
+    const tapTreeInfo = buildTapTreeInfo();
+    const candidates = selectTapLeafCandidates({ tapTreeInfo });
+    const target = candidates.find((entry: TapLeafSelection) =>
+      entry.leaf.miniscript.startsWith('and_v(')
+    );
+    if (!target) throw new Error('target leaf not found');
+    const signatures = [
+      {
+        pubkey: Buffer.from(LEAF_KEY, 'hex'),
+        signature: Buffer.alloc(64, 2)
+      }
+    ];
+    const best = satisfyTapTree({
+      tapTreeInfo,
+      signatures,
+      tapLeaf: target.tapLeafHash,
+      preimages: [
+        {
+          digest: DIGEST_EXPR,
+          preimage: PREIMAGE.toString('hex')
+        }
+      ]
+    });
+    expect(best.leaf.miniscript.startsWith('and_v(')).toBe(true);
+    const hasPreimage = best.stackItems.some((item: Buffer) =>
+      item.equals(PREIMAGE)
+    );
+    expect(hasPreimage).toBe(true);
+  });
+
+  test('throws when miniscript selector is ambiguous', () => {
+    const { expand } = DescriptorsFactory(ecc);
+    const duplicateDescriptor = `tr(${INTERNAL_KEY},{pk(${LEAF_KEY}),pk(${LEAF_KEY})})`;
+    const { tapTreeInfo } = expand({ descriptor: duplicateDescriptor });
+    if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
+    const signatures = [
+      {
+        pubkey: Buffer.from(LEAF_KEY, 'hex'),
+        signature: Buffer.alloc(64, 2)
+      }
+    ];
+    expect(() =>
+      satisfyTapTree({
+        tapTreeInfo,
+        signatures,
+        tapLeaf: `pk(${LEAF_KEY})`,
+        preimages: []
+      })
+    ).toThrow('ambiguous');
   });
 });
