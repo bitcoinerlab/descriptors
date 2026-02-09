@@ -1408,13 +1408,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * input in a tx.
      *
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
-      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
-      * (Script Hash-Witness Public Key Hash).
-      *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
-      * address (like those defined in BIP86).
-      * For inputs using arbitrary scripts (not standard addresses),
-      * use a descriptor in the format `sh(MINISCRIPT)`, `wsh(MINISCRIPT)` or
-      * `tr(KEY,TREE)` for taproot script-path expressions.
+     * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
+     * (Script Hash-Witness Public Key Hash).
+     *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
+     * address (like those defined in BIP86).
+     * For inputs using arbitrary scripts (not standard addresses),
+     * use a descriptor in the format `sh(MINISCRIPT)`, `wsh(MINISCRIPT)` or
+     * `tr(KEY,TREE)` for taproot script-path expressions.
      */
     // NOTE(taproot-weight): Output instances are concrete. If descriptor has
     // wildcards, constructor requires `index`. No ranged-without-index
@@ -1423,6 +1423,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     // - Annex: not modeled; if annex is used, add witness item sizing.
     // - Taproot sighash defaults: options.taprootSighash currently drives fake
     //   signature sizing; ensure coinselector passes the intended mode.
+    // - After PSBT taproot script-path fields are fully populated, add regtest
+    //   integration fixtures comparing real tx vsize with inputWeight/outputWeight
+    //   estimates for taproot key-path and script-path spends.
     inputWeight(
       /**
        * Indicates if the transaction is a Segwit transaction.
@@ -1780,7 +1783,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         //out of the scope of this class and then passed.
 
         this.#assertPsbtInput({ index, psbt });
-        if (this.#isTaproot && this.#taprootSpendPath === 'script' && !this.#tapTreeInfo)
+        if (
+          this.#isTaproot &&
+          this.#taprootSpendPath === 'script' &&
+          !this.#tapTreeInfo
+        )
           throw new Error(
             `Error: taprootSpendPath=script requires taproot tree info`
           );
