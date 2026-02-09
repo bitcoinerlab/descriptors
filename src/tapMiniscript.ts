@@ -10,9 +10,13 @@ import {
 import { encodingLength } from 'varuint-bitcoin';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type { PartialSig, TapLeafScript } from 'bip174/src/lib/interfaces';
+import type {
+  PartialSig,
+  TapBip32Derivation,
+  TapLeafScript
+} from 'bip174/src/lib/interfaces';
 import type { Taptree } from 'bitcoinjs-lib/src/types';
-import type { ExpansionMap, Preimage, TimeConstraints } from './types';
+import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,
   miniscript2Script,
@@ -123,15 +127,65 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
 }
 
 /**
- * Builds taproot PSBT metadata for all leaves in a tapTree.
+ * Builds taproot PSBT leaf metadata for every leaf in a `tapTreeInfo`.
  *
- * The returned entries include:
- * - the leaf miniscript metadata,
- * - its depth,
- * - tapLeafHash,
- * - and the control block required for script-path spends.
+ * For each leaf, this function computes:
+ * - `tapLeafHash`: BIP341 leaf hash of tapscript + leaf version
+ * - `depth`: leaf depth in the tree (root children have depth 1)
+ * - `controlBlock`: script-path proof used in PSBT `tapLeafScript`
  *
- * Leaves are returned in left-first tree order.
+ * The control block layout is:
+ *
+ * ```text
+ * [1-byte (leafVersion | parity)] [32-byte internal key]
+ * [32-byte sibling hash #1] ... [32-byte sibling hash #N]
+ * ```
+ *
+ * where:
+ * - `parity` is derived from tweaking the internal key with the tree root
+ * - sibling hashes are the merkle path from that leaf to the root
+ *
+ * Example tree:
+ *
+ * ```text
+ *         root
+ *        /    \
+ *      L1      L2
+ *             /  \
+ *           L3    L4
+ * ```
+ *
+ * Depths:
+ * - L1 depth = 1
+ * - L3 depth = 2
+ * - L4 depth = 2
+ *
+ * Conceptual output:
+ *
+ * ```text
+ * [
+ *   L1 -> { depth: 1, tapLeafHash: h1, controlBlock: [v|p, ik, hash(L2)] }
+ *   L3 -> { depth: 2, tapLeafHash: h3, controlBlock: [v|p, ik, hash(L4), hash(L1)] }
+ *   L4 -> { depth: 2, tapLeafHash: h4, controlBlock: [v|p, ik, hash(L3), hash(L1)] }
+ * ]
+ * ```
+ *
+ * Legend:
+ * - `ik`: the 32-byte internal key placed in the control block.
+ * - `hash(X)`: the merkle sibling hash at each level when proving leaf `X`.
+ *
+ * Note: in this diagram, `L2` is a branch node (right subtree), not a leaf,
+ * so `hash(L2) = TapBranch(hash(L3), hash(L4))`.
+ *
+ * Notes:
+ * - Leaves are returned in deterministic left-first order.
+ * - One metadata entry is returned per leaf.
+ * - `controlBlock.length === 33 + 32 * depth`.
+ * - Throws if internal key is invalid or merkle path cannot be found.
+ *
+ * Typical usage:
+ * - Convert this metadata into PSBT `tapLeafScript[]` entries
+ *   for all leaves.
  */
 export function buildTaprootLeafPsbtMetadata({
   tapTreeInfo,
@@ -156,6 +210,11 @@ export function buildTaprootLeafPsbtMetadata({
       throw new Error(
         `Error: could not build controlBlock for taproot leaf ${leaf.miniscript}`
       );
+    // controlBlock[0] packs:
+    // - leaf version (high bits), and
+    // - parity of the tweaked output key Q = P + t*G (low bit).
+    // `normalizedInternalPubkey` is x-only P, so parity is not encoded there.
+    // BIP341 requires carrying Q parity in controlBlock[0].
     const controlBlock = Buffer.concat([
       Buffer.from([leaf.version | tweaked.parity]),
       normalizedInternalPubkey,
@@ -182,6 +241,141 @@ export function buildTapLeafScripts({
       controlBlock
     })
   );
+}
+
+/**
+ * Builds PSBT `tapBip32Derivation` entries for taproot script-path spends.
+ *
+ * Leaf keys include the list of tapleaf hashes where they appear.
+ * If `internalKeyInfo` has derivation data, it is included with empty
+ * `leafHashes`.
+ *
+ * Example tree:
+ *
+ * ```text
+ *         root
+ *        /    \
+ *      L1      L2
+ *
+ * L1 uses key A
+ * L2 uses key A and key B
+ *
+ * h1 = tapleafHash(L1)
+ * h2 = tapleafHash(L2)
+ * ```
+ *
+ * Then output is conceptually:
+ *
+ * ```text
+ * [
+ *   key A -> leafHashes [h1, h2]
+ *   key B -> leafHashes [h2]
+ *   internal key -> leafHashes []
+ * ]
+ * ```
+ *
+ * Notes:
+ * - Keys missing `masterFingerprint` or `path` are skipped.
+ * - Duplicate pubkeys are merged.
+ * - If the same pubkey appears with conflicting derivation metadata,
+ *   this function throws.
+ * - Output and `leafHashes` are sorted deterministically.
+ */
+export function buildTaprootBip32Derivations({
+  tapTreeInfo,
+  internalKeyInfo
+}: {
+  tapTreeInfo: TapTreeInfoNode;
+  internalKeyInfo?: KeyInfo;
+}): TapBip32Derivation[] {
+  type DerivationEntry = {
+    masterFingerprint: Buffer;
+    pubkey: Buffer;
+    path: string;
+    leafHashes: Map<string, Buffer>;
+  };
+
+  const entries = new Map<string, DerivationEntry>();
+
+  const updateAndInsert = ({
+    pubkey,
+    masterFingerprint,
+    path,
+    leafHash
+  }: {
+    pubkey: Buffer;
+    masterFingerprint: Buffer;
+    path: string;
+    leafHash?: Buffer;
+  }): void => {
+    const normalizedPubkey = normalizeTaprootPubkey(pubkey);
+    const pubkeyHex = normalizedPubkey.toString('hex');
+    const current = entries.get(pubkeyHex);
+    if (!current) {
+      const next: DerivationEntry = {
+        masterFingerprint,
+        pubkey: normalizedPubkey,
+        path,
+        leafHashes: new Map<string, Buffer>()
+      };
+      if (leafHash) next.leafHashes.set(leafHash.toString('hex'), leafHash);
+      entries.set(pubkeyHex, next);
+      return;
+    }
+
+    if (
+      !current.masterFingerprint.equals(masterFingerprint) ||
+      current.path !== path
+    ) {
+      throw new Error(
+        `Error: inconsistent taproot key derivation metadata for pubkey ${pubkeyHex}`
+      );
+    }
+    if (leafHash) current.leafHashes.set(leafHash.toString('hex'), leafHash);
+  };
+
+  const leaves = collectTapTreeLeaves(tapTreeInfo);
+  for (const { leaf } of leaves) {
+    const leafHash = tapleafHash({
+      output: leaf.tapScript,
+      version: leaf.version
+    });
+    for (const keyInfo of Object.values(leaf.expansionMap)) {
+      if (!keyInfo.pubkey || !keyInfo.masterFingerprint || !keyInfo.path)
+        continue;
+      updateAndInsert({
+        pubkey: keyInfo.pubkey,
+        masterFingerprint: keyInfo.masterFingerprint,
+        path: keyInfo.path,
+        leafHash
+      });
+    }
+  }
+
+  if (
+    internalKeyInfo?.pubkey &&
+    internalKeyInfo.masterFingerprint &&
+    internalKeyInfo.path
+  ) {
+    updateAndInsert({
+      pubkey: internalKeyInfo.pubkey,
+      masterFingerprint: internalKeyInfo.masterFingerprint,
+      path: internalKeyInfo.path
+    });
+  }
+
+  return [...entries.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([, entry]): TapBip32Derivation => ({
+        masterFingerprint: entry.masterFingerprint,
+        pubkey: entry.pubkey,
+        path: entry.path,
+        leafHashes: [...entry.leafHashes.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([, leafHash]) => leafHash)
+      })
+    );
 }
 
 function varSliceSize(someScript: Buffer): number {

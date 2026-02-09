@@ -7,8 +7,10 @@ import {
   selectTapLeafCandidates
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
+import type { TapBip32Derivation } from 'bip174/src/lib/interfaces';
 import { DescriptorsFactory } from '../dist/descriptors';
 import {
+  buildTaprootBip32Derivations,
   buildTapLeafScripts,
   buildTaprootLeafPsbtMetadata,
   satisfyTapTree
@@ -42,6 +44,10 @@ describe('taproot tree compilation', () => {
     '669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0';
   const LEAF_KEY_2 =
     'e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13';
+  const XPUB_1 =
+    'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
+  const XPUB_2 =
+    'xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y';
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
     const { expand } = DescriptorsFactory(ecc);
@@ -99,6 +105,49 @@ describe('taproot tree compilation', () => {
       expect(entry.script.length).toBeGreaterThan(0);
       expect(entry.controlBlock.length).toBe(65);
       expect(entry.leafVersion).toBe(0xc0);
+    });
+  });
+
+  test('builds tapBip32Derivation entries with leafHashes for script keys', () => {
+    const { expand } = DescriptorsFactory(ecc);
+    const internal = `[00000000/111'/222']${XPUB_1}/0`;
+    const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
+    const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
+    const descriptor = `tr(${internal},{pk(${leaf1}),pk(${leaf2})})`;
+    const { tapTreeInfo, expansionMap } = expand({ descriptor });
+    if (!tapTreeInfo || !expansionMap)
+      throw new Error('tapTree data not available');
+    const internalKeyInfo = expansionMap['@0'];
+    if (!internalKeyInfo) throw new Error('internal key info not available');
+
+    const derivations = buildTaprootBip32Derivations({
+      tapTreeInfo,
+      internalKeyInfo
+    });
+    expect(derivations).toHaveLength(3);
+
+    const internalPubkey = expansionMap['@0']?.pubkey;
+    if (!internalPubkey) throw new Error('expected internal pubkey');
+
+    const derivationByPubkey = new Map<string, TapBip32Derivation>(
+      derivations.map((derivation: TapBip32Derivation) => [
+        derivation.pubkey.toString('hex'),
+        derivation
+      ])
+    );
+
+    const internalDerivation = derivationByPubkey.get(
+      internalPubkey.toString('hex')
+    );
+    expect(internalDerivation).toBeDefined();
+    expect(internalDerivation?.leafHashes).toHaveLength(0);
+
+    const scriptDerivations = derivations.filter(
+      entry => !entry.pubkey.equals(internalPubkey)
+    );
+    expect(scriptDerivations).toHaveLength(2);
+    scriptDerivations.forEach(entry => {
+      expect(entry.leafHashes).toHaveLength(1);
     });
   });
 
