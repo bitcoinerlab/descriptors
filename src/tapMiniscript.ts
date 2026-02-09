@@ -10,11 +10,7 @@ import {
 import { encodingLength } from 'varuint-bitcoin';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type {
-  PartialSig,
-  TapBip32Derivation,
-  TapLeafScript
-} from 'bip174/src/lib/interfaces';
+import type { PartialSig, TapBip32Derivation } from 'bip174/src/lib/interfaces';
 import type { Taptree } from 'bitcoinjs-lib/src/types';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
@@ -222,25 +218,6 @@ export function buildTaprootLeafPsbtMetadata({
     ]);
     return { leaf, depth, tapLeafHash, controlBlock };
   });
-}
-
-/**
- * Builds all `tapLeafScript` entries to be added in a PSBT input.
- */
-export function buildTapLeafScripts({
-  tapTreeInfo,
-  internalPubkey
-}: {
-  tapTreeInfo: TapTreeInfoNode;
-  internalPubkey: Buffer;
-}): TapLeafScript[] {
-  return buildTaprootLeafPsbtMetadata({ tapTreeInfo, internalPubkey }).map(
-    ({ leaf, controlBlock }) => ({
-      script: leaf.tapScript,
-      leafVersion: leaf.version,
-      controlBlock
-    })
-  );
 }
 
 /**

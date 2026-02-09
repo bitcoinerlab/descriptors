@@ -4,7 +4,8 @@
 import type {
   PsbtInput,
   Bip32Derivation,
-  TapBip32Derivation
+  TapBip32Derivation,
+  TapLeafScript
 } from 'bip174/src/lib/interfaces';
 import type { KeyInfo } from './types';
 import {
@@ -144,6 +145,8 @@ export function addPsbtInput({
   scriptPubKey,
   isSegwit,
   tapInternalKey,
+  tapLeafScript,
+  tapBip32Derivation,
   witnessScript,
   redeemScript,
   rbf
@@ -160,6 +163,10 @@ export function addPsbtInput({
   isSegwit: boolean;
   /** for taproot **/
   tapInternalKey?: Buffer | undefined;
+  /** for taproot script-path **/
+  tapLeafScript?: TapLeafScript[] | undefined;
+  /** for taproot **/
+  tapBip32Derivation?: TapBip32Derivation[] | undefined;
   witnessScript: Buffer | undefined;
   redeemScript: Buffer | undefined;
   rbf: boolean;
@@ -245,7 +252,7 @@ export function addPsbtInput({
 
   if (tapInternalKey) {
     //Taproot
-    const tapBip32Derivation = keysInfo
+    const fallbackTapBip32Derivation = keysInfo
       .filter(
         (keyInfo: KeyInfo) =>
           keyInfo.pubkey && keyInfo.masterFingerprint && keyInfo.path
@@ -258,18 +265,18 @@ export function addPsbtInput({
           masterFingerprint: keyInfo.masterFingerprint!,
           pubkey,
           path: keyInfo.path!,
-          leafHashes: [] // TODO: Empty array for tr(KEY) taproot key spend - this is the only type currently supported
+          leafHashes: []
         };
       });
 
-    if (tapBip32Derivation.length)
-      input.tapBip32Derivation = tapBip32Derivation;
-    input.tapInternalKey = tapInternalKey;
+    const resolvedTapBip32Derivation =
+      tapBip32Derivation || fallbackTapBip32Derivation;
 
-    //TODO: currently only single-key taproot supported.
-    //https://github.com/bitcoinjs/bitcoinjs-lib/blob/6ba8bb3ce20ba533eeaba6939cfc2891576d9969/test/integration/taproot.spec.ts#L243
-    if (tapBip32Derivation.length > 1)
-      throw new Error('Only single key taproot inputs are currently supported');
+    if (resolvedTapBip32Derivation.length)
+      input.tapBip32Derivation = resolvedTapBip32Derivation;
+    input.tapInternalKey = tapInternalKey;
+    if (tapLeafScript && tapLeafScript.length > 0)
+      input.tapLeafScript = tapLeafScript;
   } else {
     const bip32Derivation = keysInfo
       .filter(

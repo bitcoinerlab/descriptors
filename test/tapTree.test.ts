@@ -8,10 +8,10 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation } from 'bip174/src/lib/interfaces';
+import { Psbt } from 'bitcoinjs-lib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import {
   buildTaprootBip32Derivations,
-  buildTapLeafScripts,
   buildTaprootLeafPsbtMetadata,
   satisfyTapTree
 } from '../dist/tapMiniscript';
@@ -99,7 +99,11 @@ describe('taproot tree compilation', () => {
       expect((entry.controlBlock.length - 33) % 32).toBe(0);
     });
 
-    const tapLeafScripts = buildTapLeafScripts({ tapTreeInfo, internalPubkey });
+    const tapLeafScripts = metadata.map(({ leaf, controlBlock }) => ({
+      script: leaf.tapScript,
+      leafVersion: leaf.version,
+      controlBlock
+    }));
     expect(tapLeafScripts).toHaveLength(2);
     tapLeafScripts.forEach(entry => {
       expect(entry.script.length).toBeGreaterThan(0);
@@ -149,6 +153,76 @@ describe('taproot tree compilation', () => {
     scriptDerivations.forEach(entry => {
       expect(entry.leafHashes).toHaveLength(1);
     });
+  });
+
+  test('updatePsbtAsInput populates taproot script-path PSBT fields', () => {
+    const { Output } = DescriptorsFactory(ecc);
+    const internal = `[00000000/111'/222']${XPUB_1}/0`;
+    const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
+    const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
+    const descriptor = `tr(${internal},{pk(${leaf1}),pk(${leaf2})})`;
+    const output = new Output({
+      descriptor,
+      taprootSpendPath: 'script'
+    });
+    const psbt = new Psbt();
+    output.updatePsbtAsInput({
+      psbt,
+      txId: '11'.repeat(32),
+      value: 50000,
+      vout: 0
+    });
+
+    const input = psbt.data.inputs[0];
+    if (!input) throw new Error('missing psbt input');
+    expect(input.tapInternalKey).toBeInstanceOf(Buffer);
+    expect(input.tapInternalKey?.length).toBe(32);
+    expect(input.tapLeafScript).toBeDefined();
+    expect(input.tapLeafScript).toHaveLength(2);
+    input.tapLeafScript?.forEach(entry => {
+      expect(entry.script.length).toBeGreaterThan(0);
+      expect(entry.controlBlock.length).toBe(65);
+    });
+    expect(input.tapBip32Derivation).toBeDefined();
+    expect(input.tapBip32Derivation).toHaveLength(3);
+
+    const internalPubkey = output.expand().expansionMap?.['@0']?.pubkey;
+    if (!internalPubkey) throw new Error('expected internal pubkey');
+    const internalDerivation = input.tapBip32Derivation?.find(entry =>
+      entry.pubkey.equals(internalPubkey)
+    );
+    expect(internalDerivation?.leafHashes).toHaveLength(0);
+    const scriptDerivations =
+      input.tapBip32Derivation?.filter(
+        entry => !entry.pubkey.equals(internalPubkey)
+      ) || [];
+    expect(scriptDerivations).toHaveLength(2);
+    scriptDerivations.forEach(entry => {
+      expect(entry.leafHashes).toHaveLength(1);
+    });
+  });
+
+  test('updatePsbtAsInput in key policy does not add tapLeafScript', () => {
+    const { Output } = DescriptorsFactory(ecc);
+    const internal = `[00000000/111'/222']${XPUB_1}/0`;
+    const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
+    const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
+    const descriptor = `tr(${internal},{pk(${leaf1}),pk(${leaf2})})`;
+    const output = new Output({
+      descriptor,
+      taprootSpendPath: 'key'
+    });
+    const psbt = new Psbt();
+    output.updatePsbtAsInput({
+      psbt,
+      txId: '22'.repeat(32),
+      value: 50000,
+      vout: 0
+    });
+
+    const input = psbt.data.inputs[0];
+    if (!input) throw new Error('missing psbt input');
+    expect(input.tapLeafScript).toBeUndefined();
   });
 
   test('fails fast when script policy is used on key-only taproot', () => {

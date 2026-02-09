@@ -43,6 +43,8 @@ import {
 import { parseTapTreeExpression } from './tapTree';
 import type { TapTreeInfoNode, TapTreeNode } from './tapTree';
 import {
+  buildTaprootLeafPsbtMetadata,
+  buildTaprootBip32Derivations,
   buildTapTreeInfo,
   collectTapTreePubkeys,
   normalizeTaprootPubkey,
@@ -1737,15 +1739,49 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           `Error: could not determine whether this is a taproot descriptor`
         );
       }
+      const tapInternalKey = isTaproot
+        ? this.getPayment().internalPubkey
+        : undefined;
+      let tapLeafScript;
+      let tapBip32Derivation;
+      if (isTaproot && this.#taprootSpendPath === 'script') {
+        const tapTreeInfo = this.#tapTreeInfo;
+        if (!tapTreeInfo)
+          throw new Error(
+            `Error: taprootSpendPath=script requires taproot tree info`
+          );
+        if (!tapInternalKey)
+          throw new Error(
+            `Error: taprootSpendPath=script requires taproot internal key`
+          );
+        const taprootLeafMetadata = buildTaprootLeafPsbtMetadata({
+          tapTreeInfo,
+          internalPubkey: tapInternalKey
+        });
+        tapLeafScript = taprootLeafMetadata.map(({ leaf, controlBlock }) => ({
+          script: leaf.tapScript,
+          leafVersion: leaf.version,
+          controlBlock
+        }));
+        const internalKeyInfo = this.#expansionMap?.['@0'];
+        if (!internalKeyInfo)
+          throw new Error(
+            `Error: taproot internal key info not available in expansionMap`
+          );
+        tapBip32Derivation = buildTaprootBip32Derivations({
+          tapTreeInfo,
+          internalKeyInfo
+        });
+      }
       const index = addPsbtInput({
         psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
-        ...(isTaproot
-          ? { tapInternalKey: this.getPayment().internalPubkey }
-          : {}),
+        tapInternalKey,
+        tapLeafScript,
+        tapBip32Derivation,
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
