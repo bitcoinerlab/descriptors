@@ -8,8 +8,9 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation } from 'bip174/src/lib/interfaces';
-import { Psbt } from 'bitcoinjs-lib';
+import { Psbt, Transaction } from 'bitcoinjs-lib';
 import { DescriptorsFactory } from '../dist/descriptors';
+import { signInputECPair } from '../dist/signers';
 import {
   buildTaprootBip32Derivations,
   buildTaprootLeafPsbtMetadata,
@@ -48,6 +49,15 @@ describe('taproot tree compilation', () => {
     'xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL';
   const XPUB_2 =
     'xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y';
+
+  const xOnly = (pubkey: Buffer): string => pubkey.slice(1, 33).toString('hex');
+
+  const buildFundingTxHex = (scriptPubKey: Buffer, value = 50000): string => {
+    const tx = new Transaction();
+    tx.addInput(Buffer.alloc(32, 0), 0);
+    tx.addOutput(scriptPubKey, value);
+    return tx.toHex();
+  };
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
     const { expand } = DescriptorsFactory(ecc);
@@ -223,6 +233,81 @@ describe('taproot tree compilation', () => {
     const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
     expect(input.tapLeafScript).toBeUndefined();
+  });
+
+  test('script policy signs and finalizes through script-path', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 1));
+    const leafSignerA = ECPair.fromPrivateKey(Buffer.alloc(32, 2));
+    const leafSignerB = ECPair.fromPrivateKey(Buffer.alloc(32, 3));
+    const leafA = `pk(${xOnly(leafSignerA.publicKey)})`;
+    const leafB = `pk(${xOnly(leafSignerB.publicKey)})`;
+    const descriptor = `tr(${xOnly(internalSigner.publicKey)},{${leafA},${leafB}})`;
+    const output = new Output({
+      descriptor,
+      taprootSpendPath: 'script',
+      tapLeaf: leafA
+    });
+
+    const txHex = buildFundingTxHex(output.getScriptPubKey());
+    const psbt = new Psbt();
+    const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
+    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+
+    signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
+    finalize({ psbt });
+
+    const witness = psbt.extractTransaction().ins[0]?.witness;
+    if (!witness) throw new Error('witness not available');
+    expect(witness.length).toBeGreaterThanOrEqual(3);
+    const controlBlock = witness[witness.length - 1];
+    if (!controlBlock) throw new Error('missing control block');
+    expect(controlBlock.length).toBe(65);
+  });
+
+  test('script policy finalizer requires tapScriptSig', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 4));
+    const leafSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 5));
+    const leaf = `pk(${xOnly(leafSigner.publicKey)})`;
+    const descriptor = `tr(${xOnly(internalSigner.publicKey)},${leaf})`;
+    const output = new Output({
+      descriptor,
+      taprootSpendPath: 'script',
+      tapLeaf: leaf
+    });
+
+    const txHex = buildFundingTxHex(output.getScriptPubKey());
+    const psbt = new Psbt();
+    const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
+    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+
+    expect(() => finalize({ psbt, validate: false })).toThrow(
+      'cannot finalize taproot script-path without tapScriptSig'
+    );
+  });
+
+  test('key-path taproot signs and finalizes without tapLeafScript', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const signer = ECPair.fromPrivateKey(Buffer.alloc(32, 6));
+    const descriptor = `tr(${xOnly(signer.publicKey)})`;
+    const output = new Output({ descriptor });
+
+    const txHex = buildFundingTxHex(output.getScriptPubKey());
+    const psbt = new Psbt();
+    const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
+    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+
+    const input = psbt.data.inputs[0];
+    if (!input) throw new Error('missing psbt input');
+    expect(input.tapLeafScript).toBeUndefined();
+
+    signInputECPair({ psbt, index: 0, ecpair: signer });
+    finalize({ psbt });
+
+    const witness = psbt.extractTransaction().ins[0]?.witness;
+    if (!witness) throw new Error('witness not available');
+    expect(witness.length).toBe(1);
   });
 
   test('fails fast when script policy is used on key-only taproot', () => {
