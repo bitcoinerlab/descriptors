@@ -1,10 +1,16 @@
 // Distributed under the MIT software license
 
 import { script as bscript, networks, Network } from 'bitcoinjs-lib';
+import {
+  findScriptPath,
+  tapleafHash,
+  toHashTree,
+  tweakKey
+} from 'bitcoinjs-lib/src/payments/bip341';
 import { encodingLength } from 'varuint-bitcoin';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { PartialSig, TapLeafScript } from 'bip174/src/lib/interfaces';
 import type { Taptree } from 'bitcoinjs-lib/src/types';
 import type { ExpansionMap, Preimage, TimeConstraints } from './types';
 import {
@@ -26,6 +32,13 @@ export type TaprootLeafSatisfaction = {
   nLockTime: number | undefined;
   nSequence: number | undefined;
   totalWitnessSize: number;
+};
+
+export type TaprootPsbtLeafMetadata = {
+  leaf: TapLeafInfo;
+  depth: number;
+  tapLeafHash: Buffer;
+  controlBlock: Buffer;
 };
 
 function expandTaprootMiniscript({
@@ -107,6 +120,68 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
     tapTreeInfoToScriptTree(tapTreeInfo.left),
     tapTreeInfoToScriptTree(tapTreeInfo.right)
   ];
+}
+
+/**
+ * Builds taproot PSBT metadata for all leaves in a tapTree.
+ *
+ * The returned entries include:
+ * - the leaf miniscript metadata,
+ * - its depth,
+ * - tapLeafHash,
+ * - and the control block required for script-path spends.
+ *
+ * Leaves are returned in left-first tree order.
+ */
+export function buildTaprootLeafPsbtMetadata({
+  tapTreeInfo,
+  internalPubkey
+}: {
+  tapTreeInfo: TapTreeInfoNode;
+  internalPubkey: Buffer;
+}): TaprootPsbtLeafMetadata[] {
+  const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
+  const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
+  const hashTree = toHashTree(scriptTree);
+  const tweaked = tweakKey(normalizedInternalPubkey, hashTree.hash);
+  if (!tweaked) throw new Error(`Error: invalid taproot internal pubkey`);
+
+  return collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => {
+    const tapLeafHash = tapleafHash({
+      output: leaf.tapScript,
+      version: leaf.version
+    });
+    const merklePath = findScriptPath(hashTree, tapLeafHash);
+    if (!merklePath)
+      throw new Error(
+        `Error: could not build controlBlock for taproot leaf ${leaf.miniscript}`
+      );
+    const controlBlock = Buffer.concat([
+      Buffer.from([leaf.version | tweaked.parity]),
+      normalizedInternalPubkey,
+      ...merklePath
+    ]);
+    return { leaf, depth, tapLeafHash, controlBlock };
+  });
+}
+
+/**
+ * Builds all `tapLeafScript` entries to be added in a PSBT input.
+ */
+export function buildTapLeafScripts({
+  tapTreeInfo,
+  internalPubkey
+}: {
+  tapTreeInfo: TapTreeInfoNode;
+  internalPubkey: Buffer;
+}): TapLeafScript[] {
+  return buildTaprootLeafPsbtMetadata({ tapTreeInfo, internalPubkey }).map(
+    ({ leaf, controlBlock }) => ({
+      script: leaf.tapScript,
+      leafVersion: leaf.version,
+      controlBlock
+    })
+  );
 }
 
 function varSliceSize(someScript: Buffer): number {

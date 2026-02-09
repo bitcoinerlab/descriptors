@@ -8,7 +8,11 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import { DescriptorsFactory } from '../dist/descriptors';
-import { satisfyTapTree } from '../dist/tapMiniscript';
+import {
+  buildTapLeafScripts,
+  buildTaprootLeafPsbtMetadata,
+  satisfyTapTree
+} from '../dist/tapMiniscript';
 import * as ecc from '@bitcoinerlab/secp256k1';
 
 describe('taproot tree parser', () => {
@@ -34,6 +38,10 @@ describe('taproot tree parser', () => {
 describe('taproot tree compilation', () => {
   const INTERNAL_KEY =
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
+  const LEAF_KEY_1 =
+    '669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0';
+  const LEAF_KEY_2 =
+    'e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13';
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
     const { expand } = DescriptorsFactory(ecc);
@@ -60,6 +68,38 @@ describe('taproot tree compilation', () => {
     });
     const { tapTreeInfo } = output.expand();
     expect(tapTreeInfo).toBeDefined();
+  });
+
+  test('builds PSBT taproot leaf metadata for all leaves', () => {
+    const { expand } = DescriptorsFactory(ecc);
+    const descriptor = `tr(${INTERNAL_KEY},{pk(${LEAF_KEY_1}),pk(${LEAF_KEY_2})})`;
+    const { tapTreeInfo, expansionMap } = expand({ descriptor });
+    if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
+    const internalPubkey = expansionMap?.['@0']?.pubkey;
+    if (!internalPubkey) throw new Error('internal pubkey not available');
+
+    const metadata = buildTaprootLeafPsbtMetadata({
+      tapTreeInfo,
+      internalPubkey
+    });
+    //console.log(JSON.stringify(metadata, null, 2));
+    expect(metadata).toHaveLength(2);
+    const hashes = new Set(
+      metadata.map(entry => entry.tapLeafHash.toString('hex'))
+    );
+    expect(hashes.size).toBe(2);
+    metadata.forEach(entry => {
+      expect(entry.controlBlock.length).toBe(65);
+      expect((entry.controlBlock.length - 33) % 32).toBe(0);
+    });
+
+    const tapLeafScripts = buildTapLeafScripts({ tapTreeInfo, internalPubkey });
+    expect(tapLeafScripts).toHaveLength(2);
+    tapLeafScripts.forEach(entry => {
+      expect(entry.script.length).toBeGreaterThan(0);
+      expect(entry.controlBlock.length).toBe(65);
+      expect(entry.leafVersion).toBe(0xc0);
+    });
   });
 
   test('fails fast when script policy is used on key-only taproot', () => {
