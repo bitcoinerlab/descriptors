@@ -32,6 +32,9 @@ describe('taproot tree parser', () => {
 });
 
 describe('taproot tree compilation', () => {
+  const INTERNAL_KEY =
+    'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
+
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
     const { expand } = DescriptorsFactory(ecc);
     const { tapTreeInfo } = expand({
@@ -49,7 +52,7 @@ describe('taproot tree compilation', () => {
     expect(tapTreeInfo.tapScript.length).toBeGreaterThan(0);
   });
 
-  test.skip('builds tapTreeInfo for Output (task 6)', () => {
+  test('builds tapTreeInfo for Output (task 6)', () => {
     const { Output } = DescriptorsFactory(ecc);
     const output = new Output({
       descriptor:
@@ -57,6 +60,30 @@ describe('taproot tree compilation', () => {
     });
     const { tapTreeInfo } = output.expand();
     expect(tapTreeInfo).toBeDefined();
+  });
+
+  test('fails fast when script policy is used on key-only taproot', () => {
+    const { Output } = DescriptorsFactory(ecc);
+    expect(
+      () =>
+        new Output({
+          descriptor: `tr(${INTERNAL_KEY})`,
+          taprootSpendPath: 'script'
+        })
+    ).toThrow('taprootSpendPath=script requires a tr(KEY,TREE) descriptor');
+  });
+
+  test('fails fast when script policy is used on addr(TR_ADDRESS)', () => {
+    const { Output } = DescriptorsFactory(ecc);
+    const keyOutput = new Output({ descriptor: `tr(${INTERNAL_KEY})` });
+    const trAddress = keyOutput.getAddress();
+    expect(
+      () =>
+        new Output({
+          descriptor: `addr(${trAddress})`,
+          taprootSpendPath: 'script'
+        })
+    ).toThrow('taprootSpendPath=script requires a tr(KEY,TREE) descriptor');
   });
 });
 

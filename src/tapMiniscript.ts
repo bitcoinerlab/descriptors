@@ -5,6 +5,7 @@ import { encodingLength } from 'varuint-bitcoin';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
 import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { Taptree } from 'bitcoinjs-lib/src/types';
 import type { ExpansionMap, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,
@@ -95,6 +96,19 @@ export function buildTapTreeInfo({
   };
 }
 
+export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
+  if ('miniscript' in tapTreeInfo) {
+    return {
+      output: tapTreeInfo.tapScript,
+      version: tapTreeInfo.version
+    };
+  }
+  return [
+    tapTreeInfoToScriptTree(tapTreeInfo.left),
+    tapTreeInfoToScriptTree(tapTreeInfo.right)
+  ];
+}
+
 function varSliceSize(someScript: Buffer): number {
   const length = someScript.length;
   return encodingLength(length) + length;
@@ -170,7 +184,7 @@ function estimateTaprootWitnessSize({
   return witnessStackSize([...stackItems, tapScript, controlBlock]);
 }
 
-function normalizeTaprootPubkey(pubkey: Buffer): Buffer {
+export function normalizeTaprootPubkey(pubkey: Buffer): Buffer {
   if (pubkey.length === 32) return pubkey;
   if (pubkey.length === 33) return pubkey.slice(1, 33);
   throw new Error(`Error: invalid taproot pubkey length`);

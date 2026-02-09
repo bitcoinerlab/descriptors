@@ -45,6 +45,8 @@ import type { TapTreeInfoNode, TapTreeNode } from './tapTree';
 import {
   buildTapTreeInfo,
   collectTapTreePubkeys,
+  normalizeTaprootPubkey,
+  tapTreeInfoToScriptTree,
   satisfyTapTree
 } from './tapMiniscript';
 import type { TaprootLeafSatisfaction } from './tapMiniscript';
@@ -724,20 +726,28 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       if (treeExpression) {
         tapTreeExpression = treeExpression;
         tapTree = parseTapTreeExpression(treeExpression);
-        //FIXME: isCanonicalRanged is tricky here cause we may have
-        //ranged script paths that we dont take and can also spend
-        //using the internal key...
         if (!isCanonicalRanged) {
           tapTreeInfo = buildTapTreeInfo({ tapTree, network, BIP32, ECPair });
         }
       }
-      if (!isCanonicalRanged && !treeExpression) {
+      if (!isCanonicalRanged) {
         const pubkey = pKE.pubkey;
         if (!pubkey)
           throw new Error(
             `Error: could not extract a pubkey from ${descriptor}`
           );
-        payment = p2tr({ internalPubkey: pubkey, network });
+        const internalPubkey = normalizeTaprootPubkey(pubkey);
+        if (treeExpression) {
+          if (!tapTreeInfo)
+            throw new Error(`Error: taproot tree info not available`);
+          payment = p2tr({
+            internalPubkey,
+            scriptTree: tapTreeInfoToScriptTree(tapTreeInfo),
+            network
+          });
+        } else {
+          payment = p2tr({ internalPubkey, network });
+        }
       }
     } else {
       throw new Error(`Error: Could not parse descriptor ${descriptor}`);
@@ -812,6 +822,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     readonly #tapTreeExpression?: string;
     readonly #tapTree?: TapTreeNode;
     readonly #tapTreeInfo?: TapTreeInfoNode;
+    readonly #taprootSpendPath: 'key' | 'script';
+    readonly #tapLeaf?: Buffer | string;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
@@ -825,7 +837,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       allowMiniscriptInP2SH = false,
       network = networks.bitcoin,
       preimages = [],
-      signersPubKeys
+      signersPubKeys,
+      taprootSpendPath,
+      tapLeaf
     }: {
       /**
        * The descriptor string in ASCII format. It may include a "*" to denote an arbitrary index (aka ranged descriptors).
@@ -834,6 +848,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
 
       /**
        * The descriptor's index in the case of a range descriptor (must be an integer >=0).
+       *
+       * This `Output` class always models a concrete spendable output.
+       * If the descriptor contains any wildcard (`*`), an `index` is required.
        */
       index?: number;
 
@@ -891,6 +908,30 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * answer](https://bitcoin.stackexchange.com/a/118036/89665).
        */
       signersPubKeys?: Buffer[];
+
+      /**
+       * Taproot spend path policy. Use `key` to force key-path estimation,
+       * or `script` to estimate script-path spends.
+       *
+       * This setting only applies to `tr(KEY,TREE)` descriptors.
+       * For `tr(KEY)` descriptors, only key-path is available.
+       *
+       * When `script` is selected:
+       * - if `tapLeaf` is provided, that leaf is used.
+       * - if `tapLeaf` is omitted, the satisfier auto-selects the leaf with the
+       *   smallest witness among satisfiable candidates.
+       *
+       * Default policy is `script` for `tr(KEY,TREE)` and `key` for key-only
+       * taproot descriptors (`tr(KEY)` and `addr(TR_ADDRESS)`).
+       */
+      taprootSpendPath?: 'key' | 'script';
+
+      /**
+       * Optional taproot leaf selector (tapleaf hash or miniscript string).
+       * Only used when taprootSpendPath is `script` and descriptor is
+       * `tr(KEY,TREE)`. If omitted, the smallest satisfiable leaf is selected.
+       */
+      tapLeaf?: Buffer | string;
     }) {
       this.#network = network;
       this.#preimages = preimages;
@@ -904,6 +945,30 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         network,
         allowMiniscriptInP2SH
       });
+      const isTaprootDescriptor = expandedResult.isTaproot === true;
+      const hasTapTree =
+        expandedResult.expandedExpression?.startsWith('tr(@0,') ?? false;
+      const resolvedTaprootSpendPath: 'key' | 'script' =
+        taprootSpendPath ?? (hasTapTree ? 'script' : 'key');
+      if (!isTaprootDescriptor) {
+        if (taprootSpendPath !== undefined || tapLeaf !== undefined)
+          throw new Error(
+            `Error: taprootSpendPath/tapLeaf require a taproot descriptor`
+          );
+      } else {
+        if (taprootSpendPath === 'script' && !hasTapTree)
+          throw new Error(
+            `Error: taprootSpendPath=script requires a tr(KEY,TREE) descriptor`
+          );
+        if (resolvedTaprootSpendPath === 'key' && tapLeaf !== undefined)
+          throw new Error(
+            `Error: tapLeaf cannot be used when taprootSpendPath is key`
+          );
+        if (tapLeaf !== undefined && !hasTapTree)
+          throw new Error(
+            `Error: tapLeaf can only be used with tr(KEY,TREE) descriptors`
+          );
+      }
       if (expandedResult.isRanged && index === undefined)
         throw new Error(`Error: index was not provided for ranged descriptor`);
       if (!expandedResult.payment)
@@ -936,6 +1001,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         this.#witnessScript = expandedResult.witnessScript;
 
       if (signersPubKeys) this.#signersPubKeys = signersPubKeys;
+      this.#taprootSpendPath = resolvedTaprootSpendPath;
+      if (tapLeaf !== undefined) this.#tapLeaf = tapLeaf;
       this.getSequence = memoize(this.getSequence);
       this.getLockTime = memoize(this.getLockTime);
       const getSignaturesKey = (
@@ -1050,11 +1117,6 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       const tapTreeInfo = this.#tapTreeInfo;
       if (!tapTreeInfo)
         throw new Error(`Error: taproot tree info not available`);
-      const normalizeTaprootPubkey = (pubkey: Buffer): Buffer => {
-        if (pubkey.length === 32) return pubkey;
-        if (pubkey.length === 33) return pubkey.slice(1, 33);
-        throw new Error(`Error: invalid taproot pubkey length`);
-      };
       const candidatePubkeys = this.#signersPubKeys
         ? this.#signersPubKeys.map(normalizeTaprootPubkey)
         : collectTapTreePubkeys(tapTreeInfo);
@@ -1082,6 +1144,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        */
       signatures: PartialSig[]
     ): TaprootLeafSatisfaction {
+      if (this.#taprootSpendPath !== 'script')
+        throw new Error(
+          `Error: taprootSpendPath is key; script-path satisfaction is not allowed`
+        );
       const tapTreeInfo = this.#tapTreeInfo;
       if (!tapTreeInfo)
         throw new Error(`Error: taproot tree info not available`);
@@ -1153,7 +1219,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           preimages
         });
         return { nLockTime, nSequence, tapLeafHash: undefined };
-      } else if (tapTreeInfo) {
+      } else if (tapTreeInfo && this.#taprootSpendPath === 'script') {
         const fakeSignatures = this.#resolveTapTreeSignersPubKeys().map(
           pubkey => ({
             pubkey,
@@ -1163,7 +1229,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const { nLockTime, nSequence, tapLeafHash } = satisfyTapTree({
           tapTreeInfo,
           preimages: this.#preimages,
-          signatures: fakeSignatures
+          signatures: fakeSignatures,
+          ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {})
         });
         return { nLockTime, nSequence, tapLeafHash };
       }
@@ -1341,24 +1408,18 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * input in a tx.
      *
      * *NOTE:* When the descriptor in an input is `addr(address)`, it is assumed
-     * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
-     * (Script Hash-Witness Public Key Hash).
-     *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
-     * address (like those defined in BIP86).
-     * For inputs using arbitrary scripts (not standard addresses),
-     * use a descriptor in the format `sh(MINISCRIPT)` or `tr(MINISCRIPT)`.
-     * Note however that tr(MINISCRIPT) is not yet supported for non-single-key
-     * expressions.
+      * that any `addr(SH_TYPE_ADDRESS)` is in fact a Segwit `SH_WPKH`
+      * (Script Hash-Witness Public Key Hash).
+      *, Also any `addr(SINGLE_KEY_ADDRESS)` * is assumed to be a single key Taproot
+      * address (like those defined in BIP86).
+      * For inputs using arbitrary scripts (not standard addresses),
+      * use a descriptor in the format `sh(MINISCRIPT)`, `wsh(MINISCRIPT)` or
+      * `tr(KEY,TREE)` for taproot script-path expressions.
      */
-    // TODO:(taproot-weight): Pending questions to resolve:
-    // - tr(@0,...) estimates: should we always assume script-path spend, or take
-    //   min(key-path, script-path), or allow caller selection?
-    // - Leaf selection: inputWeight currently auto-selects the smallest witness
-    //   leaf; if a specific leaf is intended (policy or external tapLeaf
-    //   selector), we need an option to pass a tapLeaf hash or miniscript string.
-    // - Ranged tapTree descriptors: expand() skips tapTreeInfo for canonical
-    //   ranged trees; inputWeight should handle per-index compilation or provide
-    //   a safe estimate without tapTreeInfo.
+    // NOTE(taproot-weight): Output instances are concrete. If descriptor has
+    // wildcards, constructor requires `index`. No ranged-without-index
+    // estimation is attempted here.
+    // TODO(taproot-weight): Remaining items:
     // - Annex: not modeled; if annex is used, add witness item sizing.
     // - Taproot sighash defaults: options.taprootSighash currently drives fake
     //   signature sizing; ensure coinselector passes the intended mode.
@@ -1377,7 +1438,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        *  a public key and its corresponding signature. This parameter
        *  enables the accurate calculation of signature sizes for ECDSA.
        *  Pass 'DANGEROUSLY_USE_FAKE_SIGNATURES' to assume
-       *  72 bytes for ECDSA.
+       *  ECDSA_FAKE_SIGNATURE_SIZE bytes for ECDSA.
        *  For taproot, the fake signature size is controlled by
        *  options.taprootSighash (64 for 'SIGHASH_DEFAULT', 65
        *  for 'non-SIGHASH_DEFAULT'). default value is SIGHASH_DEFAULT
@@ -1456,6 +1517,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         }
         return encodingLength(length) + length;
       };
+
+      const taprootSpendPath = this.#taprootSpendPath;
+      const tapLeaf = this.#tapLeaf;
 
       if (expansion ? expansion.startsWith('pkh(') : isPKH) {
         return (
@@ -1544,17 +1608,20 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           //Segwit
           vectorSize(payment.witness)
         );
-        //when addr(SINGLE_KEY_ADDRESS) or tr(KEY) (single key):
-        //TODO: only single-key taproot outputs currently supported
+        // when tr(KEY,TREE): choose key-path or script-path based on
+        // constructor taprootSpendPath policy.
       } else if (expansion?.startsWith('tr(@0,')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
-        const tapTreeInfo = this.#tapTreeInfo;
-        if (!tapTreeInfo)
+        if (taprootSpendPath === 'key')
+          return 41 * 4 + encodingLength(1) + resolveTaprootSignatureSize();
+        const resolvedTapTreeInfo = this.#tapTreeInfo;
+        if (!resolvedTapTreeInfo)
           throw new Error(`Error: taproot tree info not available`);
         const taprootSatisfaction = satisfyTapTree({
-          tapTreeInfo,
+          tapTreeInfo: resolvedTapTreeInfo,
           preimages: this.#preimages,
-          signatures: resolveTaprootSignatures()
+          signatures: resolveTaprootSignatures(),
+          ...(tapLeaf !== undefined ? { tapLeaf } : {})
         });
         return 41 * 4 + taprootSatisfaction.totalWitnessSize;
       } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
@@ -1563,7 +1630,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           // Non-segwit: (txid:32) + (vout:4) + (sequence:4) + (script_len:1)
           41 * 4 +
           // Segwit: (push_count:1) + (sig_length(1) + schnorr_sig(64/65))
-          (1 + resolveTaprootSignatureSize())
+          (encodingLength(1) + resolveTaprootSignatureSize())
         );
       } else {
         throw new Error(errorMsg);
@@ -1713,7 +1780,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         //out of the scope of this class and then passed.
 
         this.#assertPsbtInput({ index, psbt });
-        if (this.#tapTreeInfo) {
+        if (this.#isTaproot && this.#taprootSpendPath === 'script' && !this.#tapTreeInfo)
+          throw new Error(
+            `Error: taprootSpendPath=script requires taproot tree info`
+          );
+        if (this.#tapTreeInfo && this.#taprootSpendPath === 'script') {
           const input = psbt.data.inputs[index];
           const tapLeafScript = input?.tapLeafScript;
           if (!tapLeafScript || tapLeafScript.length === 0)

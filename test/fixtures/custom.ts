@@ -705,13 +705,5 @@ export const fixtures = {
       checksumRequired: false,
       throw: 'Error: Miniscript expressions can only be used in wsh'
     },
-    {
-      note: 'Invalid Taproot descriptor: script path not yet supported - https://github.com/bitcoin/bips/blob/master/bip-0386.mediawiki',
-      descriptor:
-        'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0))',
-      checksumRequired: false,
-      throw:
-        'Error: could not extract a payment from tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0))'
-    }
   ]
 };
