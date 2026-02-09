@@ -4,25 +4,33 @@ console.log('Taproot integration tests');
 
 import { createHash } from 'crypto';
 import { networks, Psbt } from 'bitcoinjs-lib';
+import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
 
-import { DescriptorsFactory, signers } from '../../dist/index';
+import {
+  DescriptorsFactory,
+  keyExpressionBIP32,
+  signers
+} from '../../dist/index';
 import { selectTapLeafCandidates } from '../../dist/tapTree';
 import { vsize } from '../helpers/vsize';
 
 import type { ECPairInterface } from 'ecpair';
+import type { BIP32Interface } from 'bip32';
 import type { PartialSig, PsbtInput } from 'bip174/src/lib/interfaces';
 import type { OutputInstance } from '../../dist';
 
-const { Output, ECPair, expand } = DescriptorsFactory(ecc);
-const { signInputECPair } = signers;
+const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
+const { signInputECPair, signBIP32 } = signers;
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
 const INPUT_VALUE = 50_000;
 const FEE = 1_000;
 const FINAL_VALUE = INPUT_VALUE - FEE;
+const SOFT_MNEMONIC =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const xOnlyHex = (pubkey: Buffer): string =>
   pubkey.slice(1, 33).toString('hex');
@@ -52,12 +60,16 @@ const runScenario = async ({
   name,
   input,
   signer,
-  expectScriptPath
+  masterNode,
+  expectScriptPath,
+  expectTapBip32Derivation = false
 }: {
   name: string;
   input: OutputInstance;
-  signer: ECPairInterface;
+  signer?: ECPairInterface;
+  masterNode?: BIP32Interface;
   expectScriptPath: boolean;
+  expectTapBip32Derivation?: boolean;
 }): Promise<{ realVsize: number; estimatedVsize: number }> => {
   const { txId, vout } = await regtestUtils.faucetComplex(
     input.getScriptPubKey(),
@@ -84,6 +96,13 @@ const runScenario = async ({
     );
   }
 
+  if (expectTapBip32Derivation) {
+    assert(
+      Boolean(beforeSignInput.tapBip32Derivation?.length),
+      `Error: ${name} expected tapBip32Derivation to be populated`
+    );
+  }
+
   const destinationAddress = regtestUtils.RANDOM_ADDRESS;
   const destination = new Output({
     descriptor: `addr(${destinationAddress})`,
@@ -91,7 +110,13 @@ const runScenario = async ({
   });
   destination.updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
 
-  signInputECPair({ psbt, index: 0, ecpair: signer });
+  if (masterNode) {
+    signBIP32({ psbt, masterNode });
+  } else {
+    if (!signer)
+      throw new Error(`Error: ${name} requires signer or masterNode`);
+    signInputECPair({ psbt, index: 0, ecpair: signer });
+  }
 
   const afterSignInput = psbt.data.inputs[0];
   if (!afterSignInput)
@@ -123,6 +148,8 @@ const runScenario = async ({
 };
 
 (async () => {
+  const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
+
   const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 1));
   const leafSignerA = ECPair.fromPrivateKey(Buffer.alloc(32, 2));
   const leafSignerB = ECPair.fromPrivateKey(Buffer.alloc(32, 3));
@@ -151,8 +178,10 @@ const runScenario = async ({
   const scenarios: Array<{
     name: string;
     input: OutputInstance;
-    signer: ECPairInterface;
+    signer?: ECPairInterface;
+    masterNode?: BIP32Interface;
     expectScriptPath: boolean;
+    expectTapBip32Derivation?: boolean;
   }> = [
     {
       name: 'tr(KEY) key-path spend',
@@ -181,6 +210,89 @@ const runScenario = async ({
       }),
       signer: leafSignerA,
       expectScriptPath: true
+    },
+    {
+      name: 'tr(BIP32 KEY) key-path spend',
+      input: new Output({
+        descriptor: `tr(${keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/0'",
+          keyPath: '/0'
+        })})`,
+        network: NETWORK
+      }),
+      masterNode,
+      expectScriptPath: false,
+      expectTapBip32Derivation: true
+    },
+    {
+      name: 'tr(BIP32 KEY,TREE) script-path spend using tapLeaf string',
+      input: (() => {
+        const internal = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/1'",
+          keyPath: '/0'
+        });
+        const leafA = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/2'",
+          keyPath: '/0'
+        });
+        const leafB = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/3'",
+          keyPath: '/0'
+        });
+        const descriptor = `tr(${internal},{pk(${leafA}),pk(${leafB})})`;
+        return new Output({
+          descriptor,
+          network: NETWORK,
+          taprootSpendPath: 'script',
+          tapLeaf: `pk(${leafA})`
+        });
+      })(),
+      masterNode,
+      expectScriptPath: true,
+      expectTapBip32Derivation: true
+    },
+    {
+      name: 'tr(BIP32 KEY,TREE) script-path spend using tapLeaf hash',
+      input: (() => {
+        const internal = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/4'",
+          keyPath: '/0'
+        });
+        const leafA = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/5'",
+          keyPath: '/0'
+        });
+        const leafB = keyExpressionBIP32({
+          masterNode,
+          originPath: "/0'/9'/6'",
+          keyPath: '/0'
+        });
+        const descriptor = `tr(${internal},{pk(${leafA}),pk(${leafB})})`;
+        const { tapTreeInfo } = expand({ descriptor, network: NETWORK });
+        if (!tapTreeInfo)
+          throw new Error('Error: tapTreeInfo not available for BIP32 tree');
+        const selectedLeaf = selectTapLeafCandidates({
+          tapTreeInfo,
+          tapLeaf: `pk(${leafA})`
+        })[0];
+        if (!selectedLeaf)
+          throw new Error('Error: could not derive tapLeafHash for BIP32 leaf');
+        return new Output({
+          descriptor,
+          network: NETWORK,
+          taprootSpendPath: 'script',
+          tapLeaf: selectedLeaf.tapLeafHash
+        });
+      })(),
+      masterNode,
+      expectScriptPath: true,
+      expectTapBip32Derivation: true
     }
   ];
 

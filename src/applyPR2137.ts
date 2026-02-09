@@ -182,7 +182,19 @@ export const applyPR2137 = (psbt: Psbt) => {
       this.data.inputs,
       hdKeyPair
     ) as Signer[];
-    signers.forEach(signer => this.signInput(inputIndex, signer, sighashTypes));
+    const results: boolean[] = [];
+    for (const signer of signers) {
+      try {
+        this.signInput(inputIndex, signer, sighashTypes);
+        results.push(true);
+      } catch (err) {
+        void err;
+        results.push(false);
+      }
+    }
+    if (results.every(v => v === false)) {
+      throw new Error('No inputs were signed');
+    }
     return this;
   };
 
