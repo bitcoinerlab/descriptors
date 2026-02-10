@@ -34,10 +34,10 @@ export type TimeConstraints = {
  */
 export type KeyInfo = {
   keyExpression: string;
-  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
+  pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
   ecpair?: ECPairInterface;
   bip32?: BIP32Interface;
-  masterFingerprint?: Buffer;
+  masterFingerprint?: Uint8Array;
   originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
   keyPath?: string; //The path from the xpub/xprv root
   path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
@@ -192,7 +192,7 @@ export type Expansion = {
    *     miniscript: 'pk(02aa...)',
    *     expandedMiniscript: 'pk(@0)',
    *     expansionMap: ExpansionMap;
-   *     tapScript: Buffer;
+   *     tapScript: Uint8Array;
    *     version: number;
    *   },
    *   right: ....
@@ -202,12 +202,12 @@ export type Expansion = {
   /**
    * The redeem script for the descriptor, if applicable.
    */
-  redeemScript?: Buffer;
+  redeemScript?: Uint8Array;
 
   /**
    * The witness script for the descriptor, if applicable.
    */
-  witnessScript?: Buffer;
+  witnessScript?: Uint8Array;
 
   /**
    * Whether the descriptor is a ranged-descriptor.

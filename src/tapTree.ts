@@ -1,5 +1,6 @@
 // NOTE: This uses an internal bitcoinjs-lib module. Consider adding a local wrapper.
-import { tapleafHash } from 'bitcoinjs-lib/src/payments/bip341';
+import { tapleafHash } from './bitcoinjs-lib-internals';
+import { compare } from 'uint8array-tools';
 import { splitTopLevelComma } from './parseUtils';
 import type { ExpansionMap } from './types';
 
@@ -17,7 +18,7 @@ export type TapLeafInfo = {
   miniscript: string;
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
-  tapScript: Buffer;
+  tapScript: Uint8Array;
   version: number;
 };
 
@@ -26,7 +27,7 @@ export type TapTreeInfoNode = TreeNode<TapLeafInfo>;
 export type TapLeafSelection = {
   leaf: TapLeafInfo;
   depth: number;
-  tapLeafHash: Buffer;
+  tapLeafHash: Uint8Array;
 };
 
 /**
@@ -71,7 +72,7 @@ export function collectTapTreeLeaves(
   return leaves;
 }
 
-function computeTapLeafHash(leaf: TapLeafInfo): Buffer {
+function computeTapLeafHash(leaf: TapLeafInfo): Uint8Array {
   return tapleafHash({ output: leaf.tapScript, version: leaf.version });
 }
 
@@ -83,7 +84,7 @@ function normalizeMiniscriptForMatch(miniscript: string): string {
  * Resolves taproot leaf candidates based on an optional selector.
  *
  * If `tapLeaf` is undefined, all leaves are returned for auto-selection.
- * If `tapLeaf` is a Buffer, it is treated as a tapleaf hash and must match
+ * If `tapLeaf` is bytes, it is treated as a tapleaf hash and must match
  * exactly one leaf.
  * If `tapLeaf` is a string, it is treated as a miniscript leaf (raw, not
  * expanded). Matching is whitespace-insensitive. If the miniscript appears
@@ -92,7 +93,7 @@ function normalizeMiniscriptForMatch(miniscript: string): string {
  * Example:
  * ```
  * const candidates = selectTapLeafCandidates({ tapTreeInfo, tapLeaf });
- * // tapLeaf can be undefined, a Buffer (tapleaf hash) or a miniscript string:
+ * // tapLeaf can be undefined, bytes (tapleaf hash) or a miniscript string:
  * // f.ex.: 'pk(03bb...)'
  * ```
  */
@@ -101,7 +102,7 @@ export function selectTapLeafCandidates({
   tapLeaf
 }: {
   tapTreeInfo: TapTreeInfoNode;
-  tapLeaf?: Buffer | string;
+  tapLeaf?: Uint8Array | string;
 }): TapLeafSelection[] {
   const leaves = collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => ({
     leaf,
@@ -111,8 +112,10 @@ export function selectTapLeafCandidates({
 
   if (tapLeaf === undefined) return leaves;
 
-  if (Buffer.isBuffer(tapLeaf)) {
-    const match = leaves.find(entry => entry.tapLeafHash.equals(tapLeaf));
+  if (tapLeaf instanceof Uint8Array) {
+    const match = leaves.find(
+      entry => compare(entry.tapLeafHash, tapLeaf) === 0
+    );
     if (!match) throw new Error(`Error: tapleaf hash not found in tapTreeInfo`);
     return [match];
   }

@@ -1,9 +1,8 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { isTaprootInput } from 'bitcoinjs-lib/src/psbt/bip371';
-import { tapTweakHash } from 'bitcoinjs-lib/src/payments/bip341';
 import type { Psbt } from 'bitcoinjs-lib';
+import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
@@ -21,10 +20,14 @@ type DefaultDescriptorTemplate =
   | 'wpkh(@0/**)'
   | 'tr(@0/**)';
 declare class PartialSignature {
-  readonly pubkey: Buffer;
-  readonly signature: Buffer;
-  readonly tapleafHash?: Buffer;
-  constructor(pubkey: Buffer, signature: Buffer, tapleafHash?: Buffer);
+  readonly pubkey: Uint8Array;
+  readonly signature: Uint8Array;
+  readonly tapleafHash?: Uint8Array;
+  constructor(
+    pubkey: Uint8Array,
+    signature: Uint8Array,
+    tapleafHash?: Uint8Array
+  );
 }
 
 function range(n: number): number[] {
@@ -66,10 +69,7 @@ export function signInputECPair({
     if (input.tapLeafScript && input.tapLeafScript.length > 0)
       psbt.signInput(index, ecpair);
     else {
-      const hash = tapTweakHash(
-        Buffer.from(ecpair.publicKey.slice(1, 33)),
-        undefined
-      );
+      const hash = tapTweakHash(ecpair.publicKey.slice(1, 33), undefined);
       const tweakedEcpair = ecpair.tweak(hash);
       psbt.signInput(index, tweakedEcpair);
     }
@@ -261,10 +261,13 @@ export async function signInputLedger({
       policy.keyRoots
     );
 
+    const walletHmac = policy.policyHmac as unknown as Parameters<
+      typeof ledgerClient.signPsbt
+    >[2];
     ledgerSignatures = await ledgerClient.signPsbt(
       psbt.toBase64(),
       walletPolicy,
-      policy.policyHmac
+      walletHmac
     );
   } else {
     //standard policy
@@ -350,10 +353,13 @@ export async function signLedger({
         uniquePolicy.keyRoots
       );
 
+      const walletHmac = uniquePolicy.policyHmac as unknown as Parameters<
+        typeof ledgerClient.signPsbt
+      >[2];
       ledgerSignatures = await ledgerClient.signPsbt(
         psbt.toBase64(),
         walletPolicy,
-        uniquePolicy.policyHmac
+        walletHmac
       );
     } else {
       //standard policy

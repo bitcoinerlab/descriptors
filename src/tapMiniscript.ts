@@ -6,12 +6,13 @@ import {
   tapleafHash,
   toHashTree,
   tweakKey
-} from 'bitcoinjs-lib/src/payments/bip341';
+} from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
+import { compare, concat, toHex } from 'uint8array-tools';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type { PartialSig, TapBip32Derivation } from 'bip174/src/lib/interfaces';
-import type { Taptree } from 'bitcoinjs-lib/src/types';
+import type { PartialSig, TapBip32Derivation } from 'bip174';
+import type { Taptree } from 'bitcoinjs-lib/src/cjs/types';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,
@@ -26,9 +27,9 @@ const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 export type TaprootLeafSatisfaction = {
   leaf: TapLeafInfo;
   depth: number;
-  tapLeafHash: Buffer;
-  scriptSatisfaction: Buffer;
-  stackItems: Buffer[];
+  tapLeafHash: Uint8Array;
+  scriptSatisfaction: Uint8Array;
+  stackItems: Uint8Array[];
   nLockTime: number | undefined;
   nSequence: number | undefined;
   totalWitnessSize: number;
@@ -37,8 +38,8 @@ export type TaprootLeafSatisfaction = {
 export type TaprootPsbtLeafMetadata = {
   leaf: TapLeafInfo;
   depth: number;
-  tapLeafHash: Buffer;
-  controlBlock: Buffer;
+  tapLeafHash: Uint8Array;
+  controlBlock: Uint8Array;
 };
 
 function expandTaprootMiniscript({
@@ -188,7 +189,7 @@ export function buildTaprootLeafPsbtMetadata({
   internalPubkey
 }: {
   tapTreeInfo: TapTreeInfoNode;
-  internalPubkey: Buffer;
+  internalPubkey: Uint8Array;
 }): TaprootPsbtLeafMetadata[] {
   const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
   const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
@@ -211,8 +212,8 @@ export function buildTaprootLeafPsbtMetadata({
     // - parity of the tweaked output key Q = P + t*G (low bit).
     // `normalizedInternalPubkey` is x-only P, so parity is not encoded there.
     // BIP341 requires carrying Q parity in controlBlock[0].
-    const controlBlock = Buffer.concat([
-      Buffer.from([leaf.version | tweaked.parity]),
+    const controlBlock = concat([
+      Uint8Array.from([leaf.version | tweaked.parity]),
       normalizedInternalPubkey,
       ...merklePath
     ]);
@@ -266,10 +267,10 @@ export function buildTaprootBip32Derivations({
   internalKeyInfo?: KeyInfo;
 }): TapBip32Derivation[] {
   type DerivationEntry = {
-    masterFingerprint: Buffer;
-    pubkey: Buffer;
+    masterFingerprint: Uint8Array;
+    pubkey: Uint8Array;
     path: string;
-    leafHashes: Map<string, Buffer>;
+    leafHashes: Map<string, Uint8Array>;
   };
 
   const entries = new Map<string, DerivationEntry>();
@@ -280,35 +281,35 @@ export function buildTaprootBip32Derivations({
     path,
     leafHash
   }: {
-    pubkey: Buffer;
-    masterFingerprint: Buffer;
+    pubkey: Uint8Array;
+    masterFingerprint: Uint8Array;
     path: string;
-    leafHash?: Buffer;
+    leafHash?: Uint8Array;
   }): void => {
     const normalizedPubkey = normalizeTaprootPubkey(pubkey);
-    const pubkeyHex = normalizedPubkey.toString('hex');
+    const pubkeyHex = toHex(normalizedPubkey);
     const current = entries.get(pubkeyHex);
     if (!current) {
       const next: DerivationEntry = {
         masterFingerprint,
         pubkey: normalizedPubkey,
         path,
-        leafHashes: new Map<string, Buffer>()
+        leafHashes: new Map<string, Uint8Array>()
       };
-      if (leafHash) next.leafHashes.set(leafHash.toString('hex'), leafHash);
+      if (leafHash) next.leafHashes.set(toHex(leafHash), leafHash);
       entries.set(pubkeyHex, next);
       return;
     }
 
     if (
-      !current.masterFingerprint.equals(masterFingerprint) ||
+      compare(current.masterFingerprint, masterFingerprint) !== 0 ||
       current.path !== path
     ) {
       throw new Error(
         `Error: inconsistent taproot key derivation metadata for pubkey ${pubkeyHex}`
       );
     }
-    if (leafHash) current.leafHashes.set(leafHash.toString('hex'), leafHash);
+    if (leafHash) current.leafHashes.set(toHex(leafHash), leafHash);
   };
 
   const leaves = collectTapTreeLeaves(tapTreeInfo);
@@ -355,12 +356,12 @@ export function buildTaprootBip32Derivations({
     );
 }
 
-function varSliceSize(someScript: Buffer): number {
+function varSliceSize(someScript: Uint8Array): number {
   const length = someScript.length;
   return encodingLength(length) + length;
 }
 
-function vectorSize(someVector: Buffer[]): number {
+function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
   return (
     encodingLength(length) +
@@ -368,7 +369,7 @@ function vectorSize(someVector: Buffer[]): number {
   );
 }
 
-function witnessStackSize(witness: Buffer[]): number {
+function witnessStackSize(witness: Uint8Array[]): number {
   return vectorSize(witness);
 }
 
@@ -400,19 +401,21 @@ function witnessStackSize(witness: Buffer[]): number {
  *
  * This is also useful for estimating witness size without finalizing a PSBT.
  */
-function satisfactionToStackItems(scriptSatisfaction: Buffer): Buffer[] {
+function satisfactionToStackItems(
+  scriptSatisfaction: Uint8Array
+): Uint8Array[] {
   const chunks = bscript.decompile(scriptSatisfaction);
   if (!chunks)
     throw new Error(`Error: could not decompile script satisfaction`);
   return chunks.map(chunk => {
-    if (Buffer.isBuffer(chunk)) return chunk;
+    if (chunk instanceof Uint8Array) return chunk;
     if (typeof chunk !== 'number')
       throw new Error(`Error: invalid satisfaction chunk`);
     if (chunk < -1 || chunk > 16)
       throw new Error(
         `Error: satisfaction contains a non-push opcode (${chunk})`
       );
-    if (chunk === 0) return Buffer.alloc(0);
+    if (chunk === 0) return new Uint8Array(0);
     return bscript.number.encode(chunk);
   });
 }
@@ -422,15 +425,15 @@ function estimateTaprootWitnessSize({
   tapScript,
   depth
 }: {
-  stackItems: Buffer[];
-  tapScript: Buffer;
+  stackItems: Uint8Array[];
+  tapScript: Uint8Array;
   depth: number;
 }): number {
-  const controlBlock = Buffer.alloc(33 + 32 * depth, 0);
+  const controlBlock = new Uint8Array(33 + 32 * depth);
   return witnessStackSize([...stackItems, tapScript, controlBlock]);
 }
 
-export function normalizeTaprootPubkey(pubkey: Buffer): Buffer {
+export function normalizeTaprootPubkey(pubkey: Uint8Array): Uint8Array {
   if (pubkey.length === 32) return pubkey;
   if (pubkey.length === 33) return pubkey.slice(1, 33);
   throw new Error(`Error: invalid taproot pubkey length`);
@@ -457,14 +460,14 @@ export function collectTaprootLeafSatisfactions({
   preimages: Preimage[];
   signatures: PartialSig[];
   timeConstraints?: TimeConstraints;
-  tapLeaf?: Buffer | string;
+  tapLeaf?: Uint8Array | string;
 }): TaprootLeafSatisfaction[] {
   const candidates = selectTapLeafCandidates({
     tapTreeInfo,
     ...(tapLeaf !== undefined ? { tapLeaf } : {})
   });
 
-  const getLeafPubkeys = (leaf: TapLeafInfo): Buffer[] => {
+  const getLeafPubkeys = (leaf: TapLeafInfo): Uint8Array[] => {
     return Object.values(leaf.expansionMap).map(keyInfo => {
       if (!keyInfo.pubkey)
         throw new Error(`Error: taproot leaf key missing pubkey`);
@@ -474,18 +477,14 @@ export function collectTaprootLeafSatisfactions({
 
   const resolveLeafSignatures = (leaf: TapLeafInfo): PartialSig[] => {
     const leafPubkeys = getLeafPubkeys(leaf);
-    const leafPubkeySet = new Set(
-      leafPubkeys.map(pubkey => pubkey.toString('hex'))
-    );
+    const leafPubkeySet = new Set(leafPubkeys.map(pubkey => toHex(pubkey)));
 
     return signatures
       .map((sig: PartialSig) => ({
         pubkey: normalizeTaprootPubkey(sig.pubkey),
         signature: sig.signature
       }))
-      .filter((sig: PartialSig) =>
-        leafPubkeySet.has(sig.pubkey.toString('hex'))
-      );
+      .filter((sig: PartialSig) => leafPubkeySet.has(toHex(sig.pubkey)));
   };
 
   const satisfactions: TaprootLeafSatisfaction[] = [];
@@ -546,16 +545,18 @@ export function selectBestTaprootLeafSatisfaction(
  * Collects a unique set of taproot leaf pubkeys (x-only) across the tree.
  * This is useful for building fake signatures when no signer subset is given.
  */
-export function collectTapTreePubkeys(tapTreeInfo: TapTreeInfoNode): Buffer[] {
+export function collectTapTreePubkeys(
+  tapTreeInfo: TapTreeInfoNode
+): Uint8Array[] {
   const pubkeySet = new Set<string>();
-  const pubkeys: Buffer[] = [];
+  const pubkeys: Uint8Array[] = [];
   const leaves = collectTapTreeLeaves(tapTreeInfo);
   for (const entry of leaves) {
     for (const keyInfo of Object.values(entry.leaf.expansionMap)) {
       if (!keyInfo.pubkey)
         throw new Error(`Error: taproot leaf key missing pubkey`);
       const normalized = normalizeTaprootPubkey(keyInfo.pubkey);
-      const hex = normalized.toString('hex');
+      const hex = toHex(normalized);
       if (pubkeySet.has(hex)) continue;
       pubkeySet.add(hex);
       pubkeys.push(normalized);
@@ -568,7 +569,7 @@ export function collectTapTreePubkeys(tapTreeInfo: TapTreeInfoNode): Buffer[] {
  * Returns the best satisfaction for a taproot tree, by witness size.
  *
  * If `tapLeaf` is provided, only that leaf is considered. If `tapLeaf` is a
- * Buffer, it is treated as a tapLeafHash and must match exactly one leaf. If
+ * bytes, it is treated as a tapLeafHash and must match exactly one leaf. If
  * `tapLeaf` is a string, it is treated as a miniscript leaf and must match
  * exactly one leaf (whitespace-insensitive).
  *
@@ -589,7 +590,7 @@ export function satisfyTapTree({
   tapTreeInfo: TapTreeInfoNode;
   signatures: PartialSig[];
   preimages: Preimage[];
-  tapLeaf?: Buffer | string;
+  tapLeaf?: Uint8Array | string;
   timeConstraints?: TimeConstraints;
 }): TaprootLeafSatisfaction {
   const satisfactions = collectTaprootLeafSatisfactions({

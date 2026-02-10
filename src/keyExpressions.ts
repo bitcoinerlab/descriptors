@@ -10,6 +10,7 @@ import {
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
+import { concat, fromHex, toHex } from 'uint8array-tools';
 
 import * as RE from './re';
 
@@ -75,10 +76,10 @@ export function parseKeyExpression({
 }): KeyInfo {
   if (isTaproot && isSegwit !== true)
     throw new Error(`Error: taproot key expressions require isSegwit`);
-  let pubkey: Buffer | undefined; //won't be computed for ranged keyExpressions
+  let pubkey: Uint8Array | undefined; //won't be computed for ranged keyExpressions
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
-  let masterFingerprint: Buffer | undefined;
+  let masterFingerprint: Uint8Array | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
   let path: string | undefined;
@@ -117,7 +118,7 @@ export function parseKeyExpression({
         throw new Error(
           `Error: masterFingerprint ${masterFingerprintHex} invalid for keyExpression: ${keyExpression}`
         );
-      masterFingerprint = Buffer.from(masterFingerprintHex, 'hex');
+      masterFingerprint = fromHex(masterFingerprintHex);
     }
   }
 
@@ -126,10 +127,10 @@ export function parseKeyExpression({
   let mPubKey, mWIF, mXpubKey, mXprvKey;
   //match pubkey:
   if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(rePubKey))) !== null) {
-    pubkey = Buffer.from(mPubKey[0], 'hex');
+    pubkey = fromHex(mPubKey[0]);
     if (isTaproot && pubkey.length === 32)
       //convert the xonly point to a compressed point assuming even parity
-      pubkey = Buffer.concat([Buffer.from([0x02]), pubkey]);
+      pubkey = concat([Uint8Array.from([0x02]), pubkey]);
 
     ecpair = ECPair.fromPublicKey(pubkey, { network });
     //Validate the pubkey (compressed or uncompressed)
@@ -280,7 +281,7 @@ export async function keyExpressionLedger({
   const masterFingerprint = await getLedgerMasterFingerPrint({
     ledgerManager
   });
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
+  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
   const xpub = await getLedgerXpub({ originPath, ledgerManager });
 
   const keyRoot = `${origin}${xpub}`;
@@ -317,7 +318,7 @@ export function keyExpressionBIP32({
 }) {
   assertChangeIndexKeyPath({ change, index, keyPath });
   const masterFingerprint = masterNode.fingerprint;
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
+  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
   const xpub = isPublic
     ? masterNode.derivePath(`m${originPath}`).neutered().toBase58().toString()
     : masterNode.derivePath(`m${originPath}`).toBase58().toString();

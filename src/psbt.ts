@@ -6,7 +6,7 @@ import type {
   Bip32Derivation,
   TapBip32Derivation,
   TapLeafScript
-} from 'bip174/src/lib/interfaces';
+} from 'bip174';
 import type { KeyInfo } from './types';
 import {
   payments,
@@ -15,70 +15,44 @@ import {
   Transaction,
   PsbtTxInput
 } from 'bitcoinjs-lib';
-import { encode, encodingLength } from 'varuint-bitcoin';
+import { compare, fromHex } from 'uint8array-tools';
+import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
-function reverseBuffer(buffer: Buffer): Buffer {
+
+function reverseBytes(buffer: Uint8Array): Uint8Array {
   if (buffer.length < 1) return buffer;
-  let j = buffer.length - 1;
+  const copy = Uint8Array.from(buffer);
+  let j = copy.length - 1;
   let tmp = 0;
-  for (let i = 0; i < buffer.length / 2; i++) {
-    tmp = buffer[i]!;
-    buffer[i] = buffer[j]!;
-    buffer[j] = tmp;
+  for (let i = 0; i < copy.length / 2; i++) {
+    tmp = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = tmp;
     j--;
   }
-  return buffer;
-}
-function witnessStackToScriptWitness(witness: Buffer[]): Buffer {
-  let buffer = Buffer.allocUnsafe(0);
-
-  function writeSlice(slice: Buffer): void {
-    buffer = Buffer.concat([buffer, Buffer.from(slice)]);
-  }
-
-  function writeVarInt(i: number): void {
-    const currentLen = buffer.length;
-    const varintLen = encodingLength(i);
-
-    buffer = Buffer.concat([buffer, Buffer.allocUnsafe(varintLen)]);
-    encode(i, buffer, currentLen);
-  }
-
-  function writeVarSlice(slice: Buffer): void {
-    writeVarInt(slice.length);
-    writeSlice(slice);
-  }
-
-  function writeVector(vector: Buffer[]): void {
-    writeVarInt(vector.length);
-    vector.forEach(writeVarSlice);
-  }
-
-  writeVector(witness);
-
-  return buffer;
+  return copy;
 }
 
 /**
  * This function must do two things:
  * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
  *   ie. `Can not finalize input #${inputIndex}`
- * 2. Create the finalScriptSig and finalScriptWitness Buffers.
+ * 2. Create finalScriptSig and finalScriptWitness.
  */
 type FinalScriptsFunc = (
   inputIndex: number, // Which input is it?
   input: PsbtInput, // The PSBT input contents
-  script: Buffer, // The "meaningful" locking script Buffer (redeemScript for P2SH etc.)
+  script: Uint8Array, // The "meaningful" locking script (redeemScript for P2SH etc.)
   isSegwit: boolean, // Is it segwit?
   isP2SH: boolean, // Is it P2SH?
   isP2WSH: boolean // Is it P2WSH?
 ) => {
-  finalScriptSig: Buffer | undefined;
-  finalScriptWitness: Buffer | undefined;
+  finalScriptSig: Uint8Array | undefined;
+  finalScriptWitness: Uint8Array | undefined;
 };
 
 export function finalScriptsFuncFactory(
-  scriptSatisfaction: Buffer,
+  scriptSatisfaction: Uint8Array,
   network: Network
 ): FinalScriptsFunc {
   const finalScriptsFunc: FinalScriptsFunc = (
@@ -89,8 +63,8 @@ export function finalScriptsFuncFactory(
     isP2SH,
     _isP2WSH
   ) => {
-    let finalScriptWitness: Buffer | undefined;
-    let finalScriptSig: Buffer | undefined;
+    let finalScriptWitness: Uint8Array | undefined;
+    let finalScriptSig: Uint8Array | undefined;
     //p2wsh
     if (isSegwit && !isP2SH) {
       const payment = payments.p2wsh({
@@ -155,22 +129,29 @@ export function addPsbtInput({
   vout: number;
   txHex?: string;
   txId?: string;
-  value?: number;
+  value?: bigint;
   sequence: number | undefined;
   locktime: number | undefined;
   keysInfo: KeyInfo[];
-  scriptPubKey: Buffer;
+  scriptPubKey: Uint8Array;
   isSegwit: boolean;
   /** for taproot **/
-  tapInternalKey?: Buffer | undefined;
+  tapInternalKey?: Uint8Array | undefined;
   /** for taproot script-path **/
   tapLeafScript?: TapLeafScript[] | undefined;
   /** for taproot **/
   tapBip32Derivation?: TapBip32Derivation[] | undefined;
-  witnessScript: Buffer | undefined;
-  redeemScript: Buffer | undefined;
+  witnessScript: Uint8Array | undefined;
+  redeemScript: Uint8Array | undefined;
   rbf: boolean;
 }): number {
+  if (value !== undefined && typeof value !== 'bigint')
+    throw new Error(`Error: value must be a bigint`);
+  if (value !== undefined && value < 0n)
+    throw new Error(`Error: value must be >= 0n`);
+
+  let normalizedValue = value;
+
   //Some data-sanity checks:
   if (sequence !== undefined && rbf && sequence > 0xfffffffd)
     throw new Error(`Error: incompatible sequence and rbf settings`);
@@ -191,7 +172,7 @@ export function addPsbtInput({
       throw new Error(
         `Error: could not extract outputScript for txHex ${txHex} and vout ${vout}`
       );
-    if (Buffer.compare(outputScript, scriptPubKey) !== 0)
+    if (compare(outputScript, scriptPubKey) !== 0)
       throw new Error(
         `Error: txHex ${txHex} for vout ${vout} does not correspond to scriptPubKey ${scriptPubKey}`
       );
@@ -203,16 +184,16 @@ export function addPsbtInput({
     } else {
       txId = tx.getId();
     }
-    if (value !== undefined) {
-      if (out.value !== value)
+    if (normalizedValue !== undefined) {
+      if (out.value !== normalizedValue)
         throw new Error(
           `Error: value for ${txHex} and vout ${vout} does not correspond to ${value}`
         );
     } else {
-      value = out.value;
+      normalizedValue = out.value;
     }
   }
-  if (txId === undefined || !value)
+  if (txId === undefined || normalizedValue === undefined)
     throw new Error(
       `Error: txHex+vout required. Alternatively, but ONLY for Segwit inputs, txId+value can also be passed.`
     );
@@ -243,7 +224,7 @@ export function addPsbtInput({
   }
 
   const input: PsbtInputExtended = {
-    hash: reverseBuffer(Buffer.from(txId, 'hex')),
+    hash: reverseBytes(fromHex(txId)),
     index: vout
   };
   if (txHex !== undefined) {
@@ -297,7 +278,7 @@ export function addPsbtInput({
   }
   if (isSegwit && txHex !== undefined) {
     //There's no need to put both witnessUtxo and nonWitnessUtxo
-    input.witnessUtxo = { script: scriptPubKey, value };
+    input.witnessUtxo = { script: scriptPubKey, value: normalizedValue };
   }
   if (sequence !== undefined) input.sequence = sequence;
 

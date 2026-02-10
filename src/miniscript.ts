@@ -6,8 +6,9 @@ import type { ECPairAPI } from 'ecpair';
 import type { BIP32API } from 'bip32';
 import { parseKeyExpression } from './keyExpressions';
 import * as RE from './re';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { PartialSig } from 'bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
+import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 
 /**
@@ -103,7 +104,7 @@ export function expandMiniscript({
         throw new Error(
           `Error: keyExpression ${keyInfo.keyExpression} does not have a pubkey`
         );
-      return keyInfo.pubkey.toString('hex');
+      return toHex(keyInfo.pubkey);
     });
   if (new Set(pubkeysHex).size !== pubkeysHex.length) {
     throw new Error(
@@ -134,11 +135,8 @@ function substituteAsm({
       throw new Error(`Error: invalid expansionMap for ${key}`);
     }
     return accAsm
-      .replaceAll(`<${key}>`, `<${pubkey.toString('hex')}>`)
-      .replaceAll(
-        `<HASH160(${key})>`,
-        `<${crypto.hash160(pubkey).toString('hex')}>`
-      );
+      .replaceAll(`<${key}>`, `<${toHex(pubkey)}>`)
+      .replaceAll(`<HASH160(${key})>`, `<${toHex(crypto.hash160(pubkey))}>`);
   }, expandedAsm);
 
   //Now clean it and prepare it so that fromASM can be called:
@@ -169,7 +167,7 @@ export function miniscript2Script({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   tapscript?: boolean;
-}): Buffer {
+}): Uint8Array {
   const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
@@ -222,7 +220,7 @@ export function satisfyMiniscript({
   timeConstraints?: TimeConstraints;
   tapscript?: boolean;
 }): {
-  scriptSatisfaction: Buffer;
+  scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
   nSequence: number | undefined;
 } {
@@ -237,12 +235,13 @@ export function satisfyMiniscript({
   //get the keyExpressions: @0, @1 from the keys in expansionMap
   const expandedSignatureMap: { [key: string]: string } = {};
   signatures.forEach(signature => {
-    const pubkeyHex = signature.pubkey.toString('hex');
+    const pubkeyHex = toHex(signature.pubkey);
     const keyExpression = Object.keys(expansionMap).find(
-      k => expansionMap[k]?.pubkey?.toString('hex') === pubkeyHex
+      k =>
+        expansionMap[k]?.pubkey && toHex(expansionMap[k].pubkey) === pubkeyHex
     );
     expandedSignatureMap['<sig(' + keyExpression + ')>'] =
-      '<' + signature.signature.toString('hex') + '>';
+      '<' + toHex(signature.signature) + '>';
   });
   const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
   const knowns = Object.keys(expandedKnownsMap);
@@ -319,7 +318,7 @@ export function satisfyMiniscript({
  * However, the `0` number is an edge case that we specially handle with this
  * function.
  *
- * bitcoinjs-lib's `bscript.number.encode(0)` produces an empty Buffer.
+ * bitcoinjs-lib's `bscript.number.encode(0)` produces an empty array.
  * This is what the Bitcoin interpreter does and it is what `script.number.encode` was
  * implemented to do.
  *
@@ -353,5 +352,5 @@ export function numberEncodeAsm(number: number) {
   }
   if (number === 0) {
     return 'OP_0';
-  } else return bscript.number.encode(number).toString('hex');
+  } else return toHex(bscript.number.encode(number));
 }

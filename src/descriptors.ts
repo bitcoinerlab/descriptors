@@ -13,11 +13,13 @@ import {
   Psbt,
   initEccLib
 } from 'bitcoinjs-lib';
-// NOTE: Internal imports for taproot script-path finalization.
-import { tapleafHash } from 'bitcoinjs-lib/src/payments/bip341';
-import { witnessStackToScriptWitness } from 'bitcoinjs-lib/src/psbt/psbtutils';
+import {
+  tapleafHash,
+  witnessStackToScriptWitness
+} from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import { compare, fromHex, toHex } from 'uint8array-tools';
+import type { PartialSig } from 'bip174';
 const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
 import { BIP32Factory, BIP32API } from 'bip32';
 import { ECPairFactory, ECPairAPI } from 'ecpair';
@@ -62,7 +64,7 @@ const MAX_OPS_PER_SCRIPT = 201;
 const ECDSA_FAKE_SIGNATURE_SIZE = 72;
 const TAPROOT_FAKE_SIGNATURE_SIZE = 64;
 
-function countNonPushOnlyOPs(script: Buffer): number {
+function countNonPushOnlyOPs(script: Uint8Array): number {
   const decompile = bscript.decompile(script);
   if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
   return decompile.filter(
@@ -70,7 +72,7 @@ function countNonPushOnlyOPs(script: Buffer): number {
   ).length;
 }
 
-function vectorSize(someVector: Buffer[]): number {
+function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
 
   return (
@@ -81,7 +83,7 @@ function vectorSize(someVector: Buffer[]): number {
   );
 }
 
-function varSliceSize(someScript: Buffer): number {
+function varSliceSize(someScript: Uint8Array): number {
   const length = someScript.length;
 
   return encodingLength(length) + length;
@@ -213,9 +215,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   const ECPair: ECPairAPI = ECPairFactory(ecc);
 
   const signatureValidator = (
-    pubkey: Buffer,
-    msghash: Buffer,
-    signature: Buffer
+    pubkey: Uint8Array,
+    msghash: Uint8Array,
+    signature: Uint8Array
   ): boolean => {
     if (pubkey.length === 32) {
       //x-only
@@ -310,8 +312,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     let tapTree: TapTreeNode | undefined;
     let tapTreeInfo: TapTreeInfoNode | undefined;
     let payment: Payment | undefined;
-    let witnessScript: Buffer | undefined;
-    let redeemScript: Buffer | undefined;
+    let witnessScript: Uint8Array | undefined;
+    let redeemScript: Uint8Array | undefined;
     const isRanged = descriptor.indexOf('*') !== -1;
 
     if (index !== undefined)
@@ -504,7 +506,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compare(a, b));
 
         const redeem = payments.p2ms({ m, pubkeys, network });
         redeemScript = redeem.output;
@@ -542,7 +544,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compare(a, b));
 
         const redeem = payments.p2ms({ m, pubkeys, network });
         witnessScript = redeem.output;
@@ -582,7 +584,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           if (!p.pubkey) throw new Error(`Error: key has no pubkey`);
           return p.pubkey;
         });
-        pubkeys.sort((a, b) => a.compare(b));
+        pubkeys.sort((a, b) => compare(a, b));
 
         const redeem = payments.p2ms({ m, pubkeys, network });
         const wsh = payments.p2wsh({ redeem, network });
@@ -811,10 +813,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   class Output {
     readonly #payment: Payment;
     readonly #preimages: Preimage[] = [];
-    readonly #signersPubKeys?: Buffer[];
+    readonly #signersPubKeys?: Uint8Array[];
     readonly #miniscript?: string;
-    readonly #witnessScript?: Buffer;
-    readonly #redeemScript?: Buffer;
+    readonly #witnessScript?: Uint8Array;
+    readonly #redeemScript?: Uint8Array;
     //isSegwit true if witnesses are needed to the spend coins sent to this descriptor.
     //may be unset because we may get addr(P2SH) which we don't know if they have segwit.
     readonly #isSegwit?: boolean;
@@ -825,7 +827,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     readonly #tapTree?: TapTreeNode;
     readonly #tapTreeInfo?: TapTreeInfoNode;
     readonly #taprootSpendPath: 'key' | 'script';
-    readonly #tapLeaf?: Buffer | string;
+    readonly #tapLeaf?: Uint8Array | string;
     readonly #expansionMap?: ExpansionMap;
     readonly #network: Network;
     /**
@@ -909,7 +911,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * For more details on using this parameter, refer to [this Stack Exchange
        * answer](https://bitcoin.stackexchange.com/a/118036/89665).
        */
-      signersPubKeys?: Buffer[];
+      signersPubKeys?: Uint8Array[];
 
       /**
        * Taproot spend path policy. Use `key` to force key-path estimation,
@@ -933,7 +935,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * Only used when taprootSpendPath is `script` and descriptor is
        * `tr(KEY,TREE)`. If omitted, the smallest satisfiable leaf is selected.
        */
-      tapLeaf?: Buffer | string;
+      tapLeaf?: Uint8Array | string;
     }) {
       this.#network = network;
       this.#preimages = preimages;
@@ -1013,10 +1015,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES'
           ? signatures
           : signatures
-              .map(
-                s =>
-                  `${s.pubkey.toString('hex')}-${s.signature.toString('hex')}`
-              )
+              .map(s => `${toHex(s.pubkey)}-${toHex(s.signature)}`)
               .join('|');
       this.guessOutput = memoize(this.guessOutput);
       this.inputWeight = memoize(
@@ -1039,7 +1038,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       this.outputWeight = memoize(this.outputWeight);
     }
 
-    #resolveMiniscriptSignersPubKeys(): Buffer[] {
+    #resolveMiniscriptSignersPubKeys(): Uint8Array[] {
       //If the user did not provide a pubkey subset (signersPubKeys), assume all
       //miniscript pubkeys can sign.
       if (this.#signersPubKeys) return this.#signersPubKeys;
@@ -1077,11 +1076,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * build the Satisfaction of this miniscript-based `Output`.
        *
        * `signatures` must be passed using this format (pairs of `pubKey/signature`):
-       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       * `interface PartialSig { pubkey: Uint8Array; signature: Uint8Array; }`
        */
       signatures: PartialSig[]
     ): {
-      scriptSatisfaction: Buffer;
+      scriptSatisfaction: Uint8Array;
       nLockTime: number | undefined;
       nSequence: number | undefined;
     } {
@@ -1113,7 +1112,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       });
     }
 
-    #resolveTapTreeSignersPubKeys(): Buffer[] {
+    #resolveTapTreeSignersPubKeys(): Uint8Array[] {
       //If the user did not provide a pubkey subset (signersPubKeys), assume all
       //taproot leaf pubkeys can sign.
       const tapTreeInfo = this.#tapTreeInfo;
@@ -1123,8 +1122,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         ? this.#signersPubKeys.map(normalizeTaprootPubkey)
         : collectTapTreePubkeys(tapTreeInfo);
       return Array.from(
-        new Set(candidatePubkeys.map(pubkey => pubkey.toString('hex')))
-      ).map(hex => Buffer.from(hex, 'hex'));
+        new Set(candidatePubkeys.map(pubkey => toHex(pubkey)))
+      ).map(hex => fromHex(hex));
     }
 
     /**
@@ -1142,7 +1141,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * build the Satisfaction of this miniscript-based `Output`.
        *
        * `signatures` must be passed using this format (pairs of `pubKey/signature`):
-       * `interface PartialSig { pubkey: Buffer; signature: Buffer; }`
+       * `interface PartialSig { pubkey: Uint8Array; signature: Uint8Array; }`
        */
       signatures: PartialSig[]
     ): TaprootLeafSatisfaction {
@@ -1191,7 +1190,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       | {
           nLockTime: number | undefined;
           nSequence: number | undefined;
-          tapLeafHash: Buffer | undefined;
+          tapLeafHash: Uint8Array | undefined;
         }
       | undefined {
       const miniscript = this.#miniscript;
@@ -1211,7 +1210,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const fakeSignatures = this.#resolveMiniscriptSignersPubKeys().map(
           pubkey => ({
             pubkey,
-            signature: Buffer.alloc(ECDSA_FAKE_SIGNATURE_SIZE, 0)
+            signature: new Uint8Array(ECDSA_FAKE_SIGNATURE_SIZE)
           })
         );
         const { nLockTime, nSequence } = satisfyMiniscript({
@@ -1225,7 +1224,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         const fakeSignatures = this.#resolveTapTreeSignersPubKeys().map(
           pubkey => ({
             pubkey,
-            signature: Buffer.alloc(TAPROOT_FAKE_SIGNATURE_SIZE, 0)
+            signature: new Uint8Array(TAPROOT_FAKE_SIGNATURE_SIZE)
           })
         );
         const { nLockTime, nSequence, tapLeafHash } = satisfyTapTree({
@@ -1258,7 +1257,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     /**
      * Returns this `Output`'s scriptPubKey.
      */
-    getScriptPubKey(): Buffer {
+    getScriptPubKey(): Uint8Array {
       if (!this.#payment.output)
         throw new Error(`Error: could extract output.script from the payment`);
       return this.#payment.output;
@@ -1282,21 +1281,21 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * pubkeys. If a specific tapLeaf selector is used in spending calls, this
      * reflects that selection.
      */
-    getTapLeafHash(): Buffer | undefined {
+    getTapLeafHash(): Uint8Array | undefined {
       return this.#getConstraints()?.tapLeafHash;
     }
     /**
      * Gets the witnessScript required to fulfill this `Output`. Only applies to
      * Segwit outputs.
      */
-    getWitnessScript(): Buffer | undefined {
+    getWitnessScript(): Uint8Array | undefined {
       return this.#witnessScript;
     }
     /**
      * Gets the redeemScript required to fullfill this `Output`. Only applies to
      * SH outputs: sh(wpkh), sh(wsh), sh(lockingScript).
      */
-    getRedeemScript(): Buffer | undefined {
+    getRedeemScript(): Uint8Array | undefined {
       return this.#redeemScript;
     }
     /**
@@ -1341,7 +1340,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
      * with boolean properties indicating the detected output type
      */
     guessOutput() {
-      function guessSH(output: Buffer) {
+      function guessSH(output: Uint8Array) {
         try {
           payments.p2sh({ output });
           return true;
@@ -1350,7 +1349,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
-      function guessWSH(output: Buffer) {
+      function guessWSH(output: Uint8Array) {
         try {
           payments.p2wsh({ output });
           return true;
@@ -1359,7 +1358,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
-      function guessWPKH(output: Buffer) {
+      function guessWPKH(output: Uint8Array) {
         try {
           payments.p2wpkh({ output });
           return true;
@@ -1368,7 +1367,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
-      function guessPKH(output: Buffer) {
+      function guessPKH(output: Uint8Array) {
         try {
           payments.p2pkh({ output });
           return true;
@@ -1377,7 +1376,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           return false;
         }
       }
-      function guessTR(output: Buffer) {
+      function guessTR(output: Uint8Array) {
         try {
           payments.p2tr({ output });
           return true;
@@ -1494,7 +1493,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         return this.#resolveMiniscriptSignersPubKeys().map(pubkey => ({
           pubkey,
           // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
-          signature: Buffer.alloc(ECDSA_FAKE_SIGNATURE_SIZE, 0)
+          signature: new Uint8Array(ECDSA_FAKE_SIGNATURE_SIZE)
         }));
       };
 
@@ -1506,7 +1505,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         if (signatures !== 'DANGEROUSLY_USE_FAKE_SIGNATURES') return signatures;
         return this.#resolveTapTreeSignersPubKeys().map(pubkey => ({
           pubkey,
-          signature: Buffer.alloc(taprootFakeSignatureSize, 0)
+          signature: new Uint8Array(taprootFakeSignatureSize)
         }));
       };
       const resolveTaprootSignatureSize = (): number => {
@@ -1718,10 +1717,15 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt: Psbt;
       txHex?: string;
       txId?: string;
-      value?: number;
+      value?: bigint;
       vout: number;
       rbf?: boolean;
     }) {
+      if (value !== undefined && typeof value !== 'bigint')
+        throw new Error(`Error: value must be a bigint`);
+      if (value !== undefined && value < 0n)
+        throw new Error(`Error: value must be >= 0n`);
+
       if (txHex === undefined) {
         console.warn(`Warning: missing txHex may allow fee attacks`);
       }
@@ -1739,8 +1743,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           `Error: could not determine whether this is a taproot descriptor`
         );
       }
+      const paymentInternalPubkey = this.getPayment().internalPubkey;
       const tapInternalKey = isTaproot
-        ? this.getPayment().internalPubkey
+        ? paymentInternalPubkey
+          ? paymentInternalPubkey
+          : undefined
         : undefined;
       let tapLeafScript;
       let tapBip32Derivation;
@@ -1841,18 +1848,23 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             );
           const taprootSatisfaction =
             this.getTapScriptSatisfaction(tapScriptSig);
-          const matchingLeaf = tapLeafScript.find(leafScript =>
-            tapleafHash({
-              output: leafScript.script,
-              version: leafScript.leafVersion
-            }).equals(taprootSatisfaction.tapLeafHash)
+          const matchingLeaf = tapLeafScript.find(
+            leafScript =>
+              compare(
+                tapleafHash({
+                  output: leafScript.script,
+                  version: leafScript.leafVersion
+                }),
+                taprootSatisfaction.tapLeafHash
+              ) === 0
           );
           if (!matchingLeaf)
             throw new Error(
               `Error: tapLeafScript does not match planned tapLeafHash`
             );
           if (
-            !matchingLeaf.script.equals(taprootSatisfaction.leaf.tapScript) ||
+            compare(matchingLeaf.script, taprootSatisfaction.leaf.tapScript) !==
+              0 ||
             matchingLeaf.leafVersion !== taprootSatisfaction.leaf.version
           )
             throw new Error(
@@ -1893,7 +1905,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * @param params.psbt - The Partially Signed Bitcoin Transaction.
      * @param params.value - The value for the output in satoshis.
      */
-    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: number }) {
+    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: bigint }) {
+      if (typeof value !== 'bigint')
+        throw new Error(`Error: value must be a bigint`);
+      if (value < 0n) throw new Error(`Error: value must be >= 0n`);
       psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
@@ -1926,16 +1941,19 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             ? 0xffffffff
             : 0xfffffffe;
       const sequenceRBF = sequence !== undefined ? sequence : 0xfffffffd;
-      const eqBuffers = (buf1: Buffer | undefined, buf2: Buffer | undefined) =>
-        buf1 instanceof Buffer && buf2 instanceof Buffer
-          ? Buffer.compare(buf1, buf2) === 0
-          : buf1 === buf2;
+      const eqBytes = (
+        bytes1: Uint8Array | undefined,
+        bytes2: Uint8Array | undefined
+      ) =>
+        bytes1 === undefined || bytes2 === undefined
+          ? bytes1 === bytes2
+          : compare(bytes1, bytes2) === 0;
       if (
-        Buffer.compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
+        compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
         (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
         locktime !== psbt.locktime ||
-        !eqBuffers(this.getWitnessScript(), input.witnessScript) ||
-        !eqBuffers(this.getRedeemScript(), input.redeemScript)
+        !eqBytes(this.getWitnessScript(), input.witnessScript) ||
+        !eqBytes(this.getRedeemScript(), input.redeemScript)
       ) {
         throw new Error(
           `Error: cannot finalize psbt index ${index} since it does not correspond to this descriptor`

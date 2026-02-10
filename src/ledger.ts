@@ -26,6 +26,7 @@
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
 import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
+import { compare, fromHex, toHex } from 'uint8array-tools';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
@@ -184,8 +185,8 @@ export type LedgerPolicy = {
   policyName?: string;
   ledgerTemplate: string;
   keyRoots: string[];
-  policyId?: Buffer;
-  policyHmac?: Buffer;
+  policyId?: Uint8Array;
+  policyHmac?: Uint8Array;
 };
 /**
  * Ledger devices operate in a state-less manner. Therefore, policy information
@@ -193,7 +194,7 @@ export type LedgerPolicy = {
  * `ledgerState` also stores cached xpubs and the masterFingerprint.
  */
 export type LedgerState = {
-  masterFingerprint?: Buffer;
+  masterFingerprint?: Uint8Array;
   policies?: LedgerPolicy[];
   xpubs?: { [key: string]: string };
 };
@@ -212,12 +213,12 @@ export async function getLedgerMasterFingerPrint({
   ledgerManager
 }: {
   ledgerManager: LedgerManager;
-}): Promise<Buffer>;
+}): Promise<Uint8Array>;
 export async function getLedgerMasterFingerPrint({
   ledgerManager
 }: {
   ledgerManager: LedgerManager;
-}): Promise<Buffer> {
+}): Promise<Uint8Array> {
   const { ledgerClient, ledgerState } = ledgerManager;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
@@ -226,10 +227,7 @@ export async function getLedgerMasterFingerPrint({
     throw new Error(`Error: pass a valid ledgerClient`);
   let masterFingerprint = ledgerState.masterFingerprint;
   if (!masterFingerprint) {
-    masterFingerprint = Buffer.from(
-      await ledgerClient.getMasterFingerprint(),
-      'hex'
-    );
+    masterFingerprint = fromHex(await ledgerClient.getMasterFingerprint());
     ledgerState.masterFingerprint = masterFingerprint;
   }
   return masterFingerprint;
@@ -297,15 +295,17 @@ export async function ledgerPolicyFromPsbtInput({
   const { Output } = DescriptorsFactory(ecc);
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Input numer ${index} not set.`);
-  let scriptPubKey: Buffer | undefined;
+  let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
     const vout = psbt.txInputs[index]?.index;
     if (vout === undefined)
       throw new Error(
         `Could not extract vout from nonWitnessUtxo for input ${index}.`
       );
-    scriptPubKey = Transaction.fromBuffer(input.nonWitnessUtxo).outs[vout]
-      ?.script;
+    const nonWitnessScript = Transaction.fromBuffer(input.nonWitnessUtxo).outs[
+      vout
+    ]?.script;
+    scriptPubKey = nonWitnessScript;
   } else if (input.witnessUtxo) {
     scriptPubKey = input.witnessUtxo.script;
   }
@@ -330,10 +330,7 @@ export async function ledgerPolicyFromPsbtInput({
     //So we must use the template and the keyRoot of each policy and compute the
     //scriptPubKey:
     if (
-      Buffer.compare(
-        keyDerivation.masterFingerprint,
-        ledgerMasterFingerprint
-      ) === 0
+      compare(keyDerivation.masterFingerprint, ledgerMasterFingerprint) === 0
     ) {
       // Match /m followed by n consecutive hardened levels and then 2 consecutive unhardened levels:
       const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
@@ -369,9 +366,7 @@ export async function ledgerPolicyFromPsbtInput({
             standardPolicy = {
               ledgerTemplate: standardTemplate,
               keyRoots: [
-                `[${ledgerMasterFingerprint.toString(
-                  'hex'
-                )}${originPath}]${xpub}`
+                `[${toHex(ledgerMasterFingerprint)}${originPath}]${xpub}`
               ]
             };
           }
@@ -439,7 +434,7 @@ export async function ledgerPolicyFromPsbtInput({
                 network
               }).getScriptPubKey();
 
-              if (Buffer.compare(policyScriptPubKey, scriptPubKey) === 0) {
+              if (compare(policyScriptPubKey, scriptPubKey) === 0) {
                 return policy;
               }
             }
@@ -559,7 +554,7 @@ export async function ledgerPolicyFromOutput({
     const masterFingerprint = expansionMap[key]?.masterFingerprint;
     return (
       masterFingerprint &&
-      Buffer.compare(masterFingerprint, ledgerMasterFingerprint) === 0
+      compare(masterFingerprint, ledgerMasterFingerprint) === 0
     );
   });
   if (ledgerKeys.length === 0) return null;
@@ -609,7 +604,7 @@ export async function ledgerPolicyFromOutput({
     const keyInfo = expansionMap[key]!;
     if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
-        `[${keyInfo.masterFingerprint?.toString('hex')}${
+        `[${toHex(keyInfo.masterFingerprint)}${
           keyInfo.originPath
         }]${keyInfo?.bip32?.neutered().toBase58()}`
       );
