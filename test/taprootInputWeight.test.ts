@@ -2,10 +2,11 @@
 
 import { createHash } from 'crypto';
 import { encodingLength } from 'varuint-bitcoin';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { PartialSig } from 'bip174';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { selectTapLeafCandidates } from '../dist/tapTree';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { fromHex, toHex } from 'uint8array-tools';
 
 const { Output, expand } = DescriptorsFactory(ecc);
 
@@ -15,7 +16,7 @@ const LEAF_KEY =
   '669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0';
 const COMPRESSED_KEY =
   '03a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
-const PREIMAGE = Buffer.alloc(32, 1);
+const PREIMAGE = new Uint8Array(32).fill(1);
 const DIGEST = createHash('sha256').update(PREIMAGE).digest('hex');
 const DIGEST_EXPR = `sha256(${DIGEST})`;
 const SCRIPT_LEAF_EXPR = `and_v(v:pk(${LEAF_KEY}),${DIGEST_EXPR})`;
@@ -28,7 +29,7 @@ const FAKE_SIGNATURES = 'DANGEROUSLY_USE_FAKE_SIGNATURES' as const;
 const preimages = [
   {
     digest: DIGEST_EXPR,
-    preimage: PREIMAGE.toString('hex')
+    preimage: toHex(PREIMAGE)
   }
 ];
 
@@ -58,14 +59,14 @@ describe('taproot inputWeight', () => {
 
     const signatures64: PartialSig[] = [
       {
-        pubkey: Buffer.from(INTERNAL_KEY, 'hex'),
-        signature: Buffer.alloc(64, 1)
+        pubkey: fromHex(INTERNAL_KEY),
+        signature: new Uint8Array(64).fill(1)
       }
     ];
     const signatures65: PartialSig[] = [
       {
-        pubkey: Buffer.from(INTERNAL_KEY, 'hex'),
-        signature: Buffer.alloc(65, 1)
+        pubkey: fromHex(INTERNAL_KEY),
+        signature: new Uint8Array(65).fill(1)
       }
     ];
 

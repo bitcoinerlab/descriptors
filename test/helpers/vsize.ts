@@ -1,7 +1,7 @@
 // Distributed under the MIT software license
 
 import { encodingLength } from 'varuint-bitcoin';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { PartialSig } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
 export const isSegwitTx = (inputs: Array<OutputInstance>): boolean =>

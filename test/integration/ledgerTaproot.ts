@@ -52,7 +52,7 @@ async function runSpendScenario({
 }) {
   const destinationAddress = regtestUtils.RANDOM_ADDRESS;
   const { txId, vout } = await regtestUtils.faucetComplex(
-    output.getScriptPubKey(),
+    Buffer.from(output.getScriptPubKey()),
     UTXO_VALUE
   );
   const { txHex } = await regtestUtils.fetch(txId);
@@ -74,7 +74,10 @@ async function runSpendScenario({
     );
   }
 
-  psbt.addOutput({ address: destinationAddress, value: UTXO_VALUE - FEE });
+  psbt.addOutput({
+    address: destinationAddress,
+    value: BigInt(UTXO_VALUE - FEE)
+  });
 
   await signLedger({ psbt, ledgerManager });
 

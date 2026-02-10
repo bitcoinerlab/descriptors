@@ -9,6 +9,7 @@ import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { toHex } from 'uint8array-tools';
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 
@@ -34,7 +35,7 @@ const { signBIP32, signECPair } = signers;
 const manyKeys = Array.from({ length: 25 }, () => ECPair.makeRandom());
 
 // Make hex helper
-const hex = (pk: Buffer) => pk.toString('hex');
+const hex = (pk: Uint8Array) => toHex(pk);
 
 // -----------------------------------------
 // Helper: build sortedmulti descriptor
@@ -81,7 +82,7 @@ async function runIntegration(descriptor: string) {
 
   // FUND
   const { txId, vout } = await regtestUtils.faucetComplex(
-    output.getScriptPubKey(),
+    Buffer.from(output.getScriptPubKey()),
     INITIAL_VALUE
   );
 
@@ -99,12 +100,12 @@ async function runIntegration(descriptor: string) {
   new Output({
     descriptor: `addr(${FINAL_ADDRESS})`,
     network: NETWORK
-  }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
+  }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
 
   // which pubkeys:
   const expansion = output.expand();
   const required = Object.values(expansion.expansionMap ?? {})
-    .map(e => e.pubkey?.toString('hex'))
+    .map(e => (e.pubkey ? toHex(e.pubkey) : undefined))
     .filter(Boolean) as string[];
 
   // Sign with BIP32 (signs all pubkeys BIP32 controlled by masterNode)
@@ -113,7 +114,7 @@ async function runIntegration(descriptor: string) {
 
   // Sign with ECPair ONLY if it matches one of the required pubkeys
   for (const k of manyKeys) {
-    if (required.includes(k.publicKey.toString('hex')) && signed < m) {
+    if (required.includes(toHex(k.publicKey)) && signed < m) {
       signECPair({ psbt, ecpair: k });
       signed++;
     }

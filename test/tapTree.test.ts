@@ -7,7 +7,7 @@ import {
   selectTapLeafCandidates
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
-import type { TapBip32Derivation } from 'bip174/src/lib/interfaces';
+import type { TapBip32Derivation } from 'bip174';
 import { Psbt, Transaction } from 'bitcoinjs-lib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { signInputECPair } from '../dist/signers';
@@ -17,6 +17,7 @@ import {
   satisfyTapTree
 } from '../dist/tapMiniscript';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { compare, fromHex, toHex } from 'uint8array-tools';
 
 describe('taproot tree parser', () => {
   test('parses a leaf miniscript expression', () => {
@@ -50,11 +51,14 @@ describe('taproot tree compilation', () => {
   const XPUB_2 =
     'xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y';
 
-  const xOnly = (pubkey: Buffer): string => pubkey.slice(1, 33).toString('hex');
+  const xOnly = (pubkey: Uint8Array): string => toHex(pubkey.slice(1, 33));
 
-  const buildFundingTxHex = (scriptPubKey: Buffer, value = 50000): string => {
+  const buildFundingTxHex = (
+    scriptPubKey: Uint8Array,
+    value = 50000n
+  ): string => {
     const tx = new Transaction();
-    tx.addInput(Buffer.alloc(32, 0), 0);
+    tx.addInput(new Uint8Array(32), 0);
     tx.addOutput(scriptPubKey, value);
     return tx.toHex();
   };
@@ -72,7 +76,7 @@ describe('taproot tree compilation', () => {
       'pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0)'
     );
     expect(tapTreeInfo.expandedMiniscript).toEqual('pk(@0)');
-    expect(tapTreeInfo.tapScript).toBeInstanceOf(Buffer);
+    expect(tapTreeInfo.tapScript).toBeInstanceOf(Uint8Array);
     expect(tapTreeInfo.tapScript.length).toBeGreaterThan(0);
   });
 
@@ -100,9 +104,7 @@ describe('taproot tree compilation', () => {
     });
     //console.log(JSON.stringify(metadata, null, 2));
     expect(metadata).toHaveLength(2);
-    const hashes = new Set(
-      metadata.map(entry => entry.tapLeafHash.toString('hex'))
-    );
+    const hashes = new Set(metadata.map(entry => toHex(entry.tapLeafHash)));
     expect(hashes.size).toBe(2);
     metadata.forEach(entry => {
       expect(entry.controlBlock.length).toBe(65);
@@ -145,19 +147,17 @@ describe('taproot tree compilation', () => {
 
     const derivationByPubkey = new Map<string, TapBip32Derivation>(
       derivations.map((derivation: TapBip32Derivation) => [
-        derivation.pubkey.toString('hex'),
+        toHex(derivation.pubkey),
         derivation
       ])
     );
 
-    const internalDerivation = derivationByPubkey.get(
-      internalPubkey.toString('hex')
-    );
+    const internalDerivation = derivationByPubkey.get(toHex(internalPubkey));
     expect(internalDerivation).toBeDefined();
     expect(internalDerivation?.leafHashes).toHaveLength(0);
 
     const scriptDerivations = derivations.filter(
-      entry => !entry.pubkey.equals(internalPubkey)
+      entry => compare(entry.pubkey, internalPubkey) !== 0
     );
     expect(scriptDerivations).toHaveLength(2);
     scriptDerivations.forEach(entry => {
@@ -179,13 +179,13 @@ describe('taproot tree compilation', () => {
     output.updatePsbtAsInput({
       psbt,
       txId: '11'.repeat(32),
-      value: 50000,
+      value: 50000n,
       vout: 0
     });
 
     const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
-    expect(input.tapInternalKey).toBeInstanceOf(Buffer);
+    expect(input.tapInternalKey).toBeInstanceOf(Uint8Array);
     expect(input.tapInternalKey?.length).toBe(32);
     expect(input.tapLeafScript).toBeDefined();
     expect(input.tapLeafScript).toHaveLength(2);
@@ -198,13 +198,13 @@ describe('taproot tree compilation', () => {
 
     const internalPubkey = output.expand().expansionMap?.['@0']?.pubkey;
     if (!internalPubkey) throw new Error('expected internal pubkey');
-    const internalDerivation = input.tapBip32Derivation?.find(entry =>
-      entry.pubkey.equals(internalPubkey)
+    const internalDerivation = input.tapBip32Derivation?.find(
+      entry => compare(entry.pubkey, internalPubkey) === 0
     );
     expect(internalDerivation?.leafHashes).toHaveLength(0);
     const scriptDerivations =
       input.tapBip32Derivation?.filter(
-        entry => !entry.pubkey.equals(internalPubkey)
+        entry => compare(entry.pubkey, internalPubkey) !== 0
       ) || [];
     expect(scriptDerivations).toHaveLength(2);
     scriptDerivations.forEach(entry => {
@@ -226,7 +226,7 @@ describe('taproot tree compilation', () => {
     output.updatePsbtAsInput({
       psbt,
       txId: '22'.repeat(32),
-      value: 50000,
+      value: 50000n,
       vout: 0
     });
 
@@ -237,9 +237,9 @@ describe('taproot tree compilation', () => {
 
   test('script policy signs and finalizes through script-path', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 1));
-    const leafSignerA = ECPair.fromPrivateKey(Buffer.alloc(32, 2));
-    const leafSignerB = ECPair.fromPrivateKey(Buffer.alloc(32, 3));
+    const internalSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(1));
+    const leafSignerA = ECPair.fromPrivateKey(new Uint8Array(32).fill(2));
+    const leafSignerB = ECPair.fromPrivateKey(new Uint8Array(32).fill(3));
     const leafA = `pk(${xOnly(leafSignerA.publicKey)})`;
     const leafB = `pk(${xOnly(leafSignerB.publicKey)})`;
     const descriptor = `tr(${xOnly(internalSigner.publicKey)},{${leafA},${leafB}})`;
@@ -252,7 +252,7 @@ describe('taproot tree compilation', () => {
     const txHex = buildFundingTxHex(output.getScriptPubKey());
     const psbt = new Psbt();
     const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
-    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+    psbt.addOutput({ script: Uint8Array.from([0x51]), value: 40000n });
 
     signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
     finalize({ psbt });
@@ -267,8 +267,8 @@ describe('taproot tree compilation', () => {
 
   test('script policy finalizer requires tapScriptSig', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 4));
-    const leafSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 5));
+    const internalSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(4));
+    const leafSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(5));
     const leaf = `pk(${xOnly(leafSigner.publicKey)})`;
     const descriptor = `tr(${xOnly(internalSigner.publicKey)},${leaf})`;
     const output = new Output({
@@ -280,7 +280,7 @@ describe('taproot tree compilation', () => {
     const txHex = buildFundingTxHex(output.getScriptPubKey());
     const psbt = new Psbt();
     const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
-    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+    psbt.addOutput({ script: Uint8Array.from([0x51]), value: 40000n });
 
     expect(() => finalize({ psbt, validate: false })).toThrow(
       'cannot finalize taproot script-path without tapScriptSig'
@@ -289,14 +289,14 @@ describe('taproot tree compilation', () => {
 
   test('key-path taproot signs and finalizes without tapLeafScript', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const signer = ECPair.fromPrivateKey(Buffer.alloc(32, 6));
+    const signer = ECPair.fromPrivateKey(new Uint8Array(32).fill(6));
     const descriptor = `tr(${xOnly(signer.publicKey)})`;
     const output = new Output({ descriptor });
 
     const txHex = buildFundingTxHex(output.getScriptPubKey());
     const psbt = new Psbt();
     const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
-    psbt.addOutput({ script: Buffer.from([0x51]), value: 40000 });
+    psbt.addOutput({ script: Uint8Array.from([0x51]), value: 40000n });
 
     const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
@@ -340,7 +340,7 @@ describe('taproot tree satisfactions', () => {
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
   const LEAF_KEY =
     '669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0';
-  const PREIMAGE = Buffer.alloc(32, 1);
+  const PREIMAGE = new Uint8Array(32).fill(1);
   const DIGEST = createHash('sha256').update(PREIMAGE).digest('hex');
   const DIGEST_EXPR = `sha256(${DIGEST})`;
 
@@ -358,8 +358,8 @@ describe('taproot tree satisfactions', () => {
     const tapTreeInfo = buildTapTreeInfo();
     const signatures = [
       {
-        pubkey: Buffer.from(LEAF_KEY, 'hex'),
-        signature: Buffer.alloc(64, 2)
+        pubkey: fromHex(LEAF_KEY),
+        signature: new Uint8Array(64).fill(2)
       }
     ];
     const best = satisfyTapTree({
@@ -368,7 +368,7 @@ describe('taproot tree satisfactions', () => {
       preimages: [
         {
           digest: DIGEST_EXPR,
-          preimage: PREIMAGE.toString('hex')
+          preimage: toHex(PREIMAGE)
         }
       ]
     });
@@ -384,8 +384,8 @@ describe('taproot tree satisfactions', () => {
     if (!target) throw new Error('target leaf not found');
     const signatures = [
       {
-        pubkey: Buffer.from(LEAF_KEY, 'hex'),
-        signature: Buffer.alloc(64, 2)
+        pubkey: fromHex(LEAF_KEY),
+        signature: new Uint8Array(64).fill(2)
       }
     ];
     const best = satisfyTapTree({
@@ -395,13 +395,13 @@ describe('taproot tree satisfactions', () => {
       preimages: [
         {
           digest: DIGEST_EXPR,
-          preimage: PREIMAGE.toString('hex')
+          preimage: toHex(PREIMAGE)
         }
       ]
     });
     expect(best.leaf.miniscript.startsWith('and_v(')).toBe(true);
-    const hasPreimage = best.stackItems.some((item: Buffer) =>
-      item.equals(PREIMAGE)
+    const hasPreimage = best.stackItems.some(
+      (item: Uint8Array) => compare(item, PREIMAGE) === 0
     );
     expect(hasPreimage).toBe(true);
   });
@@ -413,8 +413,8 @@ describe('taproot tree satisfactions', () => {
     if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
     const signatures = [
       {
-        pubkey: Buffer.from(LEAF_KEY, 'hex'),
-        signature: Buffer.alloc(64, 2)
+        pubkey: fromHex(LEAF_KEY),
+        signature: new Uint8Array(64).fill(2)
       }
     ];
     expect(() =>

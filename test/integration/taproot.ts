@@ -7,6 +7,7 @@ import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { toHex } from 'uint8array-tools';
 
 import {
   DescriptorsFactory,
@@ -18,7 +19,7 @@ import { vsize } from '../helpers/vsize';
 
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { PartialSig, PsbtInput } from 'bip174/src/lib/interfaces';
+import type { PartialSig, PsbtInput } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
 const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
@@ -32,8 +33,7 @@ const FINAL_VALUE = INPUT_VALUE - FEE;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const xOnlyHex = (pubkey: Buffer): string =>
-  pubkey.slice(1, 33).toString('hex');
+const xOnlyHex = (pubkey: Uint8Array): string => toHex(pubkey.slice(1, 33));
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) throw new Error(message);
@@ -72,7 +72,7 @@ const runScenario = async ({
   expectTapBip32Derivation?: boolean;
 }): Promise<{ realVsize: number; estimatedVsize: number }> => {
   const { txId, vout } = await regtestUtils.faucetComplex(
-    input.getScriptPubKey(),
+    Buffer.from(input.getScriptPubKey()),
     INPUT_VALUE
   );
   const { txHex } = await regtestUtils.fetch(txId);
@@ -108,7 +108,7 @@ const runScenario = async ({
     descriptor: `addr(${destinationAddress})`,
     network: NETWORK
   });
-  destination.updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
+  destination.updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
 
   if (masterNode) {
     signBIP32({ psbt, masterNode });
@@ -150,9 +150,9 @@ const runScenario = async ({
 (async () => {
   const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 
-  const internalSigner = ECPair.fromPrivateKey(Buffer.alloc(32, 1));
-  const leafSignerA = ECPair.fromPrivateKey(Buffer.alloc(32, 2));
-  const leafSignerB = ECPair.fromPrivateKey(Buffer.alloc(32, 3));
+  const internalSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(1));
+  const leafSignerA = ECPair.fromPrivateKey(new Uint8Array(32).fill(2));
+  const leafSignerB = ECPair.fromPrivateKey(new Uint8Array(32).fill(3));
 
   const internalKey = xOnlyHex(internalSigner.publicKey);
   const leafAKey = xOnlyHex(leafSignerA.publicKey);
@@ -300,7 +300,7 @@ const runScenario = async ({
     await runScenario(scenario);
   }
 
-  const preimage = Buffer.alloc(32, 9);
+  const preimage = new Uint8Array(32).fill(9);
   const digest = createHash('sha256').update(preimage).digest('hex');
   const digestExpression = `sha256(${digest})`;
   const expensiveLeafExpression = `and_v(v:pk(${leafBKey}),${digestExpression})`;
@@ -310,7 +310,7 @@ const runScenario = async ({
   const weightedPreimages = [
     {
       digest: digestExpression,
-      preimage: preimage.toString('hex')
+      preimage: toHex(preimage)
     }
   ];
 

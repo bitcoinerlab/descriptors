@@ -227,7 +227,10 @@ const finalizers = [];
 
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
-  psbt.addOutput({ address: FINAL_ADDRESS, value: UTXO_VALUE * 3 - FEE });
+  psbt.addOutput({
+    address: FINAL_ADDRESS,
+    value: BigInt(UTXO_VALUE * 3 - FEE)
+  });
 
   //=============
   //Register Ledger policies of non-standard descriptors.
