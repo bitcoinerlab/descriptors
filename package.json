@@ -39,6 +39,7 @@
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js",
     "test:integration:taproot": "npm run ensureTester && node test/integration/taproot.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledger.js",
+    "test:integration:ledger:taproot": "npm run ensureTester && node test/integration/ledgerTaproot.js",
     "test:unit": "jest",
     "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
     "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
@@ -48,22 +49,22 @@
     "dist"
   ],
   "peerDependencies": {
-    "ledger-bitcoin": "^0.2.2"
+    "@ledgerhq/ledger-bitcoin": "^0.3.0"
   },
   "peerDependenciesMeta": {
-    "ledger-bitcoin": {
+    "@ledgerhq/ledger-bitcoin": {
       "optional": true
     }
   },
   "devDependencies": {
     "@bitcoinerlab/configs": "^2.0.0",
     "@bitcoinerlab/miniscript-policies": "^1.0.0",
-    "@ledgerhq/hw-transport-node-hid": "^6.27.12",
+    "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@types/lodash.memoize": "^4.1.9",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
-    "ledger-bitcoin": "^0.2.2",
+    "@ledgerhq/ledger-bitcoin": "^0.3.0",
     "regtest-client": "^0.2.1",
     "yargs": "^17.7.2"
   },

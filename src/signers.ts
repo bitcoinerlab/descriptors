@@ -149,10 +149,69 @@ const ledgerSignaturesForInputIndex = (
 ) =>
   ledgerSignatures
     .filter(([i]: [number, PartialSignature]) => i === index)
-    .map(([_i, partialSignature]: [number, PartialSignature]) => ({
-      pubkey: partialSignature.pubkey,
-      signature: partialSignature.signature
+    .map(
+      ([_i, partialSignature]: [number, PartialSignature]) => partialSignature
+    );
+
+function addLedgerSignaturesToInput({
+  psbt,
+  index,
+  ledgerSignatures
+}: {
+  psbt: Psbt;
+  index: number;
+  ledgerSignatures: [number, PartialSignature][];
+}) {
+  const input = psbt.data.inputs[index];
+  if (!input) throw new Error(`Error: input ${index} not available`);
+
+  const signatures = ledgerSignaturesForInputIndex(index, ledgerSignatures);
+  if (signatures.length === 0)
+    throw new Error(`Error: no ledger signatures found for input ${index}`);
+
+  if (isTaprootInput(input)) {
+    // Ledger returns per-input signatures as [pubkey, signature, tapleafHash?].
+    // For taproot we must map them to PSBT taproot fields (not partialSig):
+    // - signatures with tapleafHash -> tapScriptSig[] (script-path)
+    // - signature without tapleafHash -> tapKeySig (key-path)
+    // A taproot input may contain script-path signatures, key-path signature,
+    // or both in edge cases; each must be written to its corresponding field.
+    const tapScriptSig = signatures
+      .filter((sig: PartialSignature) => sig.tapleafHash)
+      .map((sig: PartialSignature) => ({
+        pubkey: sig.pubkey,
+        signature: sig.signature,
+        leafHash: sig.tapleafHash!
+      }));
+    const tapKeySigs = signatures.filter(
+      (sig: PartialSignature) => !sig.tapleafHash
+    );
+
+    if (tapScriptSig.length > 0) {
+      psbt.updateInput(index, { tapScriptSig });
+    }
+
+    if (tapKeySigs.length > 1)
+      throw new Error(
+        `Error: expected at most one tapKeySig for input ${index}`
+      );
+    const tapKeySig = tapKeySigs[0]?.signature;
+    if (tapKeySig) {
+      psbt.updateInput(index, { tapKeySig });
+    }
+
+    if (tapScriptSig.length === 0 && !tapKeySig)
+      throw new Error(
+        `Error: no valid taproot ledger signatures found for input ${index}`
+      );
+  } else {
+    const partialSig = signatures.map((sig: PartialSignature) => ({
+      pubkey: sig.pubkey,
+      signature: sig.signature
     }));
+    psbt.updateInput(index, { partialSig });
+  }
+}
 
 /**
  * Signs an input of the `psbt` where the keys are controlled by a Ledger
@@ -179,15 +238,13 @@ export async function signInputLedger({
   ledgerManager: LedgerManager;
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
-  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
+  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
-    )) as typeof import('ledger-bitcoin');
+    )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  if (psbt.data.inputs[index]?.tapInternalKey)
-    throw new Error('Taproot inputs not yet supported for the Ledger device');
   const policy = await ledgerPolicyFromPsbtInput({
     psbt,
     index,
@@ -205,14 +262,14 @@ export async function signInputLedger({
     );
 
     ledgerSignatures = await ledgerClient.signPsbt(
-      new PsbtV2().fromBitcoinJS(psbt),
+      psbt.toBase64(),
       walletPolicy,
       policy.policyHmac
     );
   } else {
     //standard policy
     ledgerSignatures = await ledgerClient.signPsbt(
-      new PsbtV2().fromBitcoinJS(psbt),
+      psbt.toBase64(),
       new DefaultWalletPolicy(
         policy.ledgerTemplate as DefaultDescriptorTemplate,
         policy.keyRoots[0]!
@@ -221,10 +278,7 @@ export async function signInputLedger({
     );
   }
 
-  //Add the signatures to the Psbt object using PartialSig format:
-  psbt.updateInput(index, {
-    partialSig: ledgerSignaturesForInputIndex(index, ledgerSignatures)
-  });
+  addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
 }
 
 /**
@@ -252,17 +306,15 @@ export async function signLedger({
   ledgerManager: LedgerManager;
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
-  const { PsbtV2, DefaultWalletPolicy, WalletPolicy, AppClient } =
+  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
       ledgerClient
-    )) as typeof import('ledger-bitcoin');
+    )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
   const ledgerPolicies = [];
   for (let index = 0; index < psbt.data.inputs.length; index++) {
-    if (psbt.data.inputs[index]?.tapInternalKey)
-      throw new Error('Taproot inputs not yet supported for the Ledger device');
     const policy = await ledgerPolicyFromPsbtInput({
       psbt,
       index,
@@ -299,14 +351,14 @@ export async function signLedger({
       );
 
       ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
+        psbt.toBase64(),
         walletPolicy,
         uniquePolicy.policyHmac
       );
     } else {
       //standard policy
       ledgerSignatures = await ledgerClient.signPsbt(
-        new PsbtV2().fromBitcoinJS(psbt),
+        psbt.toBase64(),
         new DefaultWalletPolicy(
           uniquePolicy.ledgerTemplate as DefaultDescriptorTemplate,
           uniquePolicy.keyRoots[0]!
@@ -315,10 +367,11 @@ export async function signLedger({
       );
     }
 
-    for (const [index, ,] of ledgerSignatures) {
-      psbt.updateInput(index, {
-        partialSig: ledgerSignaturesForInputIndex(index, ledgerSignatures)
-      });
+    const signedIndexes = [
+      ...new Set(ledgerSignatures.map(([index]) => index))
+    ];
+    for (const index of signedIndexes) {
+      addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
     }
   }
 }

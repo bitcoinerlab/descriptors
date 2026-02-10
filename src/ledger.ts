@@ -27,16 +27,17 @@
 import { OutputInstance, DescriptorsFactory } from './descriptors';
 import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
 import { reOriginPath } from './re';
-import type { TinySecp256k1Interface } from './types';
+import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
+import type { TapTreeInfoNode } from './tapTree';
 
 /**
- * Dynamically imports the 'ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
+ * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
  *
  * @async
  * @param {unknown} ledgerClient - An optional parameter that, if provided, is checked to see if it's an instance of `AppClient`.
  * @throws {Error} Throws an error if `ledgerClient` is provided but is not an instance of `AppClient`.
- * @throws {Error} Throws an error if the 'ledger-bitcoin' module cannot be imported. This typically indicates that the 'ledger-bitcoin' peer dependency is not installed.
- * @returns {Promise<unknown>} Returns a promise that resolves with the entire 'ledger-bitcoin' module if it can be successfully imported. We force it to return an unknown type so that the declaration of this function won't break projects that don't use ledger-bitcoin as dependency
+ * @throws {Error} Throws an error if the '@ledgerhq/ledger-bitcoin' module cannot be imported. This typically indicates that the '@ledgerhq/ledger-bitcoin' peer dependency is not installed.
+ * @returns {Promise<unknown>} Returns a promise that resolves with the entire '@ledgerhq/ledger-bitcoin' module if it can be successfully imported. We force it to return an unknown type so that the declaration of this function won't break projects that don't use @ledgerhq/ledger-bitcoin as dependency
  *
  * @example
  *
@@ -53,26 +54,26 @@ export async function importAndValidateLedgerBitcoin(
   let ledgerBitcoinModule;
   try {
     // Originally, the code used dynamic imports:
-    // ledgerBitcoinModule = await import('ledger-bitcoin');
+    // ledgerBitcoinModule = await import('@ledgerhq/ledger-bitcoin');
 
     // However, in React Native with the Metro bundler, there's an issue with
     // recognizing dynamic imports inside try-catch blocks. For details, refer to:
     // https://github.com/react-native-community/discussions-and-proposals/issues/120
 
     // The dynamic import gets transpiled to:
-    // ledgerBitcoinModule = Promise.resolve().then(() => __importStar(require('ledger-bitcoin')));
+    // ledgerBitcoinModule = Promise.resolve().then(() => __importStar(require('@ledgerhq/ledger-bitcoin')));
 
     // Metro bundler fails to recognize the above as conditional. Hence, it tries
-    // to require 'ledger-bitcoin' unconditionally, leading to potential errors if
-    // 'ledger-bitcoin' is not installed (given it's an optional peerDependency).
+    // to require '@ledgerhq/ledger-bitcoin' unconditionally, leading to potential errors if
+    // '@ledgerhq/ledger-bitcoin' is not installed (given it's an optional peerDependency).
 
     // To bypass this, we directly use require:
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ledgerBitcoinModule = require('ledger-bitcoin');
+    ledgerBitcoinModule = require('@ledgerhq/ledger-bitcoin');
   } catch (error) {
     void error;
     throw new Error(
-      'Could not import "ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
+      'Could not import "@ledgerhq/ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install @ledgerhq/ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
     );
   }
   const { AppClient } = ledgerBitcoinModule;
@@ -220,7 +221,7 @@ export async function getLedgerMasterFingerPrint({
   const { ledgerClient, ledgerState } = ledgerManager;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   let masterFingerprint = ledgerState.masterFingerprint;
@@ -254,7 +255,7 @@ export async function getLedgerXpub({
   const { ledgerClient, ledgerState } = ledgerManager;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   if (!ledgerState.xpubs) ledgerState.xpubs = {};
@@ -311,26 +312,31 @@ export async function ledgerPolicyFromPsbtInput({
   if (!scriptPubKey)
     throw new Error(`Could not retrieve scriptPubKey for input ${index}.`);
 
-  const bip32Derivations = input.bip32Derivation;
-  if (!bip32Derivations || !bip32Derivations.length)
-    throw new Error(`Input ${index} does not contain bip32 derivations.`);
+  const keyDerivations = [
+    ...(input.bip32Derivation || []),
+    ...(input.tapBip32Derivation || [])
+  ];
+  if (keyDerivations.length === 0)
+    throw new Error(
+      `Input ${index} does not contain bip32 or tapBip32 derivations.`
+    );
 
   const ledgerMasterFingerprint = await getLedgerMasterFingerPrint({
     ledgerManager
   });
-  for (const bip32Derivation of bip32Derivations) {
+  for (const keyDerivation of keyDerivations) {
     //get the keyRoot and keyPath. If it matches one of our policies then
     //we are still not sure this is the policy that must be used yet
     //So we must use the template and the keyRoot of each policy and compute the
     //scriptPubKey:
     if (
       Buffer.compare(
-        bip32Derivation.masterFingerprint,
+        keyDerivation.masterFingerprint,
         ledgerMasterFingerprint
       ) === 0
     ) {
       // Match /m followed by n consecutive hardened levels and then 2 consecutive unhardened levels:
-      const match = bip32Derivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
+      const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
       const originPath = match ? match[1] : undefined; //n consecutive hardened levels
       const keyPath = match ? match[3] : undefined; //2 unhardened levels or undefined
 
@@ -414,7 +420,15 @@ export async function ledgerPolicyFromPsbtInput({
                     keyRoot
                   );
                 else descriptor = undefined;
-              } else descriptor = undefined;
+              } else {
+                // Keys without origin info are treated as external by Ledger
+                // and are allowed in policy matching.
+                if (descriptor)
+                  descriptor = descriptor.replace(
+                    new RegExp(`@${i}`, 'g'),
+                    keyRoot
+                  );
+              }
             }
 
             //verify the scriptPubKey from the input vs. the one obtained from
@@ -471,8 +485,63 @@ export async function ledgerPolicyFromOutput({
   output: OutputInstance;
   ledgerManager: LedgerManager;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
-  const expandedExpression = output.expand().expandedExpression;
-  const expansionMap = output.expand().expansionMap;
+  const expanded = output.expand();
+  let expandedExpression = expanded.expandedExpression;
+  const expansionMap = expanded.expansionMap
+    ? ({ ...expanded.expansionMap } as ExpansionMap)
+    : undefined;
+
+  // Taproot script-path keys are expanded in tapTreeInfo leaf expansion maps,
+  // not in the top-level expansionMap. For ledger policy derivation we remap
+  // leaf-local placeholders to global placeholders and merge all leaf keys into
+  // the top-level expansionMap.
+  if (
+    expandedExpression?.startsWith('tr(@0,') &&
+    expansionMap &&
+    expanded.tapTreeInfo
+  ) {
+    const keyExpressionToGlobalPlaceholder = new Map<string, string>(
+      Object.entries(expansionMap).map(([placeholder, keyInfo]) => [
+        keyInfo.keyExpression,
+        placeholder
+      ])
+    );
+    let nextPlaceholderIndex = Object.keys(expansionMap).length;
+
+    const globalPlaceholderFor = (keyInfo: KeyInfo): string => {
+      const existing = keyExpressionToGlobalPlaceholder.get(
+        keyInfo.keyExpression
+      );
+      if (existing) return existing;
+      const placeholder = `@${nextPlaceholderIndex}`;
+      nextPlaceholderIndex += 1;
+      keyExpressionToGlobalPlaceholder.set(keyInfo.keyExpression, placeholder);
+      expansionMap[placeholder] = keyInfo;
+      return placeholder;
+    };
+
+    const remapTapTree = (node: TapTreeInfoNode): string => {
+      if ('miniscript' in node) {
+        let remappedMiniscript = node.expandedMiniscript;
+        const localEntries = Object.entries(node.expansionMap).sort(
+          ([placeholderA], [placeholderB]) =>
+            placeholderB.length - placeholderA.length
+        );
+        for (const [localPlaceholder, keyInfo] of localEntries) {
+          const globalPlaceholder = globalPlaceholderFor(keyInfo);
+          remappedMiniscript = remappedMiniscript.replaceAll(
+            localPlaceholder,
+            globalPlaceholder
+          );
+        }
+        return remappedMiniscript;
+      }
+      return `{${remapTapTree(node.left)},${remapTapTree(node.right)}}`;
+    };
+
+    expandedExpression = `tr(@0,${remapTapTree(expanded.tapTreeInfo)})`;
+  }
+
   if (!expandedExpression || !expansionMap)
     throw new Error(`Error: invalid output`);
 
@@ -578,7 +647,7 @@ export async function registerLedgerWallet({
   const { ledgerClient, ledgerState, ecc, network } = ledgerManager;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
