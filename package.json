@@ -71,7 +71,7 @@
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "bip32": "^4.0.0",
     "bitcoinjs-lib": "^7.0.1",
-    "ecpair": "^3.0.0",
+    "ecpair": "github:bitcoinerlab/ecpair#pr-31",
     "lodash.memoize": "^4.1.2",
     "varuint-bitcoin": "^2.0.0"
   }
