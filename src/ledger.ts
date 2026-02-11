@@ -27,6 +27,7 @@
 import { OutputInstance, DescriptorsFactory } from './descriptors';
 import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
+import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
@@ -163,9 +164,9 @@ function isLedgerStandard({
   if (keyRoots.length !== 1) return false;
   const originPath = keyRoots[0]?.match(reOriginPath)?.[1];
   if (!originPath) return false;
-  //Network is the 6th character: /44'/0'
-  if (originPath[5] !== (network === networks.bitcoin ? '0' : '1'))
-    return false;
+  const originCoinType = originPath.match(/^\/\d+'\/([01])'/)?.[1];
+  if (!originCoinType) return false;
+  if (originCoinType !== `${coinTypeFromNetwork(network)}`) return false;
   if (
     (ledgerTemplate === 'pkh(@0/**)' &&
       originPath.match(/^\/44'\/[01]'\/(\d+)'$/)) ||
@@ -344,7 +345,7 @@ export async function ledgerPolicyFromPsbtInput({
         const change = parseInt(strChange, 10);
         const index = parseInt(strIndex, 10);
 
-        const coinType = network === networks.bitcoin ? 0 : 1;
+        const coinType = coinTypeFromNetwork(network);
 
         //standard policy candidate. This policy will be added to the pool
         //of policies below and check if it produces the correct scriptPubKey

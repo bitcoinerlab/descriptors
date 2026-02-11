@@ -1,6 +1,7 @@
 import { networks, Network } from 'bitcoinjs-lib';
 import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
+import { coinTypeFromNetwork } from './networkUtils';
 import type { BIP32Interface } from 'bip32';
 
 function assertStandardKeyPath(keyPath: string) {
@@ -52,9 +53,7 @@ function standardExpressionsBIP32Maker(
      */
     isPublic?: boolean;
   }) {
-    const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
-    }'/${account}'`;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = keyExpressionBIP32({
       masterNode,
@@ -115,9 +114,7 @@ function standardExpressionsLedgerMaker(
     index?: number | undefined | '*';
   }) {
     const { network } = ledgerManager;
-    const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
-    }'/${account}'`;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = await keyExpressionLedger({
       ledgerManager,
