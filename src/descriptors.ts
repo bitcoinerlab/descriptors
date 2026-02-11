@@ -55,6 +55,7 @@ import {
 } from './tapMiniscript';
 import type { TaprootLeafSatisfaction } from './tapMiniscript';
 import { splitTopLevelComma } from './parseUtils';
+import { resolveMultipathDescriptor } from './multipath';
 
 //See "Resource limitations" https://bitcoin.sipa.be/miniscript/
 //https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
@@ -97,11 +98,13 @@ function varSliceSize(someScript: Uint8Array): number {
 function evaluate({
   descriptor,
   checksumRequired,
-  index
+  index,
+  change
 }: {
   descriptor: string;
   checksumRequired: boolean;
   index?: number;
+  change?: number;
 }): string {
   if (!descriptor) throw new Error('You must provide a descriptor.');
 
@@ -121,6 +124,12 @@ function evaluate({
       throw new Error(`Error: invalid descriptor checksum for ${descriptor}`);
     }
   }
+
+  evaluatedDescriptor = resolveMultipathDescriptor({
+    descriptor: evaluatedDescriptor,
+    ...(change !== undefined ? { change } : {})
+  });
+
   if (index !== undefined) {
     const mWildcard = evaluatedDescriptor.match(/\*/g);
     if (mWildcard && mWildcard.length > 0) {
@@ -270,6 +279,17 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     index?: number;
 
     /**
+     * Multipath branch selector used for descriptor key-path tuples like
+     * `/<0;1>/*` (and shorthand `/**`).
+     *
+     * The value passed in `change` must be one of the numbers present in the
+     * tuple. For example:
+     * - `/<0;1>/*` accepts `change: 0` or `change: 1`
+     * - `/<0;1;2>/*` accepts `change: 0`, `1` or `2`
+     */
+    change?: number;
+
+    /**
      * A flag indicating whether the descriptor is required to include a checksum.
      * @defaultValue false
      */
@@ -291,12 +311,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   function expand({
     descriptor,
     index,
+    change,
     checksumRequired = false,
     network = networks.bitcoin,
     allowMiniscriptInP2SH = false
   }: {
     descriptor: string;
     index?: number;
+    change?: number;
     checksumRequired?: boolean;
     network?: Network;
     allowMiniscriptInP2SH?: boolean;
@@ -325,6 +347,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     const canonicalExpression = evaluate({
       descriptor,
       ...(index !== undefined ? { index } : {}),
+      ...(change !== undefined ? { change } : {}),
       checksumRequired
     });
     const isCanonicalRanged = canonicalExpression.indexOf('*') !== -1;
@@ -837,6 +860,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     constructor({
       descriptor,
       index,
+      change,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
       network = networks.bitcoin,
@@ -857,6 +881,22 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
        * If the descriptor contains any wildcard (`*`), an `index` is required.
        */
       index?: number;
+
+      /**
+       * Multipath branch selector for key-path tuples like `/<0;1>/*`.
+       *
+       * The value passed in `change` must be one of the numbers present in the
+       * tuple.
+       *
+       * Examples:
+       * - `/<0;1>/*` accepts `change: 0` (typically receive) or `change: 1`
+       *   (typically change).
+       * - `/<0;1;2>/*` accepts `change: 0`, `1` or `2`.
+       *
+       * This parameter is independent from `index`: `change` resolves
+       * multipath tuples, while `index` resolves the final wildcard `*`.
+       */
+      change?: number;
 
       /**
        * An optional flag indicating whether the descriptor is required to include a checksum.
@@ -945,6 +985,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       const expandedResult = expand({
         descriptor,
         ...(index !== undefined ? { index } : {}),
+        ...(change !== undefined ? { change } : {}),
         checksumRequired,
         network,
         allowMiniscriptInP2SH
