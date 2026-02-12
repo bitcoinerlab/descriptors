@@ -8,46 +8,37 @@ This library is designed to parse and create Bitcoin Descriptors, including Mini
 npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @bitcoinerlab/miniscript-policies
 ```
 
-```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory, signers } from '@bitcoinerlab/descriptors';
-import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
-import { Psbt } from 'bitcoinjs-lib';
-import { toHex } from 'uint8array-tools';
-const { Output, ECPair } = DescriptorsFactory(ecc);
-await ready;
+This quick example compiles a timelocked Miniscript policy, creates a descriptor address to fund, then builds, signs, and finalizes a PSBT that spends that funded UTXO and prints the final transaction hex.
 
-const ecpair = ECPair.makeRandom(); // Create a signer
+```javascript
+const ecpair = ECPair.makeRandom(); // Creates a signer for a single-key wallet
 
 // Timelocked policy: signature + relative timelock (older)
-const policy = 'and(pk(@bob),older(10))';
-const { miniscript, issane } = compilePolicy(policy);
-if (!issane) throw new Error('Policy is not sane');
+const { miniscript } = compilePolicy('and(pk(@bob),older(10))');
 
-const descriptor = `wsh(${miniscript.replaceAll('@bob', toHex(ecpair.publicKey))})`;
+const descriptor = `wsh(${miniscript.replace('@bob', toHex(ecpair.publicKey))})`;
 
 // 1) Build the output description
-const inputOutput = new Output({ descriptor });
-const address = inputOutput.getAddress(); // Fund this descriptor-controlled UTXO
+const fundedOutput = new Output({ descriptor });
+const address = fundedOutput.getAddress(); // Fund this address
 
 // 2) Prepare PSBT input/output
 const psbt = new Psbt();
 
-const txHex = 'PREVIOUS_TX_HEX'; // hex of the tx that funded the address above
-const vout = 0; // Output index (vout) of that UTXO within PREVIOUS_TX_HEX
-const finalizeInput = inputOutput.updatePsbtAsInput({ psbt, txHex, vout });
+const txHex = 'FUNDING_TX_HEX'; // hex of the tx that funded the address above
+const vout = 0; // Output index (vout) of that UTXO within FUNDING_TX_HEX
+const finalizeInput = fundedOutput.updatePsbtAsInput({ psbt, txHex, vout });
 
 const recipient = new Output({
   descriptor: 'addr(bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x)'
-});
-recipient.updatePsbtAsOutput({ psbt, value: 10000n });
+}); // Final address where we'll send the funds after timelock
+recipient.updatePsbtAsOutput({ psbt, value: 10000n }); // input covers this+fees
 
 // 3) Sign and finalize
 signers.signECPair({ psbt, ecpair });
 finalizeInput({ psbt });
 
-console.log('This transaction can be pushed to the network:');
-console.log(psbt.extractTransaction().toHex());
+console.log('Push this: ' + psbt.extractTransaction().toHex());
 ```
 
 ## Features
@@ -59,7 +50,7 @@ console.log(psbt.extractTransaction().toHex());
 
 ### Version Compatibility
 
-Starting in `3.x`, this library is aligned with the modern bitcoinjs stack (`bitcoinjs-lib 7.x` and `ecpair 3.x`).
+Starting in `3.x`, this library is aligned with the modern bitcoinjs stack (`bitcoinjs-lib 7.x`).
 
 In practical terms, this means:
 
@@ -214,10 +205,7 @@ Example with two BIP32-derived keys and one preferred signer:
 ```javascript
 import { randomBytes } from 'crypto';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import {
-  DescriptorsFactory,
-  keyExpressionBIP32
-} from '@bitcoinerlab/descriptors';
+import { DescriptorsFactory, keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
 
 const { Output, BIP32 } = DescriptorsFactory(ecc);
 
@@ -231,7 +219,7 @@ const keyPathB = '/0/1';
 const keyExprA = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathA });
 const keyExprB = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathB });
 
-const signerPubKeyA = masterNode.derivePath(`m${originPath}${keyPathA}`).publicKey;
+const signerPubKeyA = masterNode.derivePath( `m${originPath}${keyPathA}`).publicKey;
 
 // Two possible branches:
 // - branch 1: signature by keyA + older(10)
@@ -356,10 +344,7 @@ The `keyExpressions` category includes functions that generate string representa
 This library includes the following `keyExpressions`: [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) and [`keyExpressionLedger`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionLedger.html). They can be imported as follows:
 
 ```javascript
-import {
-  keyExpressionBIP32,
-  keyExpressionLedger
-} from '@bitcoinerlab/descriptors';
+import { keyExpressionBIP32, keyExpressionLedger } from '@bitcoinerlab/descriptors';
 ```
 
 The parameters required for these functions are:
@@ -410,11 +395,7 @@ Then, use the following code to assert that the Ledger app is running Bitcoin Te
 ```javascript
 const transport = await Transport.create();
 //Throws if not running Bitcoin Test >= 2.1.0
-await ledger.assertLedgerApp({
-  transport,
-  name: 'Bitcoin Test',
-  minVersion: '2.1.0'
-});
+await ledger.assertLedgerApp({ transport, name: 'Bitcoin Test', minVersion: '2.1.0' });
 
 const ledgerClient = new AppClient(transport);
 const ledgerManager = { ledgerClient, ledgerState: {}, ecc, network };
