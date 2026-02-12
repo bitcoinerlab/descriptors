@@ -491,20 +491,21 @@ This will build the project and generate the necessary files in the `dist` direc
 
 ### Testing
 
-Before committing any code, make sure it passes all tests. First, make sure that you have a Bitcoin regtest node running and that you have set up [this Express-based bitcoind manager](https://github.com/bitcoinjs/regtest-server) running on 127.0.0.1:8080.
+Before committing any code, make sure it passes all tests.
 
-The easiest way to set up these services is to use a Docker image that comes preconfigured with them. You can use the following commands to download and run the Docker image:
+Run unit tests:
 
 ```bash
-docker pull bitcoinerlab/tester
-docker run -d -p 8080:8080 -p 60401:60401 -p 3002:3002 bitcoinerlab/tester
+npm run test:unit
 ```
 
-This will start a container running a Bitcoin regtest node and the bitcoind manager on your machine. Once you have your node and manager set up, you can run the tests using the following command:
+Run the full test pipeline (lint + build + unit + integration):
 
 ```bash
 npm run test
 ```
+
+Integration tests require Docker. Make sure the `docker` command is installed and available in your PATH. When integration tests run, they automatically start or reuse a local container with the regtest services needed by this repository.
 
 And, in case you have a Ledger device:
 
