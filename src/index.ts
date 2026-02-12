@@ -33,7 +33,14 @@ Learn more: https://github.com/bitcoinerlab/descriptors/blob/main/src/index.ts#L
   global.process.version = '';
 }
 
-export type { KeyInfo, Expansion } from './types';
+export type {
+  Expansion,
+  ExpansionMap,
+  KeyExpressionParser,
+  KeyInfo,
+  Preimage,
+  TimeConstraints
+} from './types';
 export {
   DescriptorsFactory,
   OutputInstance,

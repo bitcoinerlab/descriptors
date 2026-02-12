@@ -29,7 +29,7 @@ import type {
   Preimage,
   Expansion,
   ExpansionMap,
-  ParseKeyExpression
+  KeyExpressionParser
 } from './types';
 
 import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
@@ -206,7 +206,7 @@ function parseTrExpression(expression: string): {
  * expressions.
  *
  * The Factory also returns utility methods like `expand` (detailed below)
- * and `parseKeyExpression` (see {@link ParseKeyExpression}).
+ * and `parseKeyExpression` (see {@link KeyExpressionParser}).
  *
  * Additionally, for convenience, the function returns `BIP32` and `ECPair`.
  * These are {@link https://github.com/bitcoinjs bitcoinjs-lib} classes designed
@@ -244,7 +244,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   /**
    * Takes a string key expression (xpub, xprv, pubkey or wif) and parses it
    */
-  const parseKeyExpression: ParseKeyExpression = ({
+  const parseKeyExpression: KeyExpressionParser = ({
     keyExpression,
     isSegwit,
     isTaproot,

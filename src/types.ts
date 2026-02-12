@@ -30,7 +30,7 @@ export type TimeConstraints = {
 };
 
 /**
- * See {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ * See {@link _Internal_.KeyExpressionParser | KeyExpressionParser}.
  */
 export type KeyInfo = {
   keyExpression: string;
@@ -246,7 +246,7 @@ export type Expansion = {
  *
  * See {@link KeyInfo} for the complete list of elements retrieved by this function.
  */
-export interface ParseKeyExpression {
+export interface KeyExpressionParser {
   (params: {
     keyExpression: string;
     /**

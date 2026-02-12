@@ -244,7 +244,7 @@ function assertChangeIndexKeyPath({
  *
  * For detailed understanding and examples of terms like `originPath`,
  * `change`, and `keyPath`, refer to the documentation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}, which consists
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}, which consists
  * of the reverse procedure.
  *
  * @returns {string} - The formed key expression for the Ledger device.
@@ -293,9 +293,9 @@ export async function keyExpressionLedger({
  * Constructs a key expression string from its constituent components.
  *
  * This function essentially performs the reverse operation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}. For detailed
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}. For detailed
  * explanations and examples of the terms used here, refer to
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}.
  */
 export function keyExpressionBIP32({
   masterNode,
