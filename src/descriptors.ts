@@ -6,12 +6,12 @@ import {
   address,
   networks,
   payments,
-  script as bscript,
   Network,
   Transaction,
   Payment,
   Psbt,
-  initEccLib
+  initEccLib,
+  script as bscript
 } from 'bitcoinjs-lib';
 import {
   tapleafHash,
@@ -56,22 +56,17 @@ import {
 import type { TaprootLeafSatisfaction } from './tapMiniscript';
 import { splitTopLevelComma } from './parseUtils';
 import { resolveMultipathDescriptor } from './multipath';
+import {
+  MAX_SCRIPT_ELEMENT_SIZE,
+  MAX_STANDARD_P2WSH_SCRIPT_SIZE,
+  assertConsensusStackResourceLimits,
+  assertP2shScriptSigStandardSize,
+  assertScriptNonPushOnlyOpsLimit,
+  assertWitnessV0SatisfactionResourceLimits
+} from './resourceLimits';
 
-//See "Resource limitations" https://bitcoin.sipa.be/miniscript/
-//https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-September/017306.html
-const MAX_SCRIPT_ELEMENT_SIZE = 520;
-const MAX_STANDARD_P2WSH_SCRIPT_SIZE = 3600;
-const MAX_OPS_PER_SCRIPT = 201;
 const ECDSA_FAKE_SIGNATURE_SIZE = 72;
 const TAPROOT_FAKE_SIGNATURE_SIZE = 64;
-
-function countNonPushOnlyOPs(script: Uint8Array): number {
-  const decompile = bscript.decompile(script);
-  if (!decompile) throw new Error(`Error: cound not decompile ${script}`);
-  return decompile.filter(
-    op => typeof op === 'number' && op > bscript.OPS['OP_16']!
-  ).length;
-}
 
 function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
@@ -640,12 +635,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2sh({
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
@@ -694,12 +684,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
           );
         }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2sh({ redeem: { output: script, network }, network });
       }
     }
@@ -725,12 +710,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        const nonPushOnlyOps = countNonPushOnlyOPs(script);
-        if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT) {
-          throw new Error(
-            `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
-          );
-        }
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
@@ -1093,6 +1073,43 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       });
     }
 
+    #assertMiniscriptSatisfactionResourceLimits(
+      scriptSatisfaction: Uint8Array
+    ): void {
+      if (!this.#miniscript) return;
+
+      const satisfactionStackItems = bscript.toStack(scriptSatisfaction);
+
+      // For wsh(...) and sh(wsh(...)), enforce witness stack limits.
+      if (this.#isSegwit && !this.#isTaproot) {
+        assertWitnessV0SatisfactionResourceLimits({
+          stackItems: satisfactionStackItems
+        });
+        return;
+      }
+
+      if (!this.#isSegwit) {
+        // In legacy P2SH, after scriptSig execution, the stack is:
+        //   [ ...satisfactionStackItems, redeemScript ]
+        // Consensus limits apply here: each element must be <= 520 bytes and total
+        // stack items must be <= 1000.
+        // redeemScript size is already validated during script construction
+        // to fail early (look for MAX_SCRIPT_ELEMENT_SIZE checks in this file).
+        // Below we re-validate again the redeemScript + the rest of stack items.
+        const redeemScript = this.#redeemScript;
+        if (!redeemScript)
+          throw new Error(`Error: redeemScript not available for P2SH spend`);
+        assertConsensusStackResourceLimits({
+          stackItems: [...satisfactionStackItems, redeemScript]
+        });
+        assertP2shScriptSigStandardSize({
+          scriptSatisfaction,
+          redeemScript,
+          network: this.#network
+        });
+      }
+    }
+
     /**
      * Returns the compiled Script Satisfaction for a miniscript-based Output.
      * The satisfaction is the unlocking script, derived by the Satisfier
@@ -1138,7 +1155,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         );
       //This crates the plans using fake signatures
       const constraints = this.#getConstraints();
-      return satisfyMiniscript({
+      const satisfaction = satisfyMiniscript({
         expandedMiniscript,
         expansionMap,
         signatures,
@@ -1151,6 +1168,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           nSequence: constraints?.nSequence
         }
       });
+      this.#assertMiniscriptSatisfactionResourceLimits(
+        satisfaction.scriptSatisfaction
+      );
+      return satisfaction;
     }
 
     #resolveTapTreeSignersPubKeys(): Uint8Array[] {
@@ -1254,12 +1275,16 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             signature: new Uint8Array(ECDSA_FAKE_SIGNATURE_SIZE)
           })
         );
-        const { nLockTime, nSequence } = satisfyMiniscript({
+        const satisfaction = satisfyMiniscript({
           expandedMiniscript,
           expansionMap,
           signatures: fakeSignatures,
           preimages
         });
+        this.#assertMiniscriptSatisfactionResourceLimits(
+          satisfaction.scriptSatisfaction
+        );
+        const { nLockTime, nSequence } = satisfaction;
         return { nLockTime, nSequence, tapLeafHash: undefined };
       } else if (tapTreeInfo && this.#taprootSpendPath === 'script') {
         const fakeSignatures = this.#resolveTapTreeSignersPubKeys().map(

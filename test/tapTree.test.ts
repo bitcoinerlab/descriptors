@@ -19,6 +19,17 @@ import {
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
+function createNextSigner<T>(
+  ECPair: {
+    fromPrivateKey: (privateKey: Uint8Array) => T;
+  },
+  startSeed = 1
+): () => T {
+  // Deterministic distinct keys for reproducible tests.
+  let seed = startSeed;
+  return () => ECPair.fromPrivateKey(new Uint8Array(32).fill(seed++));
+}
+
 describe('taproot tree parser', () => {
   test('parses a leaf miniscript expression', () => {
     expect(parseTapTreeExpression('pk(@0)')).toEqual({ miniscript: 'pk(@0)' });
@@ -237,9 +248,10 @@ describe('taproot tree compilation', () => {
 
   test('script policy signs and finalizes through script-path', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const internalSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(1));
-    const leafSignerA = ECPair.fromPrivateKey(new Uint8Array(32).fill(2));
-    const leafSignerB = ECPair.fromPrivateKey(new Uint8Array(32).fill(3));
+    const nextSigner = createNextSigner(ECPair);
+    const internalSigner = nextSigner();
+    const leafSignerA = nextSigner();
+    const leafSignerB = nextSigner();
     const leafA = `pk(${xOnly(leafSignerA.publicKey)})`;
     const leafB = `pk(${xOnly(leafSignerB.publicKey)})`;
     const descriptor = `tr(${xOnly(internalSigner.publicKey)},{${leafA},${leafB}})`;
@@ -267,8 +279,9 @@ describe('taproot tree compilation', () => {
 
   test('script policy finalizer requires tapScriptSig', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const internalSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(4));
-    const leafSigner = ECPair.fromPrivateKey(new Uint8Array(32).fill(5));
+    const nextSigner = createNextSigner(ECPair);
+    const internalSigner = nextSigner();
+    const leafSigner = nextSigner();
     const leaf = `pk(${xOnly(leafSigner.publicKey)})`;
     const descriptor = `tr(${xOnly(internalSigner.publicKey)},${leaf})`;
     const output = new Output({
@@ -289,7 +302,8 @@ describe('taproot tree compilation', () => {
 
   test('key-path taproot signs and finalizes without tapLeafScript', () => {
     const { Output, ECPair } = DescriptorsFactory(ecc);
-    const signer = ECPair.fromPrivateKey(new Uint8Array(32).fill(6));
+    const nextSigner = createNextSigner(ECPair);
+    const signer = nextSigner();
     const descriptor = `tr(${xOnly(signer.publicKey)})`;
     const output = new Output({ descriptor });
 
@@ -404,6 +418,36 @@ describe('taproot tree satisfactions', () => {
       (item: Uint8Array) => compare(item, PREIMAGE) === 0
     );
     expect(hasPreimage).toBe(true);
+  });
+
+  test('accepts push-only OP_1 selectors in taproot satisfactions', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const nextSigner = createNextSigner(ECPair);
+    const internalSigner = nextSigner();
+    const signerA = nextSigner();
+    const signerB = nextSigner();
+    const internalKey = toHex(internalSigner.publicKey.slice(1, 33));
+    const keyA = toHex(signerA.publicKey.slice(1, 33));
+    const keyB = toHex(signerB.publicKey.slice(1, 33));
+    const tapLeaf = `or_i(pk(${keyA}),pk(${keyB}))`;
+
+    const output = new Output({
+      descriptor: `tr(${internalKey},${tapLeaf})`,
+      taprootSpendPath: 'script',
+      tapLeaf
+    });
+
+    const satisfaction = output.getTapScriptSatisfaction([
+      {
+        pubkey: signerA.publicKey.slice(1, 33),
+        signature: new Uint8Array(64).fill(2)
+      }
+    ]);
+
+    const hasOneSelector = satisfaction.stackItems.some(
+      (item: Uint8Array) => compare(item, Uint8Array.from([1])) === 0
+    );
+    expect(hasOneSelector).toBe(true);
   });
 
   test('throws when miniscript selector is ambiguous', () => {

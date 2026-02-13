@@ -20,7 +20,13 @@ import {
   satisfyMiniscript
 } from './miniscript';
 import type { TapLeafInfo, TapTreeInfoNode, TapTreeNode } from './tapTree';
-import { collectTapTreeLeaves, selectTapLeafCandidates } from './tapTree';
+import {
+  MAX_TAPTREE_DEPTH,
+  assertTapTreeDepth,
+  collectTapTreeLeaves,
+  selectTapLeafCandidates
+} from './tapTree';
+import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
@@ -83,6 +89,10 @@ export function buildTapTreeInfo({
   BIP32: BIP32API;
   ECPair: ECPairAPI;
 }): TapTreeInfoNode {
+  // Defensive: parseTapTreeExpression() already enforces this for descriptor
+  // strings, but buildTapTreeInfo is exported and can be called directly.
+  assertTapTreeDepth(tapTree);
+
   if ('miniscript' in tapTree) {
     const miniscript = tapTree.miniscript;
     const { expandedMiniscript, expansionMap } = expandTaprootMiniscript({
@@ -198,6 +208,11 @@ export function buildTaprootLeafPsbtMetadata({
   if (!tweaked) throw new Error(`Error: invalid taproot internal pubkey`);
 
   return collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => {
+    if (depth > MAX_TAPTREE_DEPTH)
+      throw new Error(
+        `Error: taproot tree depth is too large, ${depth} is larger than ${MAX_TAPTREE_DEPTH}`
+      );
+
     const tapLeafHash = tapleafHash({
       output: leaf.tapScript,
       version: leaf.version
@@ -373,53 +388,6 @@ function witnessStackSize(witness: Uint8Array[]): number {
   return vectorSize(witness);
 }
 
-/**
- * Converts a satisfaction script into witness stack items.
- *
- * The satisfier gives us the unlocking data as a script (a sequence of push
- * opcodes and data). That format is still directly usable for legacy P2SH
- * (scriptSig), and bitcoinjs-lib accepts it for WSH for legacy reasons, so we
- * keep this representation to share the same miniscript pipeline across
- * sh/wsh/tr.
- *
- * For WSH and taproot, the actual spend uses a witness stack. This is a
- * different binary format stored in the transaction: a vector of byte strings,
- * each length-prefixed, plus an item count at the beginning. So we decompile
- * the (legacy) script into the raw stack items, which is what is finally used.
- *
- * Example satisfaction script: `<preimage> <sig> 0`
- * Script bytes:
- *   20 <preimage32> 40 <sig64> 00
- * where 0x20/0x40 are PUSH opcodes and 0x00 is OP_0 (push empty).
- *
- * Witness stack items (the way bitcoinjs-lib expects it):
- *   [ preimage, sig, empty ]
- *
- * These stack items are later serialized via witnessStackToScriptWitness(...),
- * and for taproot we then append tapScript and controlBlock:
- * [items..., tapScript, controlBlock].
- *
- * This is also useful for estimating witness size without finalizing a PSBT.
- */
-function satisfactionToStackItems(
-  scriptSatisfaction: Uint8Array
-): Uint8Array[] {
-  const chunks = bscript.decompile(scriptSatisfaction);
-  if (!chunks)
-    throw new Error(`Error: could not decompile script satisfaction`);
-  return chunks.map(chunk => {
-    if (chunk instanceof Uint8Array) return chunk;
-    if (typeof chunk !== 'number')
-      throw new Error(`Error: invalid satisfaction chunk`);
-    if (chunk < -1 || chunk > 16)
-      throw new Error(
-        `Error: satisfaction contains a non-push opcode (${chunk})`
-      );
-    if (chunk === 0) return new Uint8Array(0);
-    return bscript.number.encode(chunk);
-  });
-}
-
 function estimateTaprootWitnessSize({
   stackItems,
   tapScript,
@@ -429,6 +397,10 @@ function estimateTaprootWitnessSize({
   tapScript: Uint8Array;
   depth: number;
 }): number {
+  if (depth > MAX_TAPTREE_DEPTH)
+    throw new Error(
+      `Error: taproot tree depth is too large, ${depth} is larger than ${MAX_TAPTREE_DEPTH}`
+    );
   const controlBlock = new Uint8Array(33 + 32 * depth);
   return witnessStackSize([...stackItems, tapScript, controlBlock]);
 }
@@ -500,9 +472,12 @@ export function collectTaprootLeafSatisfactions({
         ...(timeConstraints !== undefined ? { timeConstraints } : {}),
         tapscript: true
       });
-      const stackItems = satisfactionToStackItems(scriptSatisfaction);
+      const satisfactionStackItems = bscript.toStack(scriptSatisfaction);
+      assertTaprootScriptPathSatisfactionResourceLimits({
+        stackItems: satisfactionStackItems
+      });
       const totalWitnessSize = estimateTaprootWitnessSize({
-        stackItems,
+        stackItems: satisfactionStackItems,
         tapScript: leaf.tapScript,
         depth: candidate.depth
       });
@@ -511,7 +486,7 @@ export function collectTaprootLeafSatisfactions({
         depth: candidate.depth,
         tapLeafHash: candidate.tapLeafHash,
         scriptSatisfaction,
-        stackItems,
+        stackItems: satisfactionStackItems,
         nLockTime,
         nSequence,
         totalWitnessSize

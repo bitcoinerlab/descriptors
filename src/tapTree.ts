@@ -30,6 +30,28 @@ export type TapLeafSelection = {
   tapLeafHash: Uint8Array;
 };
 
+// See BIP341 control block limits and Sipa's Miniscript "Resource limitations":
+// https://bitcoin.sipa.be/miniscript/
+// Taproot script path depth is encoded in the control block as 32-byte hashes,
+// with consensus max depth 128.
+export const MAX_TAPTREE_DEPTH = 128;
+
+function tapTreeMaxDepth(tapTree: TapTreeNode, depth = 0): number {
+  if ('miniscript' in tapTree) return depth;
+  return Math.max(
+    tapTreeMaxDepth(tapTree.left, depth + 1),
+    tapTreeMaxDepth(tapTree.right, depth + 1)
+  );
+}
+
+export function assertTapTreeDepth(tapTree: TapTreeNode): void {
+  const maxDepth = tapTreeMaxDepth(tapTree);
+  if (maxDepth > MAX_TAPTREE_DEPTH)
+    throw new Error(
+      `Error: taproot tree depth is too large, ${maxDepth} is larger than ${MAX_TAPTREE_DEPTH}`
+    );
+}
+
 /**
  * Collects taproot leaf metadata with depth from a tree.
  * Traversal is left-first, following the order of `{left,right}` in the
@@ -186,5 +208,7 @@ function parseTapTreeNode(expression: string): TapTreeNode {
 export function parseTapTreeExpression(expression: string): TapTreeNode {
   const trimmed = expression.trim();
   if (!trimmed) throw tapTreeError(expression);
-  return parseTapTreeNode(trimmed);
+  const tapTree = parseTapTreeNode(trimmed);
+  assertTapTreeDepth(tapTree);
+  return tapTree;
 }
