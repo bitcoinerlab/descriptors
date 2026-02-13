@@ -32,20 +32,20 @@ function createNextSigner<T>(
 
 describe('taproot tree parser', () => {
   test('parses a leaf miniscript expression', () => {
-    expect(parseTapTreeExpression('pk(@0)')).toEqual({ miniscript: 'pk(@0)' });
+    expect(parseTapTreeExpression('pk(@0)')).toEqual({ expression: 'pk(@0)' });
   });
 
   test('parses a simple branch', () => {
     expect(parseTapTreeExpression('{pk(@0),pk(@1)}')).toEqual({
-      left: { miniscript: 'pk(@0)' },
-      right: { miniscript: 'pk(@1)' }
+      left: { expression: 'pk(@0)' },
+      right: { expression: 'pk(@1)' }
     });
   });
 
   test('parses a nested branch', () => {
     expect(parseTapTreeExpression('{pk(@0),{pk(@1),pk(@2)}}')).toEqual({
-      left: { miniscript: 'pk(@0)' },
-      right: { left: { miniscript: 'pk(@1)' }, right: { miniscript: 'pk(@2)' } }
+      left: { expression: 'pk(@0)' },
+      right: { left: { expression: 'pk(@1)' }, right: { expression: 'pk(@2)' } }
     });
   });
 });
@@ -81,11 +81,12 @@ describe('taproot tree compilation', () => {
         'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0))'
     });
     expect(tapTreeInfo).toBeDefined();
-    if (!tapTreeInfo || !('miniscript' in tapTreeInfo))
+    if (!tapTreeInfo || !('expression' in tapTreeInfo))
       throw new Error('tapTreeInfo leaf not available');
-    expect(tapTreeInfo.miniscript).toEqual(
+    expect(tapTreeInfo.expression).toEqual(
       'pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0)'
     );
+    expect(tapTreeInfo.expandedExpression).toEqual('pk(@0)');
     expect(tapTreeInfo.expandedMiniscript).toEqual('pk(@0)');
     expect(tapTreeInfo.tapScript).toBeInstanceOf(Uint8Array);
     expect(tapTreeInfo.tapScript.length).toBeGreaterThan(0);
@@ -324,6 +325,88 @@ describe('taproot tree compilation', () => {
     expect(witness.length).toBe(1);
   });
 
+  test('supports sortedmulti_a() as a taproot leaf expression', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const nextSigner = createNextSigner(ECPair);
+    const internalSigner = nextSigner();
+    const signerA = nextSigner();
+    const signerB = nextSigner();
+    const internalKey = xOnly(internalSigner.publicKey);
+    const keyA = xOnly(signerA.publicKey);
+    const keyB = xOnly(signerB.publicKey);
+
+    const leafAB = `sortedmulti_a(1,${keyA},${keyB})`;
+    const leafBA = `sortedmulti_a(1,${keyB},${keyA})`;
+
+    const outputAB = new Output({
+      descriptor: `tr(${internalKey},${leafAB})`,
+      taprootSpendPath: 'script',
+      tapLeaf: leafAB
+    });
+    const outputBA = new Output({
+      descriptor: `tr(${internalKey},${leafBA})`,
+      taprootSpendPath: 'script',
+      tapLeaf: leafBA
+    });
+
+    expect(outputAB.getAddress()).toEqual(outputBA.getAddress());
+
+    const tapTreeInfoAB = outputAB.expand().tapTreeInfo;
+    const tapTreeInfoBA = outputBA.expand().tapTreeInfo;
+    if (
+      !tapTreeInfoAB ||
+      !('tapScript' in tapTreeInfoAB) ||
+      !tapTreeInfoBA ||
+      !('tapScript' in tapTreeInfoBA)
+    )
+      throw new Error('tapTreeInfo leaf not available');
+    expect(tapTreeInfoAB.expandedExpression).toEqual('sortedmulti_a(1,@0,@1)');
+    expect(tapTreeInfoBA.expandedExpression).toEqual('sortedmulti_a(1,@0,@1)');
+    expect(tapTreeInfoAB.expandedMiniscript).toBeUndefined();
+    expect(tapTreeInfoBA.expandedMiniscript).toBeUndefined();
+    expect(compare(tapTreeInfoAB.tapScript, tapTreeInfoBA.tapScript)).toBe(0);
+
+    const satisfaction = outputBA.getTapScriptSatisfaction([
+      {
+        pubkey: signerA.publicKey.slice(1, 33),
+        signature: new Uint8Array(64).fill(4)
+      }
+    ]);
+    expect(satisfaction.stackItems.length).toBeGreaterThan(0);
+  });
+
+  test('rejects sortedmulti_a() when nested inside miniscript', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const nextSigner = createNextSigner(ECPair);
+    const internalSigner = nextSigner();
+    const signerA = nextSigner();
+    const signerB = nextSigner();
+    const internalKey = xOnly(internalSigner.publicKey);
+    const keyA = xOnly(signerA.publicKey);
+    const keyB = xOnly(signerB.publicKey);
+
+    expect(
+      () =>
+        new Output({
+          descriptor: `tr(${internalKey},and_v(v:pk(${keyA}),sortedmulti_a(1,${keyA},${keyB})))`,
+          taprootSpendPath: 'script'
+        })
+    ).toThrow('sortedmulti_a() must be a standalone taproot leaf expression');
+  });
+
+  test('rejects sortedmulti_a() outside tr()', () => {
+    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const nextSigner = createNextSigner(ECPair);
+    const signerA = nextSigner();
+    const signerB = nextSigner();
+    const keyA = toHex(signerA.publicKey);
+    const keyB = toHex(signerB.publicKey);
+
+    expect(
+      () => new Output({ descriptor: `wsh(sortedmulti_a(1,${keyA},${keyB}))` })
+    ).toThrow('Unknown miniscript fragment: sortedmulti_a');
+  });
+
   test('fails fast when script policy is used on key-only taproot', () => {
     const { Output } = DescriptorsFactory(ecc);
     expect(
@@ -386,14 +469,14 @@ describe('taproot tree satisfactions', () => {
         }
       ]
     });
-    expect(best.leaf.miniscript).toEqual(`pk(${LEAF_KEY})`);
+    expect(best.leaf.expression).toEqual(`pk(${LEAF_KEY})`);
   });
 
   test('selects leaf by tapLeafHash', () => {
     const tapTreeInfo = buildTapTreeInfo();
     const candidates = selectTapLeafCandidates({ tapTreeInfo });
     const target = candidates.find((entry: TapLeafSelection) =>
-      entry.leaf.miniscript.startsWith('and_v(')
+      entry.leaf.expression.startsWith('and_v(')
     );
     if (!target) throw new Error('target leaf not found');
     const signatures = [
@@ -413,7 +496,7 @@ describe('taproot tree satisfactions', () => {
         }
       ]
     });
-    expect(best.leaf.miniscript.startsWith('and_v(')).toBe(true);
+    expect(best.leaf.expression.startsWith('and_v(')).toBe(true);
     const hasPreimage = best.stackItems.some(
       (item: Uint8Array) => compare(item, PREIMAGE) === 0
     );

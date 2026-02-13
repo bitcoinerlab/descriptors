@@ -9,14 +9,24 @@ export type TreeNode<TLeaf> =
   | { left: TreeNode<TLeaf>; right: TreeNode<TLeaf> };
 
 export type TapLeaf = {
-  miniscript: string;
+  /** Raw leaf expression as written in tr(KEY,TREE). */
+  expression: string;
 };
 
 export type TapTreeNode = TreeNode<TapLeaf>;
 
 export type TapLeafInfo = {
-  miniscript: string;
-  expandedMiniscript: string;
+  /** Raw leaf expression as written in tr(KEY,TREE). */
+  expression: string;
+  /** Expanded descriptor-level expression for this leaf. */
+  expandedExpression: string;
+  /**
+   * Expanded miniscript form when the leaf expression is a miniscript fragment.
+   *
+   * For descriptor-level script expressions (e.g. sortedmulti_a), this can be
+   * undefined even though `tapScript` is available.
+   */
+  expandedMiniscript?: string;
   expansionMap: ExpansionMap;
   tapScript: Uint8Array;
   version: number;
@@ -37,7 +47,7 @@ export type TapLeafSelection = {
 export const MAX_TAPTREE_DEPTH = 128;
 
 function tapTreeMaxDepth(tapTree: TapTreeNode, depth = 0): number {
-  if ('miniscript' in tapTree) return depth;
+  if ('expression' in tapTree) return depth;
   return Math.max(
     tapTreeMaxDepth(tapTree.left, depth + 1),
     tapTreeMaxDepth(tapTree.right, depth + 1)
@@ -83,7 +93,7 @@ export function collectTapTreeLeaves(
 ): Array<{ leaf: TapLeafInfo; depth: number }> {
   const leaves: Array<{ leaf: TapLeafInfo; depth: number }> = [];
   const walk = (node: TapTreeInfoNode, depth: number) => {
-    if ('miniscript' in node) {
+    if ('expression' in node) {
       leaves.push({ leaf: node, depth });
       return;
     }
@@ -98,8 +108,8 @@ function computeTapLeafHash(leaf: TapLeafInfo): Uint8Array {
   return tapleafHash({ output: leaf.tapScript, version: leaf.version });
 }
 
-function normalizeMiniscriptForMatch(miniscript: string): string {
-  return miniscript.replace(/\s+/g, '');
+function normalizeExpressionForMatch(expression: string): string {
+  return expression.replace(/\s+/g, '');
 }
 
 /**
@@ -108,14 +118,14 @@ function normalizeMiniscriptForMatch(miniscript: string): string {
  * If `tapLeaf` is undefined, all leaves are returned for auto-selection.
  * If `tapLeaf` is bytes, it is treated as a tapleaf hash and must match
  * exactly one leaf.
- * If `tapLeaf` is a string, it is treated as a miniscript leaf (raw, not
- * expanded). Matching is whitespace-insensitive. If the miniscript appears
+ * If `tapLeaf` is a string, it is treated as a raw taproot leaf expression
+ * (not expanded). Matching is whitespace-insensitive. If the expression appears
  * more than once, this function throws an error.
  *
  * Example:
  * ```
  * const candidates = selectTapLeafCandidates({ tapTreeInfo, tapLeaf });
- * // tapLeaf can be undefined, bytes (tapleaf hash) or a miniscript string:
+ * // tapLeaf can be undefined, bytes (tapleaf hash) or a leaf expression:
  * // f.ex.: 'pk(03bb...)'
  * ```
  */
@@ -142,18 +152,18 @@ export function selectTapLeafCandidates({
     return [match];
   }
 
-  const normalizedSelector = normalizeMiniscriptForMatch(tapLeaf);
+  const normalizedSelector = normalizeExpressionForMatch(tapLeaf);
   const matches = leaves.filter(
     entry =>
-      normalizeMiniscriptForMatch(entry.leaf.miniscript) === normalizedSelector
+      normalizeExpressionForMatch(entry.leaf.expression) === normalizedSelector
   );
   if (matches.length === 0)
     throw new Error(
-      `Error: miniscript leaf not found in tapTreeInfo: ${tapLeaf}`
+      `Error: taproot leaf expression not found in tapTreeInfo: ${tapLeaf}`
     );
   if (matches.length > 1)
     throw new Error(
-      `Error: miniscript leaf is ambiguous in tapTreeInfo: ${tapLeaf}`
+      `Error: taproot leaf expression is ambiguous in tapTreeInfo: ${tapLeaf}`
     );
   return matches;
 }
@@ -178,13 +188,17 @@ function splitTapTreeExpression(expression: string): {
 
 /**
  * Parses a single taproot tree node expression.
+ *
+ * Note: the field name is intentionally generic (`expression`) because taproot
+ * leaves can contain either miniscript fragments (e.g. `pk(...)`) or
+ * descriptor-level script expressions (e.g. `sortedmulti_a(...)`).
  * Examples:
- * - `pk(@0)` => { miniscript: 'pk(@0)' }
- * - `{pk(@0),pk(@1)}` => { left: { miniscript: 'pk(@0)' }, right: { miniscript: 'pk(@1)' } }
+ * - `pk(@0)` => { expression: 'pk(@0)' }
+ * - `{pk(@0),pk(@1)}` => { left: { expression: 'pk(@0)' }, right: { expression: 'pk(@1)' } }
  * - `{pk(@0),{pk(@1),pk(@2)}}` =>
  *   {
- *     left: { miniscript: 'pk(@0)' },
- *     right: { left: { miniscript: 'pk(@1)' }, right: { miniscript: 'pk(@2)' } }
+ *     left: { expression: 'pk(@0)' },
+ *     right: { left: { expression: 'pk(@1)' }, right: { expression: 'pk(@2)' } }
  *   }
  */
 function parseTapTreeNode(expression: string): TapTreeNode {
@@ -202,7 +216,7 @@ function parseTapTreeNode(expression: string): TapTreeNode {
   }
   if (trimmedExpression.includes('{') || trimmedExpression.includes('}'))
     throw tapTreeError(expression);
-  return { miniscript: trimmedExpression };
+  return { expression: trimmedExpression };
 }
 
 export function parseTapTreeExpression(expression: string): TapTreeNode {

@@ -65,14 +65,17 @@ export function expandMiniscript({
     return key;
   };
 
-  //These are the fragments where keys are allowed. Note that we only look
-  //inside these fragments to avoid problems in pregimages like sha256 which can
-  //contain hex values which could be confussed with a key
-
-  const keyFragmentRegex =
-    /\b(pk|pkh|sortedmulti_a|sortedmulti|multi_a|multi)\(([^()]*)\)/g;
+  // These are the Miniscript fragments where key arguments are expected.
+  // We only replace key expressions inside these fragments to avoid confusing
+  // hash preimages (e.g. sha256(03...)) with keys.
+  //
+  // Note: sorted script expressions (`sortedmulti`, `sortedmulti_a`) are
+  // intentionally excluded here. They are descriptor-level expressions (not
+  // Miniscript fragments) and are handled in descriptor/tap-tree code paths
+  // before Miniscript compilation.
+  const keyBearingFragmentRegex = /\b(pk|pkh|multi_a|multi)\(([^()]*)\)/g;
   const expandedMiniscript = miniscript.replace(
-    keyFragmentRegex,
+    keyBearingFragmentRegex,
     (_, name: string, inner: string) => {
       if (name === 'pk' || name === 'pkh')
         return `${name}(${replaceKeyExpression(inner)})`;
