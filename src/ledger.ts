@@ -383,17 +383,17 @@ export async function ledgerPolicyFromPsbtInput({
           // Replace change (making sure the value in the change level for the
           // template of the policy meets the change in bip32Derivation):
           descriptor = descriptor.replace(/\/\*\*/g, `/<0;1>/*`);
-          const regExpMN = new RegExp(`/<(\\d+);(\\d+)>`, 'g');
-          let matchMN;
-          while (descriptor && (matchMN = regExpMN.exec(descriptor)) !== null) {
-            const [M, N] = [
-              parseInt(matchMN[1]!, 10),
-              parseInt(matchMN[2]!, 10)
-            ];
-            if (M === change || N === change)
-              descriptor = descriptor.replace(`/<${M};${N}>`, `/${change}`);
-            else descriptor = undefined;
-          }
+          let tupleMismatch = false;
+          descriptor = descriptor.replace(
+            /\/<(\d+);(\d+)>/g,
+            (token, strM: string, strN: string) => {
+              const [M, N] = [parseInt(strM, 10), parseInt(strN, 10)];
+              if (M === change || N === change) return `/${change}`;
+              tupleMismatch = true;
+              return token;
+            }
+          );
+          if (tupleMismatch) descriptor = undefined;
           if (descriptor) {
             // Replace index:
             descriptor = descriptor.replace(/\/\*/g, `/${index}`);
@@ -517,19 +517,25 @@ export async function ledgerPolicyFromOutput({
     };
 
     const remapTapTree = (node: TapTreeInfoNode): string => {
-      if ('miniscript' in node) {
-        let remappedMiniscript = node.expandedMiniscript;
-        const localEntries = Object.entries(node.expansionMap).sort(
-          ([placeholderA], [placeholderB]) =>
-            placeholderB.length - placeholderA.length
-        );
+      if ('expression' in node) {
+        // Prefer descriptor-level expanded expression for policy templates so
+        // script expressions (e.g. sortedmulti_a) are preserved. Fall back to
+        // expandedMiniscript for older metadata.
+        let remappedMiniscript =
+          node.expandedExpression ?? node.expandedMiniscript;
+        if (!remappedMiniscript)
+          throw new Error(`Error: taproot leaf expansion not available`);
+        const localEntries = Object.entries(node.expansionMap);
+        const localToGlobalPlaceholder = new Map<string, string>();
         for (const [localPlaceholder, keyInfo] of localEntries) {
           const globalPlaceholder = globalPlaceholderFor(keyInfo);
-          remappedMiniscript = remappedMiniscript.replaceAll(
-            localPlaceholder,
-            globalPlaceholder
-          );
+          localToGlobalPlaceholder.set(localPlaceholder, globalPlaceholder);
         }
+        remappedMiniscript = remappedMiniscript.replace(
+          /@\d+/g,
+          placeholder =>
+            localToGlobalPlaceholder.get(placeholder) ?? placeholder
+        );
         return remappedMiniscript;
       }
       return `{${remapTapTree(node.left)},${remapTapTree(node.right)}}`;
@@ -545,11 +551,14 @@ export async function ledgerPolicyFromOutput({
     ledgerManager
   });
 
-  //It's important to have keys sorted in ascii order. keys
-  //are of this type: @0, @1, @2, ....  and they also appear in the expandedExpression
-  //in ascending ascii order. Note that Object.keys(expansionMap ) does not ensure
-  //that the order is respected and so we force it.
-  const allKeys = Object.keys(expansionMap).sort();
+  // Keep placeholders in numeric order (@0, @1, @2, ...). This avoids
+  // lexicographic pitfalls like @10 being ordered before @2.
+  const allKeys = Object.keys(expansionMap).sort((a, b) => {
+    const aIndex = Number(a.slice(1));
+    const bIndex = Number(b.slice(1));
+    if (Number.isNaN(aIndex) || Number.isNaN(bIndex)) return a.localeCompare(b);
+    return aIndex - bIndex;
+  });
 
   const ledgerKeys = allKeys.filter(key => {
     const masterFingerprint = expansionMap[key]?.masterFingerprint;
@@ -579,9 +588,9 @@ export async function ledgerPolicyFromOutput({
     );
 
   const keyRoots: string[] = [];
-  let ledgerTemplate = expandedExpression;
+  const placeholderToLedgerPlaceholder = new Map<string, string>();
 
-  allKeys.forEach(key => {
+  allKeys.forEach((key, index) => {
     if (key !== ledgerKey) {
       //This block here only does data integrity assertions:
       const otherKeyInfo = expansionMap[key]!;
@@ -601,7 +610,7 @@ export async function ledgerPolicyFromOutput({
         );
       }
     }
-    ledgerTemplate = ledgerTemplate.replaceAll(key, `@${keyRoots.length}/**`);
+    placeholderToLedgerPlaceholder.set(key, `@${index}/**`);
     const keyInfo = expansionMap[key]!;
     if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
@@ -611,6 +620,12 @@ export async function ledgerPolicyFromOutput({
       );
     else keyRoots.push(`${keyInfo?.bip32?.neutered().toBase58()}`);
   });
+
+  const ledgerTemplate = expandedExpression.replace(
+    /@\d+/g,
+    placeholder =>
+      placeholderToLedgerPlaceholder.get(placeholder) ?? placeholder
+  );
 
   return { ledgerTemplate, keyRoots };
 }
