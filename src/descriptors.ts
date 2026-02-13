@@ -48,10 +48,12 @@ import {
   buildTaprootLeafPsbtMetadata,
   buildTaprootBip32Derivations,
   buildTapTreeInfo,
+  compileSortedMultiAExpandedExpression,
   collectTapTreePubkeys,
   normalizeTaprootPubkey,
   tapTreeInfoToScriptTree,
-  satisfyTapTree
+  satisfyTapTree,
+  type TapLeafExpansionOverride
 } from './tapMiniscript';
 import type { TaprootLeafSatisfaction } from './tapMiniscript';
 import { splitTopLevelComma } from './parseUtils';
@@ -174,6 +176,34 @@ function parseSortedMulti(inner: string) {
   return { m, keyExpressions };
 }
 
+const MAX_PUBKEYS_PER_MULTI_A = 999;
+
+// Helper: parse sortedmulti_a(M, k1, k2,...)
+function parseSortedMultiA(inner: string) {
+  const parts = inner.split(',').map(p => p.trim());
+  if (parts.length < 2)
+    throw new Error(
+      `sortedmulti_a(): must contain M and at least one key: ${inner}`
+    );
+
+  const m = Number(parts[0]);
+  if (!Number.isInteger(m) || m < 1)
+    throw new Error(`sortedmulti_a(): invalid M=${parts[0]}`);
+
+  const keyExpressions = parts.slice(1);
+  if (keyExpressions.length < m)
+    throw new Error(
+      `sortedmulti_a(): M cannot exceed number of keys: ${inner}`
+    );
+
+  if (keyExpressions.length > MAX_PUBKEYS_PER_MULTI_A)
+    throw new Error(
+      `sortedmulti_a(): descriptors support up to ${MAX_PUBKEYS_PER_MULTI_A} keys.`
+    );
+
+  return { m, keyExpressions };
+}
+
 function parseTrExpression(expression: string): {
   keyExpression: string;
   treeExpression?: string;
@@ -254,6 +284,88 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       BIP32
     });
   };
+
+  /**
+   * Builds a taproot leaf expansion override for descriptor-level
+   * `sortedmulti_a(...)`.
+   *
+   * Why this exists:
+   * - `sortedmulti_a` is a descriptor script expression (not a Miniscript
+   *   fragment).
+   *
+   * What this does:
+   * - Resolves each key expression to a concrete pubkey and builds a leaf-local
+   *   placeholder map (`@0`, `@1`, ... in input order).
+   * - Derives the internal compilation form by sorting placeholders by pubkey
+   *   bytes and lowering to `multi_a(...)`.
+   * - Compiles tapscript from that lowered form and returns it as override
+   *   data.
+   *
+   * Returns `undefined` for non-`sortedmulti_a` leaves so normal taproot miniscript
+   * expansion/compilation is used.
+   */
+
+  function buildTapLeafSortedMultiAOverride({
+    expression,
+    network = networks.bitcoin
+  }: {
+    expression: string;
+    network?: Network;
+  }): TapLeafExpansionOverride | undefined {
+    if (!/\bsortedmulti_a\(/.test(expression)) return undefined;
+
+    const trimmed = expression.trim();
+    const match = trimmed.match(/^sortedmulti_a\((.*)\)$/);
+    if (!match)
+      throw new Error(
+        `Error: sortedmulti_a() must be a standalone taproot leaf expression`
+      );
+
+    const inner = match[1];
+    if (!inner)
+      throw new Error(
+        `Error: invalid sortedmulti_a() expression: ${expression}`
+      );
+
+    const { m, keyExpressions } = parseSortedMultiA(inner);
+    const keyInfos = keyExpressions.map(keyExpression => {
+      const keyInfo = parseKeyExpression({
+        keyExpression,
+        isSegwit: true,
+        isTaproot: true,
+        network
+      });
+      if (!keyInfo.pubkey)
+        throw new Error(
+          `Error: sortedmulti_a() key must resolve to a concrete pubkey: ${keyExpression}`
+        );
+      return keyInfo;
+    });
+
+    const expansionMap: ExpansionMap = {};
+    keyInfos.forEach((keyInfo, index) => {
+      expansionMap[`@${index}`] = keyInfo;
+    });
+
+    // sortedmulti_a is descriptor-level sugar. We preserve it in
+    // expandedExpression, but compile tapscript from its internal multi_a
+    // lowering with sorted placeholders.
+    const expandedExpression = `sortedmulti_a(${[
+      m,
+      ...Object.keys(expansionMap)
+    ].join(',')})`;
+    const compileExpandedMiniscript = compileSortedMultiAExpandedExpression({
+      expandedExpression,
+      expansionMap
+    });
+    const tapScript = miniscript2Script({
+      expandedMiniscript: compileExpandedMiniscript,
+      expansionMap,
+      tapscript: true
+    });
+
+    return { expandedExpression, expansionMap, tapScript };
+  }
 
   /**
    * Parses and analyzies a descriptor expression and destructures it into
@@ -658,12 +770,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could not get miniscript in ${descriptor}`);
       if (
         allowMiniscriptInP2SH === false &&
-        //These top-level expressions within sh are allowed within sh.
-        //They can be parsed with miniscript2Script, but first we must make sure
-        //that other expressions are not accepted (unless forced with allowMiniscriptInP2SH).
-        miniscript.search(
-          /^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|sortedmulti\(|multi_a\(|sortedmulti_a\()/
-        ) !== 0
+        // These top-level script expressions are allowed inside sh(...).
+        // The sorted script expressions (`sortedmulti`, `sortedmulti_a`) are
+        // handled in dedicated descriptor/taproot branches and are intentionally
+        // not part of this miniscript gate.
+        // Here we only keep legacy top-level forms to avoid accepting arbitrary
+        // miniscript in P2SH unless explicitly enabled.
+        miniscript.search(/^(pk\(|pkh\(|wpkh\(|combo\(|multi\(|multi_a\()/) !==
+          0
       ) {
         throw new Error(
           `Error: Miniscript expressions can only be used in wsh`
@@ -734,7 +848,19 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         tapTreeExpression = treeExpression;
         tapTree = parseTapTreeExpression(treeExpression);
         if (!isCanonicalRanged) {
-          tapTreeInfo = buildTapTreeInfo({ tapTree, network, BIP32, ECPair });
+          tapTreeInfo = buildTapTreeInfo({
+            tapTree,
+            network,
+            BIP32,
+            ECPair,
+            // `leafExpansionOverride` runs per leaf expression.
+            // For non-matching leaves it returns undefined and
+            // normal miniscript expansion is used;
+            // for sortedmulti_a leaves it returns descriptor-level
+            // metadata plus precompiled tapscript bytes.
+            leafExpansionOverride: (expression: string) =>
+              buildTapLeafSortedMultiAOverride({ expression, network })
+          });
         }
       }
       if (!isCanonicalRanged) {

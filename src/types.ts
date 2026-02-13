@@ -168,10 +168,10 @@ export type Expansion = {
    * Example:
    * ```
    * {
-   *   left: { miniscript: 'pk(02aa...)' },
+   *   left: { expression: 'pk(02aa...)' },
    *   right: {
-   *     left: { miniscript: 'pk(03bb...)' },
-   *     right: { miniscript: 'pk(02cc...)' }
+   *     left: { expression: 'pk(03bb...)' },
+   *     right: { expression: 'pk(02cc...)' }
    *   }
    * }
    * ```
@@ -180,16 +180,22 @@ export type Expansion = {
 
   /**
    * The compiled taproot tree metadata, if any. Only defined for `tr(KEY, TREE)`.
-   * Same as tapTree, but each leaf includes the expanded miniscript, key
-   * expansion map, compiled tapscript (`tapScript`), and leaf version.
-   * Note: `@i` placeholders in `expandedMiniscript` are scoped per leaf, since
-   * each leaf is expanded and satisfied independently.
+   * Same as tapTree, but each leaf includes:
+   * - `expandedExpression`: descriptor-level expanded leaf expression
+   * - optional `expandedMiniscript`: miniscript-expanded leaf (when applicable)
+   * - key expansion map
+   * - compiled tapscript (`tapScript`)
+   * - leaf version.
+   *
+   * Note: `@i` placeholders are scoped per leaf, since each leaf is expanded
+   * and satisfied independently.
    *
    * Example:
    * ```
    * {
    *   left: {
-   *     miniscript: 'pk(02aa...)',
+   *     expression: 'pk(02aa...)',
+   *     expandedExpression: 'pk(@0)',
    *     expandedMiniscript: 'pk(@0)',
    *     expansionMap: ExpansionMap;
    *     tapScript: Uint8Array;

@@ -350,6 +350,20 @@ const runScenario = async ({
       masterNode,
       expectScriptPath: true,
       expectTapBip32Derivation: true
+    },
+    {
+      name: 'tr(KEY,TREE) script-path spend using sortedmulti_a leaf',
+      input: (() => {
+        const sortedMultiALeaf = `sortedmulti_a(1,${leafBKey},${leafAKey})`;
+        return new Output({
+          descriptor: `tr(${internalKey},${sortedMultiALeaf})`,
+          network: NETWORK,
+          taprootSpendPath: 'script',
+          tapLeaf: sortedMultiALeaf
+        });
+      })(),
+      signer: leafSignerA,
+      expectScriptPath: true
     }
   ];
 

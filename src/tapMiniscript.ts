@@ -30,6 +30,15 @@ import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLim
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
+export type TapLeafExpansionOverride = {
+  // Descriptor-level, user-facing expanded leaf expression.
+  expandedExpression: string;
+  // Leaf-local placeholder map used both for policy metadata and compilation.
+  expansionMap: ExpansionMap;
+  // Precompiled tapscript bytes for this leaf expression.
+  tapScript: Uint8Array;
+};
+
 export type TaprootLeafSatisfaction = {
   leaf: TapLeafInfo;
   depth: number;
@@ -74,54 +83,100 @@ function expandTaprootMiniscript({
 
 /**
  * Compiles a taproot miniscript tree into per-leaf metadata.
- * Each leaf contains its expanded miniscript, expansion map, compiled tapscript
- * and leaf version. This keeps the taproot script-path data ready for
- * satisfactions and witness building.
+ * Each leaf contains expanded expression metadata, key expansion map,
+ * compiled tapscript and leaf version. This keeps the taproot script-path data
+ * ready for satisfactions and witness building.
+ *
+ * `leafExpansionOverride` allows descriptor-level script expressions to provide:
+ * - user-facing expanded expression metadata (for selector/template use), and
+ * - custom expansion map and tapscript bytes for compilation.
+ *
+ * Example: sortedmulti_a can expose `expandedExpression=sortedmulti_a(...)`
+ * while providing a tapscript already compiled.
  */
 export function buildTapTreeInfo({
   tapTree,
   network = networks.bitcoin,
   BIP32,
-  ECPair
+  ECPair,
+  leafExpansionOverride
 }: {
   tapTree: TapTreeNode;
   network?: Network;
   BIP32: BIP32API;
   ECPair: ECPairAPI;
+  leafExpansionOverride: (
+    expression: string
+  ) => TapLeafExpansionOverride | undefined;
 }): TapTreeInfoNode {
   // Defensive: parseTapTreeExpression() already enforces this for descriptor
   // strings, but buildTapTreeInfo is exported and can be called directly.
   assertTapTreeDepth(tapTree);
 
-  if ('miniscript' in tapTree) {
-    const miniscript = tapTree.miniscript;
-    const { expandedMiniscript, expansionMap } = expandTaprootMiniscript({
-      miniscript,
-      network,
-      BIP32,
-      ECPair
-    });
-    const tapScript = miniscript2Script({
-      expandedMiniscript,
-      expansionMap,
-      tapscript: true
-    });
+  if ('expression' in tapTree) {
+    // Tap-tree leaves store generic descriptor expressions. Most leaves are
+    // miniscript fragments, but descriptor-level script expressions (such as
+    // sortedmulti_a) can also appear and be normalized through
+    // `leafExpansionOverride`.
+    const expression = tapTree.expression;
+    const override = leafExpansionOverride(expression);
+    let expandedExpression: string;
+    let expandedMiniscript: string | undefined;
+    let expansionMap: ExpansionMap;
+    let tapScript: Uint8Array;
+
+    if (override) {
+      // Descriptor-level expression overrides (e.g. sortedmulti_a) preserve a
+      // user-facing expanded expression while allowing custom compilation.
+      expandedExpression = override.expandedExpression;
+      expansionMap = override.expansionMap;
+      tapScript = override.tapScript;
+    } else {
+      const expanded = expandTaprootMiniscript({
+        miniscript: expression,
+        network,
+        BIP32,
+        ECPair
+      });
+      expandedExpression = expanded.expandedMiniscript;
+      expandedMiniscript = expanded.expandedMiniscript;
+      expansionMap = expanded.expansionMap;
+      tapScript = miniscript2Script({
+        expandedMiniscript: expanded.expandedMiniscript,
+        expansionMap,
+        tapscript: true
+      });
+    }
+
     return {
-      miniscript,
-      expandedMiniscript,
+      expression,
+      expandedExpression,
+      ...(expandedMiniscript !== undefined ? { expandedMiniscript } : {}),
       expansionMap,
       tapScript,
       version: TAPROOT_LEAF_VERSION_TAPSCRIPT
     };
   }
   return {
-    left: buildTapTreeInfo({ tapTree: tapTree.left, network, BIP32, ECPair }),
-    right: buildTapTreeInfo({ tapTree: tapTree.right, network, BIP32, ECPair })
+    left: buildTapTreeInfo({
+      tapTree: tapTree.left,
+      network,
+      BIP32,
+      ECPair,
+      leafExpansionOverride
+    }),
+    right: buildTapTreeInfo({
+      tapTree: tapTree.right,
+      network,
+      BIP32,
+      ECPair,
+      leafExpansionOverride
+    })
   };
 }
 
 export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
-  if ('miniscript' in tapTreeInfo) {
+  if ('expression' in tapTreeInfo) {
     return {
       output: tapTreeInfo.tapScript,
       version: tapTreeInfo.version
@@ -220,7 +275,7 @@ export function buildTaprootLeafPsbtMetadata({
     const merklePath = findScriptPath(hashTree, tapLeafHash);
     if (!merklePath)
       throw new Error(
-        `Error: could not build controlBlock for taproot leaf ${leaf.miniscript}`
+        `Error: could not build controlBlock for taproot leaf ${leaf.expression}`
       );
     // controlBlock[0] packs:
     // - leaf version (high bits), and
@@ -412,6 +467,49 @@ export function normalizeTaprootPubkey(pubkey: Uint8Array): Uint8Array {
 }
 
 /**
+ * Compiles an expanded `sortedmulti_a(...)` leaf expression to its internal
+ * `multi_a(...)` form by sorting placeholders using the resolved pubkeys from
+ * `expansionMap`.
+ */
+export function compileSortedMultiAExpandedExpression({
+  expandedExpression,
+  expansionMap
+}: {
+  expandedExpression: string;
+  expansionMap: ExpansionMap;
+}): string {
+  const trimmed = expandedExpression.trim();
+  const match = trimmed.match(/^sortedmulti_a\((.*)\)$/);
+  if (!match)
+    throw new Error(`Error: invalid sortedmulti_a() expression: ${trimmed}`);
+
+  const inner = match[1];
+  if (!inner)
+    throw new Error(`Error: invalid sortedmulti_a() expression: ${trimmed}`);
+  const parts = inner.split(',').map(part => part.trim());
+  if (parts.length < 2)
+    throw new Error(`Error: invalid sortedmulti_a() expression: ${trimmed}`);
+  const threshold = parts[0];
+  if (!threshold)
+    throw new Error(`Error: invalid sortedmulti_a() threshold: ${trimmed}`);
+
+  const placeholders = parts.slice(1);
+  const sortedPlaceholders = placeholders
+    .map(placeholder => {
+      const keyInfo = expansionMap[placeholder];
+      if (!keyInfo?.pubkey)
+        throw new Error(
+          `Error: sortedmulti_a() placeholder ${placeholder} not found in expansionMap`
+        );
+      return { placeholder, pubkey: keyInfo.pubkey };
+    })
+    .sort((a, b) => compare(a.pubkey, b.pubkey))
+    .map(({ placeholder }) => placeholder);
+
+  return `multi_a(${[threshold, ...sortedPlaceholders].join(',')})`;
+}
+
+/**
  * Computes satisfactions for taproot script-path leaves.
  *
  * If `tapLeaf` is undefined, all satisfiable leaves are returned. If `tapLeaf`
@@ -464,8 +562,27 @@ export function collectTaprootLeafSatisfactions({
     const { leaf } = candidate;
     const leafSignatures = resolveLeafSignatures(leaf);
     try {
+      let satisfierMiniscript = leaf.expandedMiniscript;
+
+      // Most taproot leaves are Miniscript fragments, so `expandedMiniscript`
+      // is available (and currently matches `expandedExpression`).
+      // Descriptor-level leaf expressions (currently `sortedmulti_a`)
+      // expose only `expandedExpression`, so we derive an internal
+      // Miniscript-equivalent form here before calling `satisfyMiniscript(...)`
+      if (!satisfierMiniscript) {
+        if (!/^sortedmulti_a\(/.test(leaf.expandedExpression.trim()))
+          throw new Error(
+            `Error: taproot leaf does not provide a satisfier miniscript`
+          );
+
+        satisfierMiniscript = compileSortedMultiAExpandedExpression({
+          expandedExpression: leaf.expandedExpression,
+          expansionMap: leaf.expansionMap
+        });
+      }
+
       const { scriptSatisfaction, nLockTime, nSequence } = satisfyMiniscript({
-        expandedMiniscript: leaf.expandedMiniscript,
+        expandedMiniscript: satisfierMiniscript,
         expansionMap: leaf.expansionMap,
         signatures: leafSignatures,
         preimages,
@@ -545,8 +662,8 @@ export function collectTapTreePubkeys(
  *
  * If `tapLeaf` is provided, only that leaf is considered. If `tapLeaf` is a
  * bytes, it is treated as a tapLeafHash and must match exactly one leaf. If
- * `tapLeaf` is a string, it is treated as a miniscript leaf and must match
- * exactly one leaf (whitespace-insensitive).
+ * `tapLeaf` is a string, it is treated as a raw leaf expression and must
+ * match exactly one leaf (whitespace-insensitive).
  *
  * This function is typically called twice:
  * 1) Planning pass: call it with fake signatures (built by the caller) to
