@@ -1,23 +1,23 @@
 //While this PR is not merged: https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137
 //The Async functions have not been "fixed"
 //Note that a further fix (look for FIX BITCOINERLAB) was done
+import { crypto } from 'bitcoinjs-lib';
 import type { Psbt, Signer } from 'bitcoinjs-lib';
-import { checkForInput } from 'bip174/src/lib/utils';
+import { checkForInput } from 'bip174';
 import type { SignerAsync } from 'ecpair';
-import type { PsbtInput } from 'bip174/src/lib/interfaces';
-import { tapTweakHash } from 'bitcoinjs-lib/src/payments/bip341';
-import { isTaprootInput } from 'bitcoinjs-lib/src/psbt/bip371';
-import { taggedHash } from 'bitcoinjs-lib/src/crypto';
+import type { PsbtInput } from 'bip174';
+import { tapTweakHash, isTaprootInput } from './bitcoinjs-lib-internals';
+import { compare, concat } from 'uint8array-tools';
 
 interface HDSignerBase {
   /**
-   * DER format compressed publicKey buffer
+   * DER format compressed publicKey bytes
    */
-  publicKey: Buffer;
+  publicKey: Uint8Array;
   /**
    * The first 4 bytes of the sha256-ripemd160 of the publicKey
    */
-  fingerprint: Buffer;
+  fingerprint: Uint8Array;
 }
 interface HDSigner extends HDSignerBase {
   /**
@@ -29,7 +29,7 @@ interface HDSigner extends HDSignerBase {
    * Input hash (the "message digest") for the signature algorithm
    * Return a 64 byte signature (32 byte r and 32 byte s in that order)
    */
-  sign(hash: Buffer): Buffer;
+  sign(hash: Uint8Array): Uint8Array;
   /**
    * Adjusts a keypair for Taproot payments by applying a tweak to derive the internal key.
    *
@@ -37,49 +37,55 @@ interface HDSigner extends HDSignerBase {
    * This tweak process involves modifying the original keypair based on a specific tweak value to ensure compatibility
    * with the Taproot address format and functionality.
    */
-  tweak(t: Buffer): Signer;
+  tweak(t: Uint8Array): Signer;
 }
 interface HDSignerAsync extends HDSignerBase {
   derivePath(path: string): HDSignerAsync;
-  sign(hash: Buffer): Promise<Buffer>;
-  tweak(t: Buffer): Signer;
+  sign(hash: Uint8Array): Promise<Uint8Array>;
+  tweak(t: Uint8Array): Signer;
 }
 
-const toXOnly = (pubKey: Buffer) =>
+const toXOnly = (pubKey: Uint8Array) =>
   pubKey.length === 32 ? pubKey : pubKey.slice(1, 33);
 
 function range(n: number): number[] {
   return [...Array(n).keys()];
 }
 
-function tapBranchHash(a: Buffer, b: Buffer): Buffer {
-  return taggedHash('TapBranch', Buffer.concat([a, b]));
+function tapBranchHash(a: Uint8Array, b: Uint8Array): Uint8Array {
+  return crypto.taggedHash('TapBranch', concat([a, b]));
 }
 
 function calculateScriptTreeMerkleRoot(
-  leafHashes: Buffer[]
-): Buffer | undefined {
+  leafHashes: Uint8Array[]
+): Uint8Array | undefined {
   if (!leafHashes || leafHashes.length === 0) {
     return undefined;
   }
 
+  const leafHashCopies: Uint8Array[] = leafHashes.map(leafHash =>
+    Uint8Array.from(leafHash)
+  );
+
   // sort the leaf nodes
-  leafHashes.sort(Buffer.compare);
+  leafHashCopies.sort(compare);
 
   // create the initial hash node
-  let currentLevel = leafHashes;
+  let currentLevel = leafHashCopies;
 
   // build Merkle Tree
   while (currentLevel.length > 1) {
-    const nextLevel = [];
+    const nextLevel: Uint8Array[] = [];
     for (let i = 0; i < currentLevel.length; i += 2) {
       const left = currentLevel[i];
-      const right = i + 1 < currentLevel.length ? currentLevel[i + 1] : left;
+      if (!left) throw new Error('Invalid tapleaf hash tree level');
+      const right =
+        i + 1 < currentLevel.length ? (currentLevel[i + 1] ?? left) : left;
       nextLevel.push(
-        i + 1 < currentLevel.length ? tapBranchHash(left!, right!) : left
+        i + 1 < currentLevel.length ? tapBranchHash(left, right) : left
       );
     }
-    currentLevel = nextLevel as Buffer[];
+    currentLevel = nextLevel;
   }
 
   return currentLevel[0];
@@ -96,7 +102,7 @@ function getTweakSignersFromHD(
   }
   const myDerivations = input.tapBip32Derivation
     .map(bipDv => {
-      if (bipDv.masterFingerprint.equals(hdKeyPair.fingerprint)) {
+      if (compare(bipDv.masterFingerprint, hdKeyPair.fingerprint) === 0) {
         return bipDv;
       } else {
         return;
@@ -111,7 +117,7 @@ function getTweakSignersFromHD(
 
   const signers: Array<Signer | SignerAsync> = myDerivations.map(bipDv => {
     const node = hdKeyPair.derivePath(bipDv!.path);
-    if (!bipDv!.pubkey.equals(toXOnly(node.publicKey))) {
+    if (compare(bipDv!.pubkey, toXOnly(node.publicKey)) !== 0) {
       throw new Error('pubkey did not match tapBip32Derivation');
     }
 
@@ -146,7 +152,7 @@ function getSignersFromHD(
   }
   const myDerivations = input.bip32Derivation
     .map(bipDv => {
-      if (bipDv.masterFingerprint.equals(hdKeyPair.fingerprint)) {
+      if (compare(bipDv.masterFingerprint, hdKeyPair.fingerprint) === 0) {
         return bipDv;
       } else {
         return;
@@ -160,7 +166,7 @@ function getSignersFromHD(
   }
   const signers: Array<Signer | SignerAsync> = myDerivations.map(bipDv => {
     const node = hdKeyPair.derivePath(bipDv!.path);
-    if (!bipDv!.pubkey.equals(node.publicKey)) {
+    if (compare(bipDv!.pubkey, node.publicKey) !== 0) {
       throw new Error('pubkey did not match bip32Derivation');
     }
     return node;
@@ -182,7 +188,19 @@ export const applyPR2137 = (psbt: Psbt) => {
       this.data.inputs,
       hdKeyPair
     ) as Signer[];
-    signers.forEach(signer => this.signInput(inputIndex, signer, sighashTypes));
+    const results: boolean[] = [];
+    for (const signer of signers) {
+      try {
+        this.signInput(inputIndex, signer, sighashTypes);
+        results.push(true);
+      } catch (err) {
+        void err;
+        results.push(false);
+      }
+    }
+    if (results.every(v => v === false)) {
+      throw new Error('No inputs were signed');
+    }
     return this;
   };
 

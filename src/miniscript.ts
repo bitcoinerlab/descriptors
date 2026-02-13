@@ -6,8 +6,9 @@ import type { ECPairAPI } from 'ecpair';
 import type { BIP32API } from 'bip32';
 import { parseKeyExpression } from './keyExpressions';
 import * as RE from './re';
-import type { PartialSig } from 'bip174/src/lib/interfaces';
+import type { PartialSig } from 'bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
+import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 
 /**
@@ -35,25 +36,61 @@ export function expandMiniscript({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
 } {
-  if (isTaproot) throw new Error('Taproot miniscript not yet supported.');
   const reKeyExp = isTaproot
     ? RE.reTaprootKeyExp
     : isSegwit
       ? RE.reSegwitKeyExp
       : RE.reNonSegwitKeyExp;
   const expansionMap: ExpansionMap = {};
+  let keyIndex = 0;
+  const keyExpressionRegex = new RegExp(String.raw`^${reKeyExp}$`);
+  const replaceKeyExpression = (keyExpression: string) => {
+    const trimmed = keyExpression.trim();
+    if (!trimmed)
+      throw new Error(
+        `Error: expected a keyExpression but got ${keyExpression}`
+      );
+    if (!keyExpressionRegex.test(trimmed))
+      throw new Error(`Error: expected a keyExpression but got ${trimmed}`);
+    const key = `@${keyIndex}`;
+    keyIndex += 1;
+    expansionMap[key] = parseKeyExpression({
+      keyExpression: trimmed,
+      isSegwit,
+      isTaproot,
+      network,
+      ECPair,
+      BIP32
+    });
+    return key;
+  };
+
+  //These are the fragments where keys are allowed. Note that we only look
+  //inside these fragments to avoid problems in pregimages like sha256 which can
+  //contain hex values which could be confussed with a key
+
+  const keyFragmentRegex =
+    /\b(pk|pkh|sortedmulti_a|sortedmulti|multi_a|multi)\(([^()]*)\)/g;
   const expandedMiniscript = miniscript.replace(
-    RegExp(reKeyExp, 'g'),
-    (keyExpression: string) => {
-      const key = '@' + Object.keys(expansionMap).length;
-      expansionMap[key] = parseKeyExpression({
-        keyExpression,
-        isSegwit,
-        network,
-        ECPair,
-        BIP32
-      });
-      return key;
+    keyFragmentRegex,
+    (_, name: string, inner: string) => {
+      if (name === 'pk' || name === 'pkh')
+        return `${name}(${replaceKeyExpression(inner)})`;
+      //now do *multi* which has arguments:
+      const parts = inner.split(',').map(part => part.trim());
+      if (parts.length < 2)
+        throw new Error(
+          `Error: invalid miniscript ${miniscript} (missing keys)`
+        );
+      const k = parts[0] ?? '';
+      if (!k)
+        throw new Error(
+          `Error: invalid miniscript ${miniscript} (missing threshold)`
+        );
+      const replacedKeys = parts
+        .slice(1)
+        .map(keyExpression => replaceKeyExpression(keyExpression));
+      return `${name}(${[k, ...replacedKeys].join(',')})`;
     }
   );
 
@@ -67,7 +104,7 @@ export function expandMiniscript({
         throw new Error(
           `Error: keyExpression ${keyInfo.keyExpression} does not have a pubkey`
         );
-      return keyInfo.pubkey.toString('hex');
+      return toHex(keyInfo.pubkey);
     });
   if (new Set(pubkeysHex).size !== pubkeysHex.length) {
     throw new Error(
@@ -98,11 +135,8 @@ function substituteAsm({
       throw new Error(`Error: invalid expansionMap for ${key}`);
     }
     return accAsm
-      .replaceAll(`<${key}>`, `<${pubkey.toString('hex')}>`)
-      .replaceAll(
-        `<HASH160(${key})>`,
-        `<${crypto.hash160(pubkey).toString('hex')}>`
-      );
+      .replaceAll(`<${key}>`, `<${toHex(pubkey)}>`)
+      .replaceAll(`<HASH160(${key})>`, `<${toHex(crypto.hash160(pubkey))}>`);
   }, expandedAsm);
 
   //Now clean it and prepare it so that fromASM can be called:
@@ -127,12 +161,14 @@ function substituteAsm({
 
 export function miniscript2Script({
   expandedMiniscript,
-  expansionMap
+  expansionMap,
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
-}): Buffer {
-  const compiled = compileMiniscript(expandedMiniscript);
+  tapscript?: boolean;
+}): Uint8Array {
+  const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
@@ -152,6 +188,18 @@ export function miniscript2Script({
  * Pass timeConstraints to search for the first solution with this nLockTime and
  * nSequence. Throw if no solution is possible using these constraints.
  *
+ * Time constraints are used to keep the chosen satisfaction stable between the
+ * planning pass (fake signatures) and the signing pass (real signatures).
+ * We run the satisfier once with fake signatures to discover the implied
+ * nLockTime/nSequence without requiring user signatures. If real signatures
+ * had the same length, the satisfier would typically pick the same
+ * minimal-weight solution again. But ECDSA signature sizes can vary (71–73
+ * bytes), which may change which solution is considered "smallest".
+ *
+ * Passing the previously derived timeConstraints in the second pass forces the
+ * same solution to be selected, ensuring locktime/sequence do not change
+ * between planning and finalization.
+ *
  * Don't pass timeConstraints (this is the default) if you want to get the
  * smallest size solution altogether.
  *
@@ -162,15 +210,17 @@ export function satisfyMiniscript({
   expansionMap,
   signatures = [],
   preimages = [],
-  timeConstraints
+  timeConstraints,
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   signatures?: PartialSig[];
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
+  tapscript?: boolean;
 }): {
-  scriptSatisfaction: Buffer;
+  scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
   nSequence: number | undefined;
 } {
@@ -185,18 +235,22 @@ export function satisfyMiniscript({
   //get the keyExpressions: @0, @1 from the keys in expansionMap
   const expandedSignatureMap: { [key: string]: string } = {};
   signatures.forEach(signature => {
-    const pubkeyHex = signature.pubkey.toString('hex');
+    const pubkeyHex = toHex(signature.pubkey);
     const keyExpression = Object.keys(expansionMap).find(
-      k => expansionMap[k]?.pubkey?.toString('hex') === pubkeyHex
+      k =>
+        expansionMap[k]?.pubkey && toHex(expansionMap[k].pubkey) === pubkeyHex
     );
     expandedSignatureMap['<sig(' + keyExpression + ')>'] =
-      '<' + signature.signature.toString('hex') + '>';
+      '<' + toHex(signature.signature) + '>';
   });
   const expandedKnownsMap = { ...preimageMap, ...expandedSignatureMap };
   const knowns = Object.keys(expandedKnownsMap);
 
   //satisfier verifies again internally whether expandedKnownsMap with given knowns is sane
-  const { nonMalleableSats } = satisfier(expandedMiniscript, { knowns });
+  const { nonMalleableSats } = satisfier(expandedMiniscript, {
+    knowns,
+    tapscript
+  });
 
   if (!Array.isArray(nonMalleableSats) || !nonMalleableSats[0])
     throw new Error(`Error: unresolvable miniscript ${expandedMiniscript}`);
@@ -264,7 +318,7 @@ export function satisfyMiniscript({
  * However, the `0` number is an edge case that we specially handle with this
  * function.
  *
- * bitcoinjs-lib's `bscript.number.encode(0)` produces an empty Buffer.
+ * bitcoinjs-lib's `bscript.number.encode(0)` produces an empty array.
  * This is what the Bitcoin interpreter does and it is what `script.number.encode` was
  * implemented to do.
  *
@@ -298,5 +352,5 @@ export function numberEncodeAsm(number: number) {
   }
   if (number === 0) {
     return 'OP_0';
-  } else return bscript.number.encode(number).toString('hex');
+  } else return toHex(bscript.number.encode(number));
 }

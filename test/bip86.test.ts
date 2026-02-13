@@ -9,6 +9,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks } from 'bitcoinjs-lib';
 import { DescriptorsFactory, scriptExpressions } from '../dist/';
 import { mnemonicToSeedSync } from 'bip39';
+import { toHex } from 'uint8array-tools';
 const { trBIP32 } = scriptExpressions;
 const { Output, BIP32 } = DescriptorsFactory(ecc);
 const network = networks.bitcoin;
@@ -43,9 +44,12 @@ describe('BIP86 Taproot Derivation Path Tests', () => {
 
     const output = new Output({ descriptor, network });
     const address = output.getAddress();
-    const scriptPubKey = output.getScriptPubKey().toString('hex');
-    const internalKey = output.getPayment().internalPubkey?.toString('hex');
-    const pubKey = output.getPayment().pubkey?.toString('hex');
+    const scriptPubKey = toHex(output.getScriptPubKey());
+    const payment = output.getPayment();
+    const internalPubkey = payment.internalPubkey;
+    const pubkey = payment.pubkey;
+    const internalKey = internalPubkey ? toHex(internalPubkey) : undefined;
+    const pubKey = pubkey ? toHex(pubkey) : undefined;
 
     // Verify the generated address matches the expected value from BIP86 spec
     expect(address).toBe(

@@ -8,49 +8,12 @@
 // test/tools
 
 import { networks, Psbt } from 'bitcoinjs-lib';
-import { DescriptorsFactory, OutputInstance } from '../dist';
+import { DescriptorsFactory } from '../dist';
 import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
+import { fromHex } from 'uint8array-tools';
 const { Output } = DescriptorsFactory(secp256k1);
-import type { PartialSig } from 'bip174/src/lib/interfaces';
-import { encodingLength } from 'varuint-bitcoin';
-
-const isSegwitTx = (inputs: Array<OutputInstance>) =>
-  inputs.some(input => input.isSegwit());
-
-// Same implementation as in @bitcoinerlab/coinselect:
-function vsize(
-  inputs: Array<OutputInstance>,
-  outputs: Array<OutputInstance>,
-  signaturesPerInput?: Array<Array<PartialSig>>
-) {
-  const isSegwitTxValue = isSegwitTx(inputs);
-
-  let totalWeight = 0;
-  inputs.forEach(function (input, index) {
-    if (signaturesPerInput) {
-      const signatures = signaturesPerInput[index];
-      if (!signatures)
-        throw new Error(`signaturesPerInput not defined for ${index}`);
-      totalWeight += input.inputWeight(isSegwitTxValue, signatures);
-    } else
-      totalWeight += input.inputWeight(
-        isSegwitTxValue,
-        'DANGEROUSLY_USE_FAKE_SIGNATURES'
-      );
-  });
-  outputs.forEach(function (output) {
-    totalWeight += output.outputWeight();
-  });
-
-  if (isSegwitTxValue) totalWeight += 2;
-
-  totalWeight += 8 * 4;
-  totalWeight += encodingLength(inputs.length) * 4;
-  totalWeight += encodingLength(outputs.length) * 4;
-
-  return Math.ceil(totalWeight / 4);
-}
+import { vsize } from './helpers/vsize';
 
 const network = networks.regtest;
 
@@ -83,9 +46,7 @@ describe('vsize', () => {
         const inputs = fixture.inputs.map(input => {
           const signersPubKeys =
             'signersPubKeys' in input &&
-            input.signersPubKeys.map((hexString: string) =>
-              Buffer.from(hexString, 'hex')
-            );
+            input.signersPubKeys.map((hexString: string) => fromHex(hexString));
           return new Output({
             allowMiniscriptInP2SH: true,
             descriptor: input.descriptor,
@@ -106,8 +67,8 @@ describe('vsize', () => {
         // Deserialize signaturesPerInput
         const signaturesPerInput = fixture.signaturesPerInput.map(signatures =>
           signatures.map(sig => ({
-            pubkey: Buffer.from(sig.pubkey, 'hex'),
-            signature: Buffer.from(sig.signature, 'hex')
+            pubkey: fromHex(sig.pubkey),
+            signature: fromHex(sig.signature)
           }))
         );
 

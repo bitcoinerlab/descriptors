@@ -10,6 +10,7 @@ import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { toHex } from 'uint8array-tools';
 const { Output, expand } = DescriptorsFactory(ecc);
 
 function partialDeepEqual(obj) {
@@ -47,9 +48,7 @@ for (const fixtures of [customFixtures, bitcoinCoreFixtures]) {
         if (!fixture.script && !fixture.address)
           throw new Error(`Error: pass a valid test for ${fixture.descriptor}`);
         if (fixture.script) {
-          expect(descriptor.getScriptPubKey().toString('hex')).toEqual(
-            fixture.script
-          );
+          expect(toHex(descriptor.getScriptPubKey())).toEqual(fixture.script);
         }
         if (fixture.address) {
           expect(descriptor.getAddress()).toEqual(fixture.address);

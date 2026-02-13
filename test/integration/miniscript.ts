@@ -28,7 +28,8 @@ console.log(
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
-import { compilePolicy } from '@bitcoinerlab/miniscript';
+import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
+import { toHex } from 'uint8array-tools';
 const { signBIP32, signECPair } = signers;
 
 const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
@@ -47,6 +48,7 @@ const keys: {
 };
 
 (async () => {
+  await ready;
   //The 3 for loops below test all possible combinations of
   //signer type (BIP32 or ECPair), top-level scripts (sh, wsh, sh-wsh) and
   //who is spending the tx: the "older" or the "after" branch
@@ -73,9 +75,9 @@ const keys: {
         //to spend the script.
         //Here we decide how are we going to spend the script.
         //spendingBranch is either @olderKey or @afterKey.
-        //Use signersPubKeys in Descriptor's constructor to account for this
+        //Use signersPubKeys in Output's constructor to account for this
         let miniscript = expandedMiniscript;
-        const signersPubKeys: Buffer[] = [];
+        const signersPubKeys: Uint8Array[] = [];
         for (const key in keys) {
           const keyValue = keys[key];
           if (!keyValue) throw new Error();
@@ -97,7 +99,7 @@ const keys: {
             } else {
               miniscript = miniscript.replace(
                 new RegExp(key, 'g'),
-                ecpair.publicKey.toString('hex')
+                toHex(ecpair.publicKey)
               );
 
               signersPubKeys.push(ecpair.publicKey);
@@ -106,7 +108,7 @@ const keys: {
             //For the non spending branch we can simply use the pubKey as key expressions
             miniscript = miniscript.replace(
               new RegExp(key, 'g'),
-              pubkey.toString('hex')
+              toHex(pubkey)
             );
           }
         }
@@ -121,7 +123,7 @@ const keys: {
         });
 
         const { txId, vout } = await regtestUtils.faucetComplex(
-          output.getScriptPubKey(),
+          Buffer.from(output.getScriptPubKey()),
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
@@ -135,7 +137,7 @@ const keys: {
         new Output({
           descriptor: `addr(${FINAL_ADDRESS})`,
           network: NETWORK
-        }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
+        }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         inputFinalizer({ psbt });

@@ -6,11 +6,11 @@ import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
-  LedgerState,
   LedgerManager,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
+import { concat, fromHex, toHex } from 'uint8array-tools';
 
 import * as RE from './re';
 
@@ -74,10 +74,12 @@ export function parseKeyExpression({
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): KeyInfo {
-  let pubkey: Buffer | undefined; //won't be computed for ranged keyExpressions
+  if (isTaproot && isSegwit !== true)
+    throw new Error(`Error: taproot key expressions require isSegwit`);
+  let pubkey: Uint8Array | undefined; //won't be computed for ranged keyExpressions
   let ecpair: ECPairInterface | undefined;
   let bip32: BIP32Interface | undefined;
-  let masterFingerprint: Buffer | undefined;
+  let masterFingerprint: Uint8Array | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
   let path: string | undefined;
@@ -116,7 +118,7 @@ export function parseKeyExpression({
         throw new Error(
           `Error: masterFingerprint ${masterFingerprintHex} invalid for keyExpression: ${keyExpression}`
         );
-      masterFingerprint = Buffer.from(masterFingerprintHex, 'hex');
+      masterFingerprint = fromHex(masterFingerprintHex);
     }
   }
 
@@ -125,10 +127,10 @@ export function parseKeyExpression({
   let mPubKey, mWIF, mXpubKey, mXprvKey;
   //match pubkey:
   if ((mPubKey = actualKey.match(RE.anchorStartAndEnd(rePubKey))) !== null) {
-    pubkey = Buffer.from(mPubKey[0], 'hex');
+    pubkey = fromHex(mPubKey[0]);
     if (isTaproot && pubkey.length === 32)
       //convert the xonly point to a compressed point assuming even parity
-      pubkey = Buffer.concat([Buffer.from([0x02]), pubkey]);
+      pubkey = concat([Uint8Array.from([0x02]), pubkey]);
 
     ecpair = ECPair.fromPublicKey(pubkey, { network });
     //Validate the pubkey (compressed or uncompressed)
@@ -139,6 +141,7 @@ export function parseKeyExpression({
       throw new Error(`Error: invalid pubkey`);
     }
     //Do an extra check in case we know this pubkey refers to a segwit input
+    //Taproot x-only keys are converted to 33-byte compressed form above.
     if (
       typeof isSegwit === 'boolean' &&
       isSegwit &&
@@ -241,7 +244,7 @@ function assertChangeIndexKeyPath({
  *
  * For detailed understanding and examples of terms like `originPath`,
  * `change`, and `keyPath`, refer to the documentation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}, which consists
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}, which consists
  * of the reverse procedure.
  *
  * @returns {string} - The formed key expression for the Ledger device.
@@ -261,51 +264,25 @@ export async function keyExpressionLedger({
 }): Promise<string>;
 /** @hidden */
 export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-/** @overload */
-export async function keyExpressionLedger({
-  ledgerClient,
-  ledgerState,
   ledgerManager,
   originPath,
   keyPath,
   change,
   index
 }: {
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
+  ledgerManager: LedgerManager;
   originPath: string;
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
   keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
 }) {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
   assertChangeIndexKeyPath({ change, index, keyPath });
 
   const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerClient,
-    ledgerState
+    ledgerManager
   });
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerClient, ledgerState });
+  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
+  const xpub = await getLedgerXpub({ originPath, ledgerManager });
 
   const keyRoot = `${origin}${xpub}`;
   if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
@@ -316,9 +293,9 @@ export async function keyExpressionLedger({
  * Constructs a key expression string from its constituent components.
  *
  * This function essentially performs the reverse operation of
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}. For detailed
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}. For detailed
  * explanations and examples of the terms used here, refer to
- * {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ * {@link _Internal_.KeyExpressionParser | KeyExpressionParser}.
  */
 export function keyExpressionBIP32({
   masterNode,
@@ -341,7 +318,7 @@ export function keyExpressionBIP32({
 }) {
   assertChangeIndexKeyPath({ change, index, keyPath });
   const masterFingerprint = masterNode.fingerprint;
-  const origin = `[${masterFingerprint.toString('hex')}${originPath}]`;
+  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
   const xpub = isPublic
     ? masterNode.derivePath(`m${originPath}`).neutered().toBase58().toString()
     : masterNode.derivePath(`m${originPath}`).toBase58().toString();

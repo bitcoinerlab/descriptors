@@ -24,23 +24,22 @@
  * All the conditions above are checked in function ledgerPolicyFromOutput.
  */
 
-import {
-  DescriptorInstance,
-  OutputInstance,
-  DescriptorsFactory
-} from './descriptors';
+import { OutputInstance, DescriptorsFactory } from './descriptors';
 import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
+import { compare, fromHex, toHex } from 'uint8array-tools';
+import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
-import type { TinySecp256k1Interface } from './types';
+import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
+import type { TapTreeInfoNode } from './tapTree';
 
 /**
- * Dynamically imports the 'ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
+ * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
  *
  * @async
  * @param {unknown} ledgerClient - An optional parameter that, if provided, is checked to see if it's an instance of `AppClient`.
  * @throws {Error} Throws an error if `ledgerClient` is provided but is not an instance of `AppClient`.
- * @throws {Error} Throws an error if the 'ledger-bitcoin' module cannot be imported. This typically indicates that the 'ledger-bitcoin' peer dependency is not installed.
- * @returns {Promise<unknown>} Returns a promise that resolves with the entire 'ledger-bitcoin' module if it can be successfully imported. We force it to return an unknown type so that the declaration of this function won't break projects that don't use ledger-bitcoin as dependency
+ * @throws {Error} Throws an error if the '@ledgerhq/ledger-bitcoin' module cannot be imported. This typically indicates that the '@ledgerhq/ledger-bitcoin' peer dependency is not installed.
+ * @returns {Promise<unknown>} Returns a promise that resolves with the entire '@ledgerhq/ledger-bitcoin' module if it can be successfully imported. We force it to return an unknown type so that the declaration of this function won't break projects that don't use @ledgerhq/ledger-bitcoin as dependency
  *
  * @example
  *
@@ -57,26 +56,26 @@ export async function importAndValidateLedgerBitcoin(
   let ledgerBitcoinModule;
   try {
     // Originally, the code used dynamic imports:
-    // ledgerBitcoinModule = await import('ledger-bitcoin');
+    // ledgerBitcoinModule = await import('@ledgerhq/ledger-bitcoin');
 
     // However, in React Native with the Metro bundler, there's an issue with
     // recognizing dynamic imports inside try-catch blocks. For details, refer to:
     // https://github.com/react-native-community/discussions-and-proposals/issues/120
 
     // The dynamic import gets transpiled to:
-    // ledgerBitcoinModule = Promise.resolve().then(() => __importStar(require('ledger-bitcoin')));
+    // ledgerBitcoinModule = Promise.resolve().then(() => __importStar(require('@ledgerhq/ledger-bitcoin')));
 
     // Metro bundler fails to recognize the above as conditional. Hence, it tries
-    // to require 'ledger-bitcoin' unconditionally, leading to potential errors if
-    // 'ledger-bitcoin' is not installed (given it's an optional peerDependency).
+    // to require '@ledgerhq/ledger-bitcoin' unconditionally, leading to potential errors if
+    // '@ledgerhq/ledger-bitcoin' is not installed (given it's an optional peerDependency).
 
     // To bypass this, we directly use require:
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ledgerBitcoinModule = require('ledger-bitcoin');
+    ledgerBitcoinModule = require('@ledgerhq/ledger-bitcoin');
   } catch (error) {
     void error;
     throw new Error(
-      'Could not import "ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
+      'Could not import "@ledgerhq/ledger-bitcoin". This is a peer dependency and needs to be installed explicitly. Please run "npm install @ledgerhq/ledger-bitcoin" to use Ledger Hardware Wallet functionality.'
     );
   }
   const { AppClient } = ledgerBitcoinModule;
@@ -165,9 +164,9 @@ function isLedgerStandard({
   if (keyRoots.length !== 1) return false;
   const originPath = keyRoots[0]?.match(reOriginPath)?.[1];
   if (!originPath) return false;
-  //Network is the 6th character: /44'/0'
-  if (originPath[5] !== (network === networks.bitcoin ? '0' : '1'))
-    return false;
+  const originCoinType = originPath.match(/^\/\d+'\/([01])'/)?.[1];
+  if (!originCoinType) return false;
+  if (originCoinType !== `${coinTypeFromNetwork(network)}`) return false;
   if (
     (ledgerTemplate === 'pkh(@0/**)' &&
       originPath.match(/^\/44'\/[01]'\/(\d+)'$/)) ||
@@ -187,8 +186,8 @@ export type LedgerPolicy = {
   policyName?: string;
   ledgerTemplate: string;
   keyRoots: string[];
-  policyId?: Buffer;
-  policyHmac?: Buffer;
+  policyId?: Uint8Array;
+  policyHmac?: Uint8Array;
 };
 /**
  * Ledger devices operate in a state-less manner. Therefore, policy information
@@ -196,7 +195,7 @@ export type LedgerPolicy = {
  * `ledgerState` also stores cached xpubs and the masterFingerprint.
  */
 export type LedgerState = {
-  masterFingerprint?: Buffer;
+  masterFingerprint?: Uint8Array;
   policies?: LedgerPolicy[];
   xpubs?: { [key: string]: string };
 };
@@ -215,43 +214,21 @@ export async function getLedgerMasterFingerPrint({
   ledgerManager
 }: {
   ledgerManager: LedgerManager;
-}): Promise<Buffer>;
-
-/** @hidden */
+}): Promise<Uint8Array>;
 export async function getLedgerMasterFingerPrint({
-  ledgerClient,
-  ledgerState
-}: {
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-}): Promise<Buffer>;
-
-/** @overload */
-export async function getLedgerMasterFingerPrint({
-  ledgerClient,
-  ledgerState,
   ledgerManager
 }: {
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-}): Promise<Buffer> {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
+  ledgerManager: LedgerManager;
+}): Promise<Uint8Array> {
+  const { ledgerClient, ledgerState } = ledgerManager;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   let masterFingerprint = ledgerState.masterFingerprint;
   if (!masterFingerprint) {
-    masterFingerprint = Buffer.from(
-      await ledgerClient.getMasterFingerprint(),
-      'hex'
-    );
+    masterFingerprint = fromHex(await ledgerClient.getMasterFingerprint());
     ledgerState.masterFingerprint = masterFingerprint;
   }
   return masterFingerprint;
@@ -267,38 +244,17 @@ export async function getLedgerXpub({
   originPath: string;
   ledgerManager: LedgerManager;
 }): Promise<string>;
-
-/** @deprecated @hidden */
 export async function getLedgerXpub({
   originPath,
-  ledgerClient,
-  ledgerState
-}: {
-  originPath: string;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-}): Promise<string>;
-
-/** @hidden */
-export async function getLedgerXpub({
-  originPath,
-  ledgerClient,
-  ledgerState,
   ledgerManager
 }: {
   originPath: string;
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
+  ledgerManager: LedgerManager;
 }): Promise<string> {
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(`ledgerClient and ledgerState have been deprecated`);
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient || !ledgerState)
-    throw new Error(`Could not retrieve ledgerClient or ledgerState`);
+  const { ledgerClient, ledgerState } = ledgerManager;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
   if (!ledgerState.xpubs) ledgerState.xpubs = {};
@@ -335,46 +291,50 @@ export async function ledgerPolicyFromPsbtInput({
   psbt: Psbt;
   index: number;
 }) {
-  const { ledgerState, ledgerClient, ecc, network } = ledgerManager;
+  const { ledgerState, ecc, network } = ledgerManager;
 
   const { Output } = DescriptorsFactory(ecc);
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Input numer ${index} not set.`);
-  let scriptPubKey: Buffer | undefined;
+  let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
     const vout = psbt.txInputs[index]?.index;
     if (vout === undefined)
       throw new Error(
         `Could not extract vout from nonWitnessUtxo for input ${index}.`
       );
-    scriptPubKey = Transaction.fromBuffer(input.nonWitnessUtxo).outs[vout]
-      ?.script;
+    const nonWitnessScript = Transaction.fromBuffer(input.nonWitnessUtxo).outs[
+      vout
+    ]?.script;
+    scriptPubKey = nonWitnessScript;
   } else if (input.witnessUtxo) {
     scriptPubKey = input.witnessUtxo.script;
   }
   if (!scriptPubKey)
     throw new Error(`Could not retrieve scriptPubKey for input ${index}.`);
 
-  const bip32Derivations = input.bip32Derivation;
-  if (!bip32Derivations || !bip32Derivations.length)
-    throw new Error(`Input ${index} does not contain bip32 derivations.`);
+  const keyDerivations = [
+    ...(input.bip32Derivation || []),
+    ...(input.tapBip32Derivation || [])
+  ];
+  if (keyDerivations.length === 0)
+    throw new Error(
+      `Input ${index} does not contain bip32 or tapBip32 derivations.`
+    );
 
   const ledgerMasterFingerprint = await getLedgerMasterFingerPrint({
     ledgerManager
   });
-  for (const bip32Derivation of bip32Derivations) {
+  for (const keyDerivation of keyDerivations) {
     //get the keyRoot and keyPath. If it matches one of our policies then
     //we are still not sure this is the policy that must be used yet
     //So we must use the template and the keyRoot of each policy and compute the
     //scriptPubKey:
     if (
-      Buffer.compare(
-        bip32Derivation.masterFingerprint,
-        ledgerMasterFingerprint
-      ) === 0
+      compare(keyDerivation.masterFingerprint, ledgerMasterFingerprint) === 0
     ) {
       // Match /m followed by n consecutive hardened levels and then 2 consecutive unhardened levels:
-      const match = bip32Derivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
+      const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
       const originPath = match ? match[1] : undefined; //n consecutive hardened levels
       const keyPath = match ? match[3] : undefined; //2 unhardened levels or undefined
 
@@ -385,7 +345,7 @@ export async function ledgerPolicyFromPsbtInput({
         const change = parseInt(strChange, 10);
         const index = parseInt(strIndex, 10);
 
-        const coinType = network === networks.bitcoin ? 0 : 1;
+        const coinType = coinTypeFromNetwork(network);
 
         //standard policy candidate. This policy will be added to the pool
         //of policies below and check if it produces the correct scriptPubKey
@@ -403,17 +363,11 @@ export async function ledgerPolicyFromPsbtInput({
                   ? 'tr(@0/**)'
                   : undefined;
           if (standardTemplate) {
-            const xpub = await getLedgerXpub({
-              originPath,
-              ledgerClient,
-              ledgerState
-            });
+            const xpub = await getLedgerXpub({ originPath, ledgerManager });
             standardPolicy = {
               ledgerTemplate: standardTemplate,
               keyRoots: [
-                `[${ledgerMasterFingerprint.toString(
-                  'hex'
-                )}${originPath}]${xpub}`
+                `[${toHex(ledgerMasterFingerprint)}${originPath}]${xpub}`
               ]
             };
           }
@@ -462,7 +416,15 @@ export async function ledgerPolicyFromPsbtInput({
                     keyRoot
                   );
                 else descriptor = undefined;
-              } else descriptor = undefined;
+              } else {
+                // Keys without origin info are treated as external by Ledger
+                // and are allowed in policy matching.
+                if (descriptor)
+                  descriptor = descriptor.replace(
+                    new RegExp(`@${i}`, 'g'),
+                    keyRoot
+                  );
+              }
             }
 
             //verify the scriptPubKey from the input vs. the one obtained from
@@ -473,7 +435,7 @@ export async function ledgerPolicyFromPsbtInput({
                 network
               }).getScriptPubKey();
 
-              if (Buffer.compare(policyScriptPubKey, scriptPubKey) === 0) {
+              if (compare(policyScriptPubKey, scriptPubKey) === 0) {
                 return policy;
               }
             }
@@ -514,21 +476,73 @@ export async function ledgerPolicyFromPsbtInput({
  */
 export async function ledgerPolicyFromOutput({
   output,
-  ledgerClient,
-  ledgerState
+  ledgerManager
 }: {
   output: OutputInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerManager: LedgerManager;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
-  const expandedExpression = output.expand().expandedExpression;
-  const expansionMap = output.expand().expansionMap;
+  const expanded = output.expand();
+  let expandedExpression = expanded.expandedExpression;
+  const expansionMap = expanded.expansionMap
+    ? ({ ...expanded.expansionMap } as ExpansionMap)
+    : undefined;
+
+  // Taproot script-path keys are expanded in tapTreeInfo leaf expansion maps,
+  // not in the top-level expansionMap. For ledger policy derivation we remap
+  // leaf-local placeholders to global placeholders and merge all leaf keys into
+  // the top-level expansionMap.
+  if (
+    expandedExpression?.startsWith('tr(@0,') &&
+    expansionMap &&
+    expanded.tapTreeInfo
+  ) {
+    const keyExpressionToGlobalPlaceholder = new Map<string, string>(
+      Object.entries(expansionMap).map(([placeholder, keyInfo]) => [
+        keyInfo.keyExpression,
+        placeholder
+      ])
+    );
+    let nextPlaceholderIndex = Object.keys(expansionMap).length;
+
+    const globalPlaceholderFor = (keyInfo: KeyInfo): string => {
+      const existing = keyExpressionToGlobalPlaceholder.get(
+        keyInfo.keyExpression
+      );
+      if (existing) return existing;
+      const placeholder = `@${nextPlaceholderIndex}`;
+      nextPlaceholderIndex += 1;
+      keyExpressionToGlobalPlaceholder.set(keyInfo.keyExpression, placeholder);
+      expansionMap[placeholder] = keyInfo;
+      return placeholder;
+    };
+
+    const remapTapTree = (node: TapTreeInfoNode): string => {
+      if ('miniscript' in node) {
+        let remappedMiniscript = node.expandedMiniscript;
+        const localEntries = Object.entries(node.expansionMap).sort(
+          ([placeholderA], [placeholderB]) =>
+            placeholderB.length - placeholderA.length
+        );
+        for (const [localPlaceholder, keyInfo] of localEntries) {
+          const globalPlaceholder = globalPlaceholderFor(keyInfo);
+          remappedMiniscript = remappedMiniscript.replaceAll(
+            localPlaceholder,
+            globalPlaceholder
+          );
+        }
+        return remappedMiniscript;
+      }
+      return `{${remapTapTree(node.left)},${remapTapTree(node.right)}}`;
+    };
+
+    expandedExpression = `tr(@0,${remapTapTree(expanded.tapTreeInfo)})`;
+  }
+
   if (!expandedExpression || !expansionMap)
     throw new Error(`Error: invalid output`);
 
   const ledgerMasterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerClient,
-    ledgerState
+    ledgerManager
   });
 
   //It's important to have keys sorted in ascii order. keys
@@ -541,7 +555,7 @@ export async function ledgerPolicyFromOutput({
     const masterFingerprint = expansionMap[key]?.masterFingerprint;
     return (
       masterFingerprint &&
-      Buffer.compare(masterFingerprint, ledgerMasterFingerprint) === 0
+      compare(masterFingerprint, ledgerMasterFingerprint) === 0
     );
   });
   if (ledgerKeys.length === 0) return null;
@@ -591,7 +605,7 @@ export async function ledgerPolicyFromOutput({
     const keyInfo = expansionMap[key]!;
     if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
-        `[${keyInfo.masterFingerprint?.toString('hex')}${
+        `[${toHex(keyInfo.masterFingerprint)}${
           keyInfo.originPath
         }]${keyInfo?.bip32?.neutered().toBase58()}`
       );
@@ -625,85 +639,29 @@ export async function registerLedgerWallet({
   ledgerManager: LedgerManager;
   /** The Name we want to assign to this specific policy */
   policyName: string;
-}): Promise<void>;
-
-/**
- * @hidden
- */
-export async function registerLedgerWallet({
-  descriptor,
-  ledgerClient,
-  ledgerState,
-  policyName
-}: {
-  descriptor: DescriptorInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
-  policyName: string;
-}): Promise<void>;
-
-/**
- * To be removed in v3.0 and replaced by a version that does not accept
- * descriptors
- * @overload
- **/
-export async function registerLedgerWallet({
-  descriptor,
-  ledgerClient,
-  ledgerState,
-  ledgerManager,
-  policyName
-}: {
-  descriptor: DescriptorInstance | string;
-  ledgerClient?: unknown;
-  ledgerState?: LedgerState;
-  ledgerManager?: LedgerManager;
-  policyName: string;
-}) {
-  if (typeof descriptor !== 'string' && ledgerManager)
-    throw new Error(`Invalid usage: descriptor must be a string`);
-  if (ledgerManager && (ledgerClient || ledgerState))
-    throw new Error(
-      `Invalid usage: either ledgerManager or ledgerClient + ledgerState`
-    );
-  if (ledgerManager) ({ ledgerClient, ledgerState } = ledgerManager);
-  if (!ledgerClient) throw new Error(`ledgerManager not provided`);
-  if (!ledgerState) throw new Error(`ledgerManager not provided`);
+}): Promise<void> {
+  const { ledgerClient, ledgerState, ecc, network } = ledgerManager;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
-  )) as typeof import('ledger-bitcoin');
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  let output: OutputInstance;
-  if (typeof descriptor === 'string') {
-    if (!ledgerManager) throw new Error(`ledgerManager not provided`);
-    const { Output } = DescriptorsFactory(ledgerManager.ecc);
-    output = new Output({
-      descriptor,
-      ...(descriptor.includes('*') ? { index: 0 } : {}), //if ranged set any index
-      network: ledgerManager.network
-    });
-  } else output = descriptor;
-  if (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }))
-    return;
-  const result = await ledgerPolicyFromOutput({
-    output,
-    ledgerClient,
-    ledgerState
+  const { Output } = DescriptorsFactory(ecc);
+  const output = new Output({
+    descriptor,
+    ...(descriptor.includes('*') ? { index: 0 } : {}), //if ranged set any index
+    network
   });
-  if (await ledgerPolicyFromStandard({ output, ledgerClient, ledgerState }))
-    return;
+  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
+  const result = await ledgerPolicyFromOutput({ output, ledgerManager });
+  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
   if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;
   if (!ledgerState.policies) ledgerState.policies = [];
   let walletPolicy, policyHmac;
   //Search in ledgerState first
-  const policy = await ledgerPolicyFromState({
-    output,
-    ledgerClient,
-    ledgerState
-  });
+  const policy = await ledgerPolicyFromState({ output, ledgerManager });
   if (policy) {
     if (policy.policyName !== policyName)
       throw new Error(
@@ -729,17 +687,14 @@ export async function registerLedgerWallet({
  **/
 export async function ledgerPolicyFromStandard({
   output,
-  ledgerClient,
-  ledgerState
+  ledgerManager
 }: {
   output: OutputInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerManager: LedgerManager;
 }): Promise<LedgerPolicy | null> {
   const result = await ledgerPolicyFromOutput({
     output,
-    ledgerClient,
-    ledgerState
+    ledgerManager
   });
   if (!result)
     throw new Error(`Error: descriptor does not have a ledger input`);
@@ -778,17 +733,15 @@ export function comparePolicies(policyA: LedgerPolicy, policyB: LedgerPolicy) {
  **/
 export async function ledgerPolicyFromState({
   output,
-  ledgerClient,
-  ledgerState
+  ledgerManager
 }: {
   output: OutputInstance;
-  ledgerClient: unknown;
-  ledgerState: LedgerState;
+  ledgerManager: LedgerManager;
 }): Promise<LedgerPolicy | null> {
+  const { ledgerState } = ledgerManager;
   const result = await ledgerPolicyFromOutput({
     output,
-    ledgerClient,
-    ledgerState
+    ledgerManager
   });
   if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { ledgerTemplate, keyRoots } = result;

@@ -83,20 +83,13 @@ import {
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
-import { AppClient } from 'ledger-bitcoin';
+import { AppClient } from '@ledgerhq/ledger-bitcoin';
 const { Output, BIP32 } = DescriptorsFactory(ecc);
 
-import { compilePolicy } from '@bitcoinerlab/miniscript';
+import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 
 //Create the psbt that will spend the pkh and wsh outputs and send funds to FINAL_ADDRESS:
 const psbt = new Psbt({ network: NETWORK });
-
-//Build the miniscript-based descriptor.
-//POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
-//and miniscript: 'and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk(@ledger),v:pk(@soft)),older(5)))'
-const { miniscript, issane }: { miniscript: string; issane: boolean } =
-  compilePolicy(POLICY);
-if (!issane) throw new Error(`Error: miniscript not sane`);
 
 let txHex: string;
 let txId: string;
@@ -105,6 +98,7 @@ let vout: number;
 const finalizers = [];
 
 (async () => {
+  await ready;
   let transport;
   try {
     transport = await Transport.create(3000, 3000);
@@ -126,15 +120,19 @@ const finalizers = [];
     ecc,
     network: NETWORK
   };
-  const ledgerState = ledgerManager.ledgerState;
+
+  //Build the miniscript-based descriptor.
+  //POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
+  //and miniscript: 'and_v(v:sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333),and_v(and_v(v:pk(@ledger),v:pk(@soft)),older(5)))'
+  const { miniscript, issane }: { miniscript: string; issane: boolean } =
+    compilePolicy(POLICY);
+  if (!issane) throw new Error(`Error: miniscript not sane`);
 
   //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
   const pkhExternalDescriptor: string = await pkhLedger({
-    ledgerClient,
-    ledgerState,
-    network: NETWORK,
+    ledgerManager,
     account: 0,
     change: 0,
     index: 0
@@ -155,9 +153,7 @@ const finalizers = [];
 
   //Repeat the same for another pkh change address:
   const pkhChangeDescriptor = await pkhLedger({
-    ledgerClient,
-    ledgerState,
-    network: NETWORK,
+    ledgerManager,
     account: 0,
     change: 1,
     index: 0
@@ -231,7 +227,10 @@ const finalizers = [];
 
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
-  psbt.addOutput({ address: FINAL_ADDRESS, value: UTXO_VALUE * 3 - FEE });
+  psbt.addOutput({
+    address: FINAL_ADDRESS,
+    value: BigInt(UTXO_VALUE * 3 - FEE)
+  });
 
   //=============
   //Register Ledger policies of non-standard descriptors.

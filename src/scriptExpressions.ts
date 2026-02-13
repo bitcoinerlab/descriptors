@@ -1,6 +1,7 @@
 import { networks, Network } from 'bitcoinjs-lib';
-import type { LedgerState, LedgerManager } from './ledger';
+import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
+import { coinTypeFromNetwork } from './networkUtils';
 import type { BIP32Interface } from 'bip32';
 
 function assertStandardKeyPath(keyPath: string) {
@@ -52,9 +53,7 @@ function standardExpressionsBIP32Maker(
      */
     isPublic?: boolean;
   }) {
-    const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
-    }'/${account}'`;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = keyExpressionBIP32({
       masterNode,
@@ -113,61 +112,12 @@ function standardExpressionsLedgerMaker(
     keyPath?: string;
     change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
     index?: number | undefined | '*';
-  }): Promise<string>;
-  /** @hidden */
-  async function standardScriptExpressionLedger({
-    ledgerClient,
-    ledgerState,
-    network,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerClient: unknown;
-    ledgerState: LedgerState;
-    /** @default networks.bitcoin */
-    network?: Network;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
-  }): Promise<string>;
-  /** @overload */
-  async function standardScriptExpressionLedger({
-    ledgerClient,
-    ledgerState,
-    ledgerManager,
-    network,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerClient?: unknown;
-    ledgerState?: LedgerState;
-    ledgerManager?: LedgerManager;
-    network?: Network;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
   }) {
-    if (ledgerManager && (ledgerClient || ledgerState))
-      throw new Error(`ledgerClient and ledgerState have been deprecated`);
-    if (ledgerManager && network)
-      throw new Error(`ledgerManager already includes the network object`);
-    if (!ledgerManager && !network) network = networks.bitcoin;
-    if (ledgerManager) ({ ledgerClient, ledgerState, network } = ledgerManager);
-    if (!ledgerClient || !ledgerState)
-      throw new Error(`Could not retrieve ledgerClient or ledgerState`);
-    const originPath = `/${purpose}'/${
-      network === networks.bitcoin ? 0 : 1
-    }'/${account}'`;
+    const { network } = ledgerManager;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = await keyExpressionLedger({
-      ledgerClient,
-      ledgerState,
+      ledgerManager,
       originPath,
       keyPath,
       change,

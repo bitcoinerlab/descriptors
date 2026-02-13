@@ -24,6 +24,7 @@ import {
   keyExpressionBIP32,
   signers
 } from '../../dist/';
+import { toHex } from 'uint8array-tools';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
@@ -56,13 +57,15 @@ if (
   throw new Error(`Error: cannot use keyPath <-> change, index, indistinctly`);
 
 const ecpair = ECPair.makeRandom();
+const ecpairPubkeyHex = toHex(ecpair.publicKey);
+const ecpairXOnlyHex = toHex(ecpair.publicKey.slice(1, 33));
 //The same ecpair will be able to sign all the expressions below:
 const expressionsECPair = [
-  `pk(${ecpair.publicKey.toString('hex')})`,
-  `pkh(${ecpair.publicKey.toString('hex')})`,
-  `wpkh(${ecpair.publicKey.toString('hex')})`,
-  `sh(wpkh(${ecpair.publicKey.toString('hex')}))`,
-  `tr(${ecpair.publicKey.slice(1, 33).toString('hex')})`
+  `pk(${ecpairPubkeyHex})`,
+  `pkh(${ecpairPubkeyHex})`,
+  `wpkh(${ecpairPubkeyHex})`,
+  `sh(wpkh(${ecpairPubkeyHex}))`,
+  `tr(${ecpairXOnlyHex})`
 ];
 
 (async () => {
@@ -72,7 +75,7 @@ const expressionsECPair = [
     const outputBIP32 = new Output({ descriptor, network: NETWORK });
 
     let { txId, vout } = await regtestUtils.faucetComplex(
-      outputBIP32.getScriptPubKey(),
+      Buffer.from(outputBIP32.getScriptPubKey()),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
@@ -97,7 +100,7 @@ const expressionsECPair = [
         psbt: tmpPsbtSegwit,
         vout,
         txId,
-        value: INITIAL_VALUE
+        value: BigInt(INITIAL_VALUE)
       });
       const indexSegwit = tmpPsbtSegwit.data.inputs.length - 1;
       if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
@@ -117,7 +120,7 @@ const expressionsECPair = [
     new Output({
       descriptor: `addr(${FINAL_ADDRESS})`,
       network: NETWORK
-    }).updatePsbtAsOutput({ psbt, value: FINAL_VALUE });
+    }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
     signBIP32({ psbt, masterNode });
     inputFinalizer({ psbt });
     const spendTx = psbt.extractTransaction();
@@ -132,7 +135,7 @@ const expressionsECPair = [
 
     ///Update multiInputs PSBT with a similar BIP32 input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      outputBIP32.getScriptPubKey(),
+      Buffer.from(outputBIP32.getScriptPubKey()),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
@@ -152,7 +155,7 @@ const expressionsECPair = [
       network: NETWORK
     });
     let { txId, vout } = await regtestUtils.faucetComplex(
-      outputECPair.getScriptPubKey(),
+      Buffer.from(outputECPair.getScriptPubKey()),
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
@@ -168,7 +171,10 @@ const expressionsECPair = [
     new Output({
       descriptor: `addr(${FINAL_ADDRESS})`,
       network: NETWORK
-    }).updatePsbtAsOutput({ psbt: psbtECPair, value: FINAL_VALUE });
+    }).updatePsbtAsOutput({
+      psbt: psbtECPair,
+      value: BigInt(FINAL_VALUE)
+    });
     signECPair({ psbt: psbtECPair, ecpair });
     inputFinalizer({ psbt: psbtECPair });
     const spendTxECPair = psbtECPair.extractTransaction();
@@ -183,7 +189,7 @@ const expressionsECPair = [
 
     ///Update multiInputs PSBT with a similar ECPair input
     ({ txId, vout } = await regtestUtils.faucetComplex(
-      outputECPair.getScriptPubKey(),
+      Buffer.from(outputECPair.getScriptPubKey()),
       INITIAL_VALUE
     ));
     ({ txHex } = await regtestUtils.fetch(txId));
@@ -202,7 +208,10 @@ const expressionsECPair = [
   new Output({
     descriptor: `addr(${FINAL_ADDRESS})`,
     network: NETWORK
-  }).updatePsbtAsOutput({ psbt: psbtMultiInputs, value: FINAL_VALUE });
+  }).updatePsbtAsOutput({
+    psbt: psbtMultiInputs,
+    value: BigInt(FINAL_VALUE)
+  });
   //Sign and finish psbtMultiInputs
   signECPair({ psbt: psbtMultiInputs, ecpair });
   signBIP32({ psbt: psbtMultiInputs, masterNode });

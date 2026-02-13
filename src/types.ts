@@ -4,6 +4,7 @@
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { Payment, Network } from 'bitcoinjs-lib';
+import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
 /**
  * Preimage
@@ -29,14 +30,14 @@ export type TimeConstraints = {
 };
 
 /**
- * See {@link _Internal_.ParseKeyExpression | ParseKeyExpression}.
+ * See {@link _Internal_.KeyExpressionParser | KeyExpressionParser}.
  */
 export type KeyInfo = {
   keyExpression: string;
-  pubkey?: Buffer; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
+  pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
   ecpair?: ECPairInterface;
   bip32?: BIP32Interface;
-  masterFingerprint?: Buffer;
+  masterFingerprint?: Uint8Array;
   originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
   keyPath?: string; //The path from the xpub/xprv root
   path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
@@ -157,14 +158,56 @@ export type Expansion = {
   expandedMiniscript?: string;
 
   /**
+   * The taproot tree expression, if any. Only defined for `tr(KEY, TREE)`.
+   * Example: `{pk(02aa...),{pk(03bb...),pk(02cc...)}}`.
+   */
+  tapTreeExpression?: string;
+
+  /**
+   * The parsed taproot tree, if any. Only defined for `tr(KEY, TREE)`.
+   * Example:
+   * ```
+   * {
+   *   left: { miniscript: 'pk(02aa...)' },
+   *   right: {
+   *     left: { miniscript: 'pk(03bb...)' },
+   *     right: { miniscript: 'pk(02cc...)' }
+   *   }
+   * }
+   * ```
+   */
+  tapTree?: TapTreeNode;
+
+  /**
+   * The compiled taproot tree metadata, if any. Only defined for `tr(KEY, TREE)`.
+   * Same as tapTree, but each leaf includes the expanded miniscript, key
+   * expansion map, compiled tapscript (`tapScript`), and leaf version.
+   * Note: `@i` placeholders in `expandedMiniscript` are scoped per leaf, since
+   * each leaf is expanded and satisfied independently.
+   *
+   * Example:
+   * ```
+   * {
+   *   left: {
+   *     miniscript: 'pk(02aa...)',
+   *     expandedMiniscript: 'pk(@0)',
+   *     expansionMap: ExpansionMap;
+   *     tapScript: Uint8Array;
+   *     version: number;
+   *   },
+   *   right: ....
+   */
+  tapTreeInfo?: TapTreeInfoNode;
+
+  /**
    * The redeem script for the descriptor, if applicable.
    */
-  redeemScript?: Buffer;
+  redeemScript?: Uint8Array;
 
   /**
    * The witness script for the descriptor, if applicable.
    */
-  witnessScript?: Buffer;
+  witnessScript?: Uint8Array;
 
   /**
    * Whether the descriptor is a ranged-descriptor.
@@ -203,7 +246,7 @@ export type Expansion = {
  *
  * See {@link KeyInfo} for the complete list of elements retrieved by this function.
  */
-export interface ParseKeyExpression {
+export interface KeyExpressionParser {
   (params: {
     keyExpression: string;
     /**
