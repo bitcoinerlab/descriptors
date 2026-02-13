@@ -5,6 +5,10 @@ console.log('Taproot integration tests');
 import { createHash } from 'crypto';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { encode: afterEncode } = require('bip65');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
@@ -30,6 +34,7 @@ const NETWORK = networks.regtest;
 const INPUT_VALUE = 50_000;
 const FEE = 1_000;
 const FINAL_VALUE = INPUT_VALUE - FEE;
+const TIMELOCK_BLOCKS = 5;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
@@ -62,7 +67,8 @@ const runScenario = async ({
   signer,
   masterNode,
   expectScriptPath,
-  expectTapBip32Derivation = false
+  expectTapBip32Derivation = false,
+  timelock
 }: {
   name: string;
   input: OutputInstance;
@@ -70,6 +76,12 @@ const runScenario = async ({
   masterNode?: BIP32Interface;
   expectScriptPath: boolean;
   expectTapBip32Derivation?: boolean;
+  timelock?: {
+    blocks: number;
+    expectedPrematureBroadcastError: 'non-final' | 'non-BIP68-final';
+    expectedLocktime?: number;
+    expectedSequence?: number;
+  };
 }): Promise<{ realVsize: number; estimatedVsize: number }> => {
   const { txId, vout } = await regtestUtils.faucetComplex(
     Buffer.from(input.getScriptPubKey()),
@@ -133,6 +145,51 @@ const runScenario = async ({
     throw new Error(
       `Error: ${name} vsize mismatch. estimated=${estimatedVsize}, real=${realVsize}`
     );
+  }
+
+  if (timelock?.expectedLocktime !== undefined) {
+    if (tx.locktime !== timelock.expectedLocktime)
+      throw new Error(
+        `Error: ${name} locktime mismatch. expected=${timelock.expectedLocktime}, got=${tx.locktime}`
+      );
+  }
+  if (timelock?.expectedSequence !== undefined) {
+    const sequence = tx.ins[0]?.sequence;
+    if (sequence === undefined)
+      throw new Error(`Error: ${name} missing input sequence`);
+    if (sequence !== timelock.expectedSequence)
+      throw new Error(
+        `Error: ${name} sequence mismatch. expected=${timelock.expectedSequence}, got=${sequence}`
+      );
+  }
+
+  if (timelock) {
+    let blocksToMineBeforePrematureBroadcast = timelock.blocks - 1;
+
+    // For absolute timelocks (`after(...)`), align with the current chain height
+    // so we can always test: mine until one block before maturity -> fail,
+    // mine one more block -> success.
+    if (timelock.expectedLocktime !== undefined) {
+      const currentHeight = await regtestUtils.height();
+      const blocksUntilMaturity = timelock.expectedLocktime - currentHeight;
+      if (blocksUntilMaturity <= 0)
+        throw new Error(
+          `Error: ${name} absolute timelock is already mature (height=${currentHeight}, locktime=${timelock.expectedLocktime})`
+        );
+      blocksToMineBeforePrematureBroadcast = blocksUntilMaturity - 1;
+    }
+
+    if (blocksToMineBeforePrematureBroadcast > 0)
+      await regtestUtils.mine(blocksToMineBeforePrematureBroadcast);
+    try {
+      await regtestUtils.broadcast(tx.toHex());
+      throw new Error(`Error: ${name} should fail before timelock matures`);
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      if (error.message !== timelock.expectedPrematureBroadcastError)
+        throw new Error(error.message);
+    }
+    await regtestUtils.mine(1);
   }
 
   await regtestUtils.broadcast(tx.toHex());
@@ -299,6 +356,47 @@ const runScenario = async ({
   for (const scenario of scenarios) {
     await runScenario(scenario);
   }
+
+  const olderTimelock = olderEncode({ blocks: TIMELOCK_BLOCKS });
+
+  const relativeTimelockLeafExpression = `and_v(v:pk(${leafBKey}),older(${olderTimelock}))`;
+  await runScenario({
+    name: 'tr(KEY,TREE) script-path relative timelock (older) enforced',
+    input: new Output({
+      descriptor: `tr(${internalKey},{${leafAExpression},${relativeTimelockLeafExpression}})`,
+      network: NETWORK,
+      taprootSpendPath: 'script',
+      tapLeaf: relativeTimelockLeafExpression
+    }),
+    signer: leafSignerB,
+    expectScriptPath: true,
+    timelock: {
+      blocks: TIMELOCK_BLOCKS,
+      expectedPrematureBroadcastError: 'non-BIP68-final',
+      expectedSequence: olderTimelock
+    }
+  });
+
+  const afterTimelock = afterEncode({
+    blocks: (await regtestUtils.height()) + TIMELOCK_BLOCKS
+  });
+  const absoluteTimelockLeafExpression = `and_v(v:pk(${leafBKey}),after(${afterTimelock}))`;
+  await runScenario({
+    name: 'tr(KEY,TREE) script-path absolute timelock (after) enforced',
+    input: new Output({
+      descriptor: `tr(${internalKey},{${leafAExpression},${absoluteTimelockLeafExpression}})`,
+      network: NETWORK,
+      taprootSpendPath: 'script',
+      tapLeaf: absoluteTimelockLeafExpression
+    }),
+    signer: leafSignerB,
+    expectScriptPath: true,
+    timelock: {
+      blocks: TIMELOCK_BLOCKS,
+      expectedPrematureBroadcastError: 'non-final',
+      expectedLocktime: afterTimelock
+    }
+  });
 
   const preimage = new Uint8Array(32).fill(9);
   const digest = createHash('sha256').update(preimage).digest('hex');
