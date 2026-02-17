@@ -18,7 +18,7 @@ const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(ecc);
 
 function makeMaster(seed: number): BIP32Interface {
-  return BIP32.fromSeed(Buffer.from(new Uint8Array(32).fill(seed)), NETWORK);
+  return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
 }
 
 function keyRootNoOrigin(masterNode: BIP32Interface): string {
