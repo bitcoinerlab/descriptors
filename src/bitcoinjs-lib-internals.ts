@@ -8,10 +8,40 @@ import type * as Bip341 from 'bitcoinjs-lib/src/cjs/payments/bip341';
 import type * as Bip371 from 'bitcoinjs-lib/src/cjs/psbt/bip371';
 import type * as PsbtUtils from 'bitcoinjs-lib/src/cjs/psbt/psbtutils';
 
-const bip341 = require('bitcoinjs-lib/src/payments/bip341') as typeof Bip341;
-const bip371 = require('bitcoinjs-lib/src/psbt/bip371') as typeof Bip371;
-const psbtUtils =
-  require('bitcoinjs-lib/src/psbt/psbtutils') as typeof PsbtUtils;
+function resolveAbsoluteCjsPath(relativePath: string): string | undefined {
+  try {
+    const entryPoint = require.resolve('bitcoinjs-lib');
+    const root = entryPoint.replace(/src[\\/]+cjs[\\/]+index\.cjs$/, '');
+    if (root === entryPoint) return undefined;
+    return `${root}src/cjs/${relativePath}.cjs`;
+  } catch (_err) {
+    void _err;
+    return undefined;
+  }
+}
+
+function requireBitcoinJsInternal<T>(relativePath: string): T {
+  const candidatePaths = [
+    `bitcoinjs-lib/src/${relativePath}`,
+    `bitcoinjs-lib/src/cjs/${relativePath}.cjs`
+  ];
+  const absoluteCjsPath = resolveAbsoluteCjsPath(relativePath);
+  if (absoluteCjsPath) candidatePaths.push(absoluteCjsPath);
+
+  let lastError: unknown;
+  for (const modulePath of candidatePaths) {
+    try {
+      return require(modulePath) as T;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
+const bip341 = requireBitcoinJsInternal<typeof Bip341>('payments/bip341');
+const bip371 = requireBitcoinJsInternal<typeof Bip371>('psbt/bip371');
+const psbtUtils = requireBitcoinJsInternal<typeof PsbtUtils>('psbt/psbtutils');
 
 export const findScriptPath = bip341.findScriptPath;
 export const tapleafHash = bip341.tapleafHash;
