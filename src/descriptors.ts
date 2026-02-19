@@ -1681,33 +1681,125 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         return encodingLength(length) + length;
       };
       const resolveMiniscriptSignatures = (): PartialSig[] => {
-        if (signatures !== 'DANGEROUSLY_USE_FAKE_SIGNATURES') return signatures;
-        return this.#resolveMiniscriptSignersPubKeys().map(pubkey => ({
-          pubkey,
-          // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
-          signature: new Uint8Array(ECDSA_FAKE_SIGNATURE_SIZE)
-        }));
+        const signerPubKeys = this.#resolveMiniscriptSignersPubKeys();
+        if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES') {
+          return signerPubKeys.map(pubkey => ({
+            pubkey,
+            // https://transactionfee.info/charts/bitcoin-script-ecdsa-length/
+            signature: new Uint8Array(ECDSA_FAKE_SIGNATURE_SIZE)
+          }));
+        }
+
+        const providedSignerPubKeysSet = new Set(
+          signatures.map(sig => toHex(sig.pubkey))
+        );
+        const missingSignerPubKeys = signerPubKeys.filter(
+          pubkey => !providedSignerPubKeysSet.has(toHex(pubkey))
+        );
+        if (missingSignerPubKeys.length > 0)
+          throw new Error(
+            `Error: inputWeight expected signatures for all planned miniscript signers. Missing ${missingSignerPubKeys.length} signer(s)`
+          );
+
+        const signerPubKeysSet = new Set(
+          signerPubKeys.map(pubkey => toHex(pubkey))
+        );
+        return signatures.filter(sig =>
+          signerPubKeysSet.has(toHex(sig.pubkey))
+        );
       };
 
       const taprootFakeSignatureSize =
         taprootSighash === 'SIGHASH_DEFAULT'
           ? TAPROOT_FAKE_SIGNATURE_SIZE
           : TAPROOT_FAKE_SIGNATURE_SIZE + 1;
+      const resolvePlannedTaprootRequiredPubKeys = (): Uint8Array[] => {
+        const tapTreeSignerPubKeys = this.#resolveTapTreeSignersPubKeys().map(
+          normalizeTaprootPubkey
+        );
+
+        const taggedFakeSignatures = tapTreeSignerPubKeys.map(
+          (pubkey, index) => ({
+            pubkey,
+            signature: new Uint8Array(taprootFakeSignatureSize).fill(index + 1)
+          })
+        );
+
+        const plannedTaprootSatisfaction =
+          this.getTapScriptSatisfaction(taggedFakeSignatures);
+
+        const requiredPubkeys = taggedFakeSignatures
+          .filter(fakeSignature =>
+            plannedTaprootSatisfaction.stackItems.some(
+              stackItem => compare(stackItem, fakeSignature.signature) === 0
+            )
+          )
+          .map(fakeSignature => fakeSignature.pubkey);
+
+        return Array.from(new Set(requiredPubkeys.map(pubkey => toHex(pubkey))))
+          .map(hex => fromHex(hex))
+          .map(normalizeTaprootPubkey);
+      };
       const resolveTaprootSignatures = (): PartialSig[] => {
-        if (signatures !== 'DANGEROUSLY_USE_FAKE_SIGNATURES') return signatures;
-        return this.#resolveTapTreeSignersPubKeys().map(pubkey => ({
-          pubkey,
-          signature: new Uint8Array(taprootFakeSignatureSize)
+        if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES') {
+          return this.#resolveTapTreeSignersPubKeys().map(pubkey => ({
+            pubkey,
+            signature: new Uint8Array(taprootFakeSignatureSize)
+          }));
+        }
+
+        const normalizedSignatures = signatures.map(sig => ({
+          pubkey: normalizeTaprootPubkey(sig.pubkey),
+          signature: sig.signature
         }));
+        const plannedRequiredPubKeys = resolvePlannedTaprootRequiredPubKeys();
+        const providedTapTreeSignerPubKeysSet = new Set(
+          normalizedSignatures.map(sig => toHex(sig.pubkey))
+        );
+        const missingTapTreeSignerPubKeys = plannedRequiredPubKeys.filter(
+          pubkey => !providedTapTreeSignerPubKeysSet.has(toHex(pubkey))
+        );
+        if (missingTapTreeSignerPubKeys.length > 0)
+          throw new Error(
+            `Error: inputWeight expected signatures for the planned taproot script-path satisfaction. Missing ${missingTapTreeSignerPubKeys.length} signer(s)`
+          );
+
+        const plannedRequiredPubKeysSet = new Set(
+          plannedRequiredPubKeys.map(pubkey => toHex(pubkey))
+        );
+        return normalizedSignatures.filter(sig =>
+          plannedRequiredPubKeysSet.has(toHex(sig.pubkey))
+        );
       };
       const resolveTaprootSignatureSize = (): number => {
         let length: number;
         if (signatures === 'DANGEROUSLY_USE_FAKE_SIGNATURES') {
           length = taprootFakeSignatureSize;
         } else {
-          if (signatures.length !== 1)
+          const normalizedSignatures = signatures.map(sig => ({
+            pubkey: normalizeTaprootPubkey(sig.pubkey),
+            signature: sig.signature
+          }));
+          const internalPubkey = this.getPayment().internalPubkey;
+          if (!internalPubkey) {
+            //addr() of tr addresses may not have internalPubkey
+            if (normalizedSignatures.length !== 1)
+              throw new Error(
+                'Error: inputWeight for addr(TR_ADDRESS) requires exactly one signature. Internal taproot pubkey is unavailable in addr() descriptors; use tr(KEY) for strict key matching.'
+              );
+            const singleSignature = normalizedSignatures[0];
+            if (!singleSignature) throw new Error('Signatures not present');
+            length = singleSignature.signature.length;
+            return encodingLength(length) + length;
+          }
+          const normalizedInternalPubkey =
+            normalizeTaprootPubkey(internalPubkey);
+          const keyPathSignatures = normalizedSignatures.filter(
+            sig => compare(sig.pubkey, normalizedInternalPubkey) === 0
+          );
+          if (keyPathSignatures.length !== 1)
             throw new Error('More than one signture was not expected');
-          const singleSignature = signatures[0];
+          const singleSignature = keyPathSignatures[0];
           if (!singleSignature) throw new Error('Signatures not present');
           length = singleSignature.signature.length;
         }
@@ -1715,7 +1807,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       };
 
       const taprootSpendPath = this.#taprootSpendPath;
-      const tapLeaf = this.#tapLeaf;
 
       if (expansion ? expansion.startsWith('pkh(') : isPKH) {
         return (
@@ -1810,15 +1901,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
         if (taprootSpendPath === 'key')
           return 41 * 4 + encodingLength(1) + resolveTaprootSignatureSize();
-        const resolvedTapTreeInfo = this.#tapTreeInfo;
-        if (!resolvedTapTreeInfo)
-          throw new Error(`Error: taproot tree info not available`);
-        const taprootSatisfaction = satisfyTapTree({
-          tapTreeInfo: resolvedTapTreeInfo,
-          preimages: this.#preimages,
-          signatures: resolveTaprootSignatures(),
-          ...(tapLeaf !== undefined ? { tapLeaf } : {})
-        });
+        const taprootSatisfaction = this.getTapScriptSatisfaction(
+          resolveTaprootSignatures()
+        );
         return 41 * 4 + taprootSatisfaction.totalWitnessSize;
       } else if (isTR && (!expansion || expansion === 'tr(@0)')) {
         if (!isSegwitTx) throw new Error('Should be SegwitTx');
