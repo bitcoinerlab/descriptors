@@ -69,7 +69,7 @@
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
     "@bitcoinerlab/secp256k1": "^1.2.0",
-    "bip32": "github:landabaso/bip32#9e4471ddad38c2d344c1167048072f1c569a115e",
+    "bip32": "github:bitcoinjs/bip32#9e4471ddad38c2d344c1167048072f1c569a115e",
     "bitcoinjs-lib": "^7.0.1",
     "ecpair": "^3.0.1",
     "lodash.memoize": "^4.1.2",
