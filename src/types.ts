@@ -8,7 +8,7 @@ import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
 /**
  * Preimage
- * See {@link Output}
+ * Preimage material used by descriptor outputs that include hashlocks.
  */
 export type Preimage = {
   /**
@@ -30,7 +30,7 @@ export type TimeConstraints = {
 };
 
 /**
- * See {@link _Internal_.KeyExpressionParser | KeyExpressionParser}.
+ * See {@link KeyExpressionParser}.
  */
 export type KeyInfo = {
   keyExpression: string;
