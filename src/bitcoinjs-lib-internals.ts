@@ -1,54 +1,81 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 /*
- * bitcoinjs-lib v7 does not export all the taproot/psbt helpers we need from
- * its top-level API, so this module centralizes only the required deep imports.
+ * Reimplements a small subset of bitcoinjs-lib internal helpers.
+ * Keep this module free of deep imports (for example `bitcoinjs-lib/src/*`)
+ * so it works consistently across Node.js, browser bundlers (including
+ * CodeSandbox), and React Native/Metro.
  */
 
-import type * as Bip341 from 'bitcoinjs-lib/src/cjs/payments/bip341';
-import type * as Bip371 from 'bitcoinjs-lib/src/cjs/psbt/bip371';
-import type * as PsbtUtils from 'bitcoinjs-lib/src/cjs/psbt/psbtutils';
+import type { PsbtInput } from 'bip174';
+import { crypto } from 'bitcoinjs-lib';
+import { encode } from 'varuint-bitcoin';
+import { concat } from 'uint8array-tools';
 
-function resolveAbsoluteCjsPath(relativePath: string): string | undefined {
-  try {
-    const entryPoint = require.resolve('bitcoinjs-lib');
-    const root = entryPoint.replace(/src[\\/]+cjs[\\/]+index\.cjs$/, '');
-    if (root === entryPoint) return undefined;
-    return `${root}src/cjs/${relativePath}.cjs`;
-  } catch (_err) {
-    void _err;
-    return undefined;
-  }
+const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
+const OP_1 = 0x51;
+const PUSH_DATA_32 = 0x20;
+
+type Tapleaf = {
+  output: Uint8Array;
+  version?: number;
+};
+
+function serializeScript(script: Uint8Array): Uint8Array {
+  const { buffer: encodedLength } = encode(script.length);
+  return concat([encodedLength, script]);
 }
 
-function requireBitcoinJsInternal<T>(relativePath: string): T {
-  const candidatePaths = [
-    `bitcoinjs-lib/src/${relativePath}`,
-    `bitcoinjs-lib/src/cjs/${relativePath}.cjs`
-  ];
-  const absoluteCjsPath = resolveAbsoluteCjsPath(relativePath);
-  if (absoluteCjsPath) candidatePaths.push(absoluteCjsPath);
-
-  let lastError: unknown;
-  for (const modulePath of candidatePaths) {
-    try {
-      return require(modulePath) as T;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+function isP2TRScript(script: Uint8Array | undefined): boolean {
+  return (
+    script instanceof Uint8Array &&
+    script.length === 34 &&
+    script[0] === OP_1 &&
+    script[1] === PUSH_DATA_32
+  );
 }
 
-const bip341 = requireBitcoinJsInternal<typeof Bip341>('payments/bip341');
-const bip371 = requireBitcoinJsInternal<typeof Bip371>('psbt/bip371');
-const psbtUtils = requireBitcoinJsInternal<typeof PsbtUtils>('psbt/psbtutils');
+export function tapleafHash(leaf: Tapleaf): Uint8Array {
+  const version = leaf.version || TAPROOT_LEAF_VERSION_TAPSCRIPT;
+  return crypto.taggedHash(
+    'TapLeaf',
+    concat([Uint8Array.from([version]), serializeScript(leaf.output)])
+  );
+}
 
-export const findScriptPath = bip341.findScriptPath;
-export const tapleafHash = bip341.tapleafHash;
-export const tapTweakHash = bip341.tapTweakHash;
-export const toHashTree = bip341.toHashTree;
-export const tweakKey = bip341.tweakKey;
+export function tapTweakHash(pubKey: Uint8Array, h?: Uint8Array): Uint8Array {
+  return crypto.taggedHash('TapTweak', concat(h ? [pubKey, h] : [pubKey]));
+}
 
-export const witnessStackToScriptWitness =
-  psbtUtils.witnessStackToScriptWitness;
-export const isTaprootInput = bip371.isTaprootInput;
+export function witnessStackToScriptWitness(witness: Uint8Array[]): Uint8Array {
+  let buffer: Uint8Array = new Uint8Array(0);
+
+  const writeSlice = (slice: Uint8Array) => {
+    buffer = concat([buffer, slice]);
+  };
+
+  const writeVarInt = (value: number) => {
+    const { buffer: encoded } = encode(value);
+    writeSlice(encoded);
+  };
+
+  const writeVarSlice = (slice: Uint8Array) => {
+    writeVarInt(slice.length);
+    writeSlice(slice);
+  };
+
+  writeVarInt(witness.length);
+  witness.forEach(writeVarSlice);
+  return buffer;
+}
+
+export function isTaprootInput(input: PsbtInput | undefined): boolean {
+  return (
+    !!input &&
+    !!(
+      input.tapInternalKey ||
+      input.tapMerkleRoot ||
+      (input.tapLeafScript && input.tapLeafScript.length > 0) ||
+      (input.tapBip32Derivation && input.tapBip32Derivation.length > 0) ||
+      isP2TRScript(input.witnessUtxo?.script)
+    )
+  );
+}
