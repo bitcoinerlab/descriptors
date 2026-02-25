@@ -1,18 +1,12 @@
 // Distributed under the MIT software license
 
-import { script as bscript, networks, Network } from 'bitcoinjs-lib';
-import {
-  findScriptPath,
-  tapleafHash,
-  toHashTree,
-  tweakKey
-} from './bitcoinjs-lib-internals';
+import { script as bscript, payments, networks, Network } from 'bitcoinjs-lib';
+import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
-import { compare, concat, toHex } from 'uint8array-tools';
+import { compare, toHex } from 'uint8array-tools';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
 import type { PartialSig, TapBip32Derivation } from 'bip174';
-import type { Taptree } from 'bitcoinjs-lib/src/cjs/types';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,
@@ -29,6 +23,12 @@ import {
 import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
+const { p2tr } = payments;
+
+type BitcoinJsTapleaf = { output: Uint8Array; version?: number };
+type Taptree =
+  | [Taptree | BitcoinJsTapleaf, Taptree | BitcoinJsTapleaf]
+  | BitcoinJsTapleaf;
 
 export type TapLeafExpansionOverride = {
   // Descriptor-level, user-facing expanded leaf expression.
@@ -243,7 +243,7 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
  * - Leaves are returned in deterministic left-first order.
  * - One metadata entry is returned per leaf.
  * - `controlBlock.length === 33 + 32 * depth`.
- * - Throws if internal key is invalid or merkle path cannot be found.
+ * - Throws if internal key is invalid or control block cannot be derived.
  *
  * Typical usage:
  * - Convert this metadata into PSBT `tapLeafScript[]` entries
@@ -258,9 +258,6 @@ export function buildTaprootLeafPsbtMetadata({
 }): TaprootPsbtLeafMetadata[] {
   const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
   const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
-  const hashTree = toHashTree(scriptTree);
-  const tweaked = tweakKey(normalizedInternalPubkey, hashTree.hash);
-  if (!tweaked) throw new Error(`Error: invalid taproot internal pubkey`);
 
   return collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => {
     if (depth > MAX_TAPTREE_DEPTH)
@@ -272,21 +269,20 @@ export function buildTaprootLeafPsbtMetadata({
       output: leaf.tapScript,
       version: leaf.version
     });
-    const merklePath = findScriptPath(hashTree, tapLeafHash);
-    if (!merklePath)
+    const payment = p2tr({
+      internalPubkey: normalizedInternalPubkey,
+      scriptTree,
+      redeem: {
+        output: leaf.tapScript,
+        redeemVersion: leaf.version
+      }
+    });
+    const controlBlock = payment.witness?.[1];
+    if (!controlBlock)
       throw new Error(
         `Error: could not build controlBlock for taproot leaf ${leaf.expression}`
       );
-    // controlBlock[0] packs:
-    // - leaf version (high bits), and
-    // - parity of the tweaked output key Q = P + t*G (low bit).
-    // `normalizedInternalPubkey` is x-only P, so parity is not encoded there.
-    // BIP341 requires carrying Q parity in controlBlock[0].
-    const controlBlock = concat([
-      Uint8Array.from([leaf.version | tweaked.parity]),
-      normalizedInternalPubkey,
-      ...merklePath
-    ]);
+
     return { leaf, depth, tapLeafHash, controlBlock };
   });
 }

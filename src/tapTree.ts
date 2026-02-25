@@ -1,4 +1,3 @@
-// NOTE: This uses an internal bitcoinjs-lib module. Consider adding a local wrapper.
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { compare } from 'uint8array-tools';
 import { splitTopLevelComma } from './parseUtils';
