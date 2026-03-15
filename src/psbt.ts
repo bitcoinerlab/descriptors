@@ -8,16 +8,22 @@ import type {
   TapLeafScript
 } from 'bip174';
 import type { KeyInfo } from './types';
-import {
-  payments,
+import type {
   Network,
-  Psbt,
-  Transaction,
-  PsbtTxInput
-} from 'bitcoinjs-lib';
+  Payment,
+  PsbtLike,
+  ParsedTransaction,
+  FinalScriptsFunc,
+  BitcoinLib
+} from './bitcoinLib';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
-interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
+
+interface PsbtInputExtended extends PsbtInput {
+  hash: Uint8Array;
+  index: number;
+  sequence?: number;
+}
 
 function reverseBytes(buffer: Uint8Array): Uint8Array {
   if (buffer.length < 1) return buffer;
@@ -33,27 +39,13 @@ function reverseBytes(buffer: Uint8Array): Uint8Array {
   return copy;
 }
 
-/**
- * This function must do two things:
- * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
- *   ie. `Can not finalize input #${inputIndex}`
- * 2. Create finalScriptSig and finalScriptWitness.
- */
-type FinalScriptsFunc = (
-  inputIndex: number, // Which input is it?
-  input: PsbtInput, // The PSBT input contents
-  script: Uint8Array, // The "meaningful" locking script (redeemScript for P2SH etc.)
-  isSegwit: boolean, // Is it segwit?
-  isP2SH: boolean, // Is it P2SH?
-  isP2WSH: boolean // Is it P2WSH?
-) => {
-  finalScriptSig: Uint8Array | undefined;
-  finalScriptWitness: Uint8Array | undefined;
-};
-
 export function finalScriptsFuncFactory(
   scriptSatisfaction: Uint8Array,
-  network: Network
+  network: Network,
+  paymentsOps: {
+    p2wsh: BitcoinLib['payments']['p2wsh'];
+    p2sh: BitcoinLib['payments']['p2sh'];
+  }
 ): FinalScriptsFunc {
   const finalScriptsFunc: FinalScriptsFunc = (
     _index,
@@ -67,8 +59,11 @@ export function finalScriptsFuncFactory(
     let finalScriptSig: Uint8Array | undefined;
     //p2wsh
     if (isSegwit && !isP2SH) {
-      const payment = payments.p2wsh({
-        redeem: { input: scriptSatisfaction, output: lockingScript },
+      const payment = paymentsOps.p2wsh({
+        redeem: {
+          input: scriptSatisfaction,
+          output: lockingScript
+        } as Payment,
         network
       });
       if (!payment.witness)
@@ -77,9 +72,12 @@ export function finalScriptsFuncFactory(
     }
     //p2sh-p2wsh
     else if (isSegwit && isP2SH) {
-      const payment = payments.p2sh({
-        redeem: payments.p2wsh({
-          redeem: { input: scriptSatisfaction, output: lockingScript },
+      const payment = paymentsOps.p2sh({
+        redeem: paymentsOps.p2wsh({
+          redeem: {
+            input: scriptSatisfaction,
+            output: lockingScript
+          } as Payment,
           network
         }),
         network
@@ -91,8 +89,11 @@ export function finalScriptsFuncFactory(
     }
     //p2sh
     else {
-      finalScriptSig = payments.p2sh({
-        redeem: { input: scriptSatisfaction, output: lockingScript },
+      finalScriptSig = paymentsOps.p2sh({
+        redeem: {
+          input: scriptSatisfaction,
+          output: lockingScript
+        } as Payment,
         network
       }).input;
     }
@@ -123,9 +124,10 @@ export function addPsbtInput({
   tapBip32Derivation,
   witnessScript,
   redeemScript,
-  rbf
+  rbf,
+  TransactionOps
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   vout: number;
   txHex?: string;
   txId?: string;
@@ -144,6 +146,7 @@ export function addPsbtInput({
   witnessScript: Uint8Array | undefined;
   redeemScript: Uint8Array | undefined;
   rbf: boolean;
+  TransactionOps: BitcoinLib['Transaction'];
 }): number {
   if (value !== undefined && typeof value !== 'bigint')
     throw new Error(`Error: value must be a bigint`);
@@ -164,8 +167,8 @@ export function addPsbtInput({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const tx = Transaction.fromHex(txHex);
-    const out = tx?.outs?.[vout];
+    const tx: ParsedTransaction = TransactionOps.fromHex(txHex);
+    const out = tx.outs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script;
     if (!outputScript)
@@ -228,7 +231,7 @@ export function addPsbtInput({
     index: vout
   };
   if (txHex !== undefined) {
-    input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
+    input.nonWitnessUtxo = TransactionOps.fromHex(txHex).toBuffer();
   }
 
   if (tapInternalKey) {
@@ -285,6 +288,6 @@ export function addPsbtInput({
   if (witnessScript) input.witnessScript = witnessScript;
   if (redeemScript) input.redeemScript = redeemScript;
 
-  psbt.addInput(input);
-  return psbt.data.inputs.length - 1;
+  psbt.addInput(input as unknown as Record<string, unknown>);
+  return psbt.inputCount - 1;
 }

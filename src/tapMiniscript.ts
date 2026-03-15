@@ -1,6 +1,6 @@
 // Distributed under the MIT software license
 
-import { script as bscript, payments, networks, Network } from 'bitcoinjs-lib';
+import type { Network, BitcoinLib, Taptree } from './bitcoinLib';
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
@@ -22,13 +22,12 @@ import {
 } from './tapTree';
 import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
-const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
-const { p2tr } = payments;
+type ScriptOps = BitcoinLib['script'];
+type CryptoOps = BitcoinLib['crypto'];
+type TaggedHashFn = (tag: string, data: Uint8Array) => Uint8Array;
+type P2trFn = BitcoinLib['payments']['p2tr'];
 
-type BitcoinJsTapleaf = { output: Uint8Array; version?: number };
-type Taptree =
-  | [Taptree | BitcoinJsTapleaf, Taptree | BitcoinJsTapleaf]
-  | BitcoinJsTapleaf;
+const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
 export type TapLeafExpansionOverride = {
   // Descriptor-level, user-facing expanded leaf expression.
@@ -59,12 +58,12 @@ export type TaprootPsbtLeafMetadata = {
 
 function expandTaprootMiniscript({
   miniscript,
-  network = networks.bitcoin,
+  network,
   BIP32,
   ECPair
 }: {
   miniscript: string;
-  network?: Network;
+  network: Network;
   BIP32: BIP32API;
   ECPair: ECPairAPI;
 }): {
@@ -96,18 +95,22 @@ function expandTaprootMiniscript({
  */
 export function buildTapTreeInfo({
   tapTree,
-  network = networks.bitcoin,
+  network,
   BIP32,
   ECPair,
-  leafExpansionOverride
+  leafExpansionOverride,
+  scriptOps,
+  cryptoOps
 }: {
   tapTree: TapTreeNode;
-  network?: Network;
+  network: Network;
   BIP32: BIP32API;
   ECPair: ECPairAPI;
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;
+  scriptOps: ScriptOps;
+  cryptoOps: CryptoOps;
 }): TapTreeInfoNode {
   // Defensive: parseTapTreeExpression() already enforces this for descriptor
   // strings, but buildTapTreeInfo is exported and can be called directly.
@@ -144,7 +147,9 @@ export function buildTapTreeInfo({
       tapScript = miniscript2Script({
         expandedMiniscript: expanded.expandedMiniscript,
         expansionMap,
-        tapscript: true
+        tapscript: true,
+        scriptOps,
+        cryptoOps
       });
     }
 
@@ -163,14 +168,18 @@ export function buildTapTreeInfo({
       network,
       BIP32,
       ECPair,
-      leafExpansionOverride
+      leafExpansionOverride,
+      scriptOps,
+      cryptoOps
     }),
     right: buildTapTreeInfo({
       tapTree: tapTree.right,
       network,
       BIP32,
       ECPair,
-      leafExpansionOverride
+      leafExpansionOverride,
+      scriptOps,
+      cryptoOps
     })
   };
 }
@@ -251,10 +260,14 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
  */
 export function buildTaprootLeafPsbtMetadata({
   tapTreeInfo,
-  internalPubkey
+  internalPubkey,
+  taggedHash,
+  p2tr
 }: {
   tapTreeInfo: TapTreeInfoNode;
   internalPubkey: Uint8Array;
+  taggedHash: TaggedHashFn;
+  p2tr: P2trFn;
 }): TaprootPsbtLeafMetadata[] {
   const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
   const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
@@ -268,7 +281,7 @@ export function buildTaprootLeafPsbtMetadata({
     const tapLeafHash = tapleafHash({
       output: leaf.tapScript,
       version: leaf.version
-    });
+    }, taggedHash);
     const payment = p2tr({
       internalPubkey: normalizedInternalPubkey,
       scriptTree,
@@ -327,10 +340,12 @@ export function buildTaprootLeafPsbtMetadata({
  */
 export function buildTaprootBip32Derivations({
   tapTreeInfo,
-  internalKeyInfo
+  internalKeyInfo,
+  taggedHash
 }: {
   tapTreeInfo: TapTreeInfoNode;
   internalKeyInfo?: KeyInfo;
+  taggedHash: TaggedHashFn;
 }): TapBip32Derivation[] {
   type DerivationEntry = {
     masterFingerprint: Uint8Array;
@@ -383,7 +398,7 @@ export function buildTaprootBip32Derivations({
     const leafHash = tapleafHash({
       output: leaf.tapScript,
       version: leaf.version
-    });
+    }, taggedHash);
     for (const keyInfo of Object.values(leaf.expansionMap)) {
       if (!keyInfo.pubkey || !keyInfo.masterFingerprint || !keyInfo.path)
         continue;
@@ -520,17 +535,24 @@ export function collectTaprootLeafSatisfactions({
   preimages,
   signatures,
   timeConstraints,
-  tapLeaf
+  tapLeaf,
+  scriptOps,
+  cryptoOps,
+  taggedHash
 }: {
   tapTreeInfo: TapTreeInfoNode;
   preimages: Preimage[];
   signatures: PartialSig[];
   timeConstraints?: TimeConstraints;
   tapLeaf?: Uint8Array | string;
+  scriptOps: ScriptOps;
+  cryptoOps: CryptoOps;
+  taggedHash: TaggedHashFn;
 }): TaprootLeafSatisfaction[] {
   const candidates = selectTapLeafCandidates({
     tapTreeInfo,
-    ...(tapLeaf !== undefined ? { tapLeaf } : {})
+    ...(tapLeaf !== undefined ? { tapLeaf } : {}),
+    taggedHash
   });
 
   const getLeafPubkeys = (leaf: TapLeafInfo): Uint8Array[] => {
@@ -583,9 +605,11 @@ export function collectTaprootLeafSatisfactions({
         signatures: leafSignatures,
         preimages,
         ...(timeConstraints !== undefined ? { timeConstraints } : {}),
-        tapscript: true
+        tapscript: true,
+        scriptOps,
+        cryptoOps
       });
-      const satisfactionStackItems = bscript.toStack(scriptSatisfaction);
+      const satisfactionStackItems = scriptOps.toStack(scriptSatisfaction);
       assertTaprootScriptPathSatisfactionResourceLimits({
         stackItems: satisfactionStackItems
       });
@@ -673,20 +697,29 @@ export function satisfyTapTree({
   signatures,
   preimages,
   tapLeaf,
-  timeConstraints
+  timeConstraints,
+  scriptOps,
+  cryptoOps,
+  taggedHash
 }: {
   tapTreeInfo: TapTreeInfoNode;
   signatures: PartialSig[];
   preimages: Preimage[];
   tapLeaf?: Uint8Array | string;
   timeConstraints?: TimeConstraints;
+  scriptOps: ScriptOps;
+  cryptoOps: CryptoOps;
+  taggedHash: TaggedHashFn;
 }): TaprootLeafSatisfaction {
   const satisfactions = collectTaprootLeafSatisfactions({
     tapTreeInfo,
     preimages,
     signatures,
     ...(tapLeaf !== undefined ? { tapLeaf } : {}),
-    ...(timeConstraints !== undefined ? { timeConstraints } : {})
+    ...(timeConstraints !== undefined ? { timeConstraints } : {}),
+    scriptOps,
+    cryptoOps,
+    taggedHash
   });
   return selectBestTaprootLeafSatisfaction(satisfactions);
 }

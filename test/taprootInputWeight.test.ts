@@ -5,6 +5,7 @@ import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { selectTapLeafCandidates } from '../dist/tapTree';
+import { crypto } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { fromHex, toHex } from 'uint8array-tools';
 
@@ -129,7 +130,8 @@ describe('taproot inputWeight', () => {
     if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
     const scriptLeafSelection = selectTapLeafCandidates({
       tapTreeInfo,
-      tapLeaf: SCRIPT_LEAF_EXPR
+      tapLeaf: SCRIPT_LEAF_EXPR,
+      taggedHash: crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array
     })[0];
     if (!scriptLeafSelection) throw new Error('script leaf not found');
 

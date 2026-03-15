@@ -3,7 +3,7 @@
 console.log('Taproot integration tests');
 
 import { createHash } from 'crypto';
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks, crypto } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
@@ -26,8 +26,9 @@ import type { BIP32Interface } from 'bip32';
 import type { PartialSig, PsbtInput } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
-const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
+const { Output, ECPair, BIP32, expand, Psbt } = DescriptorsFactory(ecc);
 const { signInputECPair, signBIP32 } = signers;
+const taggedHash = crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array;
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
@@ -92,7 +93,7 @@ const runScenario = async ({
   const psbt = new Psbt({ network: NETWORK });
   const finalize = input.updatePsbtAsInput({ psbt, vout, txHex });
 
-  const beforeSignInput = psbt.data.inputs[0];
+  const beforeSignInput = psbt.getInput(0);
   if (!beforeSignInput) throw new Error('Error: missing PSBT input');
 
   if (expectScriptPath) {
@@ -127,16 +128,16 @@ const runScenario = async ({
   } else {
     if (!signer)
       throw new Error(`Error: ${name} requires signer or masterNode`);
-    signInputECPair({ psbt, index: 0, ecpair: signer });
+    signInputECPair({ psbt, index: 0, ecpair: signer, taggedHash });
   }
 
-  const afterSignInput = psbt.data.inputs[0];
+  const afterSignInput = psbt.getInput(0);
   if (!afterSignInput)
     throw new Error('Error: missing PSBT input after signing');
   const signatures = signaturesFromInput(afterSignInput);
 
   finalize({ psbt });
-  const tx = psbt.extractTransaction();
+  const tx = (psbt as any).raw.extractTransaction();
   const realVsize = tx.virtualSize();
 
   const estimatedVsize = vsize([input], [destination], [signatures]);
@@ -227,7 +228,8 @@ const runScenario = async ({
   if (!tapTreeInfo) throw new Error('Error: tapTreeInfo not available');
   const selected = selectTapLeafCandidates({
     tapTreeInfo,
-    tapLeaf: leafAExpression
+    tapLeaf: leafAExpression,
+    taggedHash
   })[0];
   if (!selected)
     throw new Error('Error: could not derive tapLeafHash for selected leaf');
@@ -336,7 +338,8 @@ const runScenario = async ({
           throw new Error('Error: tapTreeInfo not available for BIP32 tree');
         const selectedLeaf = selectTapLeafCandidates({
           tapTreeInfo,
-          tapLeaf: `pk(${leafA})`
+          tapLeaf: `pk(${leafA})`,
+          taggedHash
         })[0];
         if (!selectedLeaf)
           throw new Error('Error: could not derive tapLeafHash for BIP32 leaf');

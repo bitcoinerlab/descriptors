@@ -44,7 +44,7 @@ console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (co-signed with a software wallet) -> 1 output'
 );
 import Transport from '@ledgerhq/hw-transport-node-hid';
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
@@ -84,7 +84,9 @@ const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+import { createBitcoinjsLib } from '../../dist/adapters/bitcoinjs';
+const { Output, BIP32, Psbt } = DescriptorsFactory(ecc);
+const TransactionOps = createBitcoinjsLib(ecc).Transaction;
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 
@@ -227,7 +229,7 @@ const finalizers = [];
 
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
-  psbt.addOutput({
+  (psbt as any).raw.addOutput({
     address: FINAL_ADDRESS,
     value: BigInt(UTXO_VALUE * 3 - FEE)
   });
@@ -252,7 +254,7 @@ const finalizers = [];
   //retrieved from state by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
-  await signLedger({ psbt, ledgerManager });
+  await signLedger({ psbt, ledgerManager, TransactionOps });
   //Now sign the PSBT with the BIP32 node (the software wallet)
   signBIP32({ psbt, masterNode });
 
@@ -268,7 +270,7 @@ const finalizers = [];
   //broadcasting the tx so that it can be accepted by the network
   await regtestUtils.mine(BLOCKS);
   //Broadcast the tx:
-  const spendTx = psbt.extractTransaction();
+  const spendTx = (psbt as any).raw.extractTransaction();
   const resultSpend = await regtestUtils.broadcast(spendTx.toHex());
   //Mine it
   await regtestUtils.mine(1);

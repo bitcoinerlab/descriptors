@@ -2,27 +2,21 @@
 // Distributed under the MIT software license
 
 import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
-import {
-  address,
-  networks,
-  payments,
+import type {
   Network,
-  Transaction,
   Payment,
-  Psbt,
-  initEccLib,
-  script as bscript
-} from 'bitcoinjs-lib';
+  PsbtLike,
+  BitcoinLib,
+  ECPairAPI,
+  BIP32API,
+  PartialSig
+} from './bitcoinLib';
 import {
   tapleafHash,
   witnessStackToScriptWitness
 } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, fromHex, toHex } from 'uint8array-tools';
-import type { PartialSig } from 'bip174';
-const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
-import { BIP32Factory, BIP32API } from 'bip32';
-import { ECPairFactory, ECPairAPI } from 'ecpair';
 
 import type {
   TinySecp256k1Interface,
@@ -243,10 +237,38 @@ function parseTrExpression(expression: string): {
  * [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
-export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
-  initEccLib(ecc); //Taproot requires initEccLib
-  const BIP32: BIP32API = BIP32Factory(ecc);
-  const ECPair: ECPairAPI = ECPairFactory(ecc);
+export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib) {
+  // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
+  // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
+  let lib: BitcoinLib;
+  let ecc: TinySecp256k1Interface;
+  if ('payments' in eccOrLib && 'script' in eccOrLib && 'crypto' in eccOrLib) {
+    lib = eccOrLib as BitcoinLib;
+    // BitcoinLib adapters must expose the raw ecc interface for signature
+    // validation (verifySchnorr). We cast to access it.
+    const libWithEcc = eccOrLib as BitcoinLib & { ecc: TinySecp256k1Interface };
+    if (!libWithEcc.ecc)
+      throw new Error(
+        `Error: BitcoinLib must expose an 'ecc' property with TinySecp256k1Interface`
+      );
+    ecc = libWithEcc.ecc;
+  } else {
+    ecc = eccOrLib as TinySecp256k1Interface;
+    // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createBitcoinjsLib } = require('./adapters/bitcoinjs') as {
+      createBitcoinjsLib: (e: TinySecp256k1Interface) => BitcoinLib;
+    };
+    lib = createBitcoinjsLib(ecc);
+  }
+  lib.initEccLib();
+  const { payments: paymentsOps, script: scriptOps, crypto: cryptoOps } = lib;
+  const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr, p2ms } = paymentsOps;
+  const addressOps = lib.address;
+  const TransactionOps = lib.Transaction;
+  const BIP32: BIP32API = lib.BIP32;
+  const ECPair: ECPairAPI = lib.ECPair;
+  const bitcoinNetwork: Network = lib.networks.bitcoin;
 
   const signatureValidator = (
     pubkey: Uint8Array,
@@ -273,7 +295,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     keyExpression,
     isSegwit,
     isTaproot,
-    network = networks.bitcoin
+    network = bitcoinNetwork
   }) => {
     return globalParseKeyExpression({
       keyExpression,
@@ -307,7 +329,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
 
   function buildTapLeafSortedMultiAOverride({
     expression,
-    network = networks.bitcoin
+    network = bitcoinNetwork
   }: {
     expression: string;
     network?: Network;
@@ -361,7 +383,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     const tapScript = miniscript2Script({
       expandedMiniscript: compileExpandedMiniscript,
       expansionMap,
-      tapscript: true
+      tapscript: true,
+      scriptOps,
+      cryptoOps
     });
 
     return { expandedExpression, expansionMap, tapScript };
@@ -420,7 +444,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     index,
     change,
     checksumRequired = false,
-    network = networks.bitcoin,
+    network = bitcoinNetwork,
     allowMiniscriptInP2SH = false
   }: {
     descriptor: string;
@@ -467,7 +491,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         throw new Error(`Error: could not get an address in ${descriptor}`);
       let output;
       try {
-        output = address.toOutputScript(matchedAddress, network);
+        output = addressOps.toOutputScript(matchedAddress, network);
       } catch (e) {
         void e;
         throw new Error(`Error: invalid address ${matchedAddress}`);
@@ -638,11 +662,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = payments.p2ms({ m, pubkeys, network });
+        const redeem = p2ms({ m, pubkeys, network });
         redeemScript = redeem.output;
         if (!redeemScript) throw new Error(`Error creating redeemScript`);
 
-        payment = payments.p2sh({ redeem, network });
+        payment = p2sh({ redeem, network });
       }
     }
     // wsh(sortedmulti())
@@ -676,11 +700,11 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = payments.p2ms({ m, pubkeys, network });
+        const redeem = p2ms({ m, pubkeys, network });
         witnessScript = redeem.output;
         if (!witnessScript) throw new Error(`Error computing witnessScript`);
 
-        payment = payments.p2wsh({ redeem, network });
+        payment = p2wsh({ redeem, network });
       }
     }
     // sh(wsh(sortedmulti()))
@@ -716,13 +740,13 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = payments.p2ms({ m, pubkeys, network });
-        const wsh = payments.p2wsh({ redeem, network });
+        const redeem = p2ms({ m, pubkeys, network });
+        const wsh = p2wsh({ redeem, network });
 
         witnessScript = redeem.output;
         redeemScript = wsh.output;
 
-        payment = payments.p2sh({ redeem: wsh, network });
+        payment = p2sh({ redeem: wsh, network });
       }
     }
     //sh(wsh(miniscript))
@@ -740,14 +764,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       expandedExpression = `sh(wsh(${expandedMiniscript}))`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
         payment = p2sh({
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
@@ -791,14 +815,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       expandedExpression = `sh(${expandedMiniscript})`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
         redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
         payment = p2sh({ redeem: { output: script, network }, network });
       }
     }
@@ -817,14 +841,14 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       expandedExpression = `wsh(${expandedMiniscript})`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap });
+        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
@@ -853,6 +877,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
             network,
             BIP32,
             ECPair,
+            scriptOps,
+            cryptoOps,
             // `leafExpansionOverride` runs per leaf expression.
             // For non-matching leaves it returns undefined and
             // normal miniscript expansion is used;
@@ -914,7 +940,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
   function expandMiniscript({
     miniscript,
     isSegwit,
-    network = networks.bitcoin
+    network = bitcoinNetwork
   }: {
     miniscript: string;
     isSegwit: boolean;
@@ -969,7 +995,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       change,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
-      network = networks.bitcoin,
+      network = bitcoinNetwork,
       preimages = [],
       signersPubKeys,
       taprootSpendPath,
@@ -1204,7 +1230,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     ): void {
       if (!this.#miniscript) return;
 
-      const satisfactionStackItems = bscript.toStack(scriptSatisfaction);
+      const satisfactionStackItems = scriptOps.toStack(scriptSatisfaction);
 
       // For wsh(...) and sh(wsh(...)), enforce witness stack limits.
       if (this.#isSegwit && !this.#isTaproot) {
@@ -1231,7 +1257,8 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         assertP2shScriptSigStandardSize({
           scriptSatisfaction,
           redeemScript,
-          network: this.#network
+          network: this.#network,
+          p2sh
         });
       }
     }
@@ -1292,7 +1319,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
         timeConstraints: {
           nLockTime: constraints?.nLockTime,
           nSequence: constraints?.nSequence
-        }
+        },
+        scriptOps,
+        cryptoOps
       });
       this.#assertMiniscriptSatisfactionResourceLimits(
         satisfaction.scriptSatisfaction
@@ -1355,7 +1384,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
                 nSequence: constraints.nSequence
               }
             }
-          : {})
+          : {}),
+        scriptOps,
+        cryptoOps,
+        taggedHash: cryptoOps.taggedHash
       });
     }
 
@@ -1405,7 +1437,9 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           expandedMiniscript,
           expansionMap,
           signatures: fakeSignatures,
-          preimages
+          preimages,
+          scriptOps,
+          cryptoOps
         });
         this.#assertMiniscriptSatisfactionResourceLimits(
           satisfaction.scriptSatisfaction
@@ -1423,7 +1457,10 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
           tapTreeInfo,
           preimages: this.#preimages,
           signatures: fakeSignatures,
-          ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {})
+          ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {}),
+          scriptOps,
+          cryptoOps,
+          taggedHash: cryptoOps.taggedHash
         });
         return { nLockTime, nSequence, tapLeafHash };
       }
@@ -1534,7 +1571,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
     guessOutput() {
       function guessSH(output: Uint8Array) {
         try {
-          payments.p2sh({ output });
+          p2sh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1543,7 +1580,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       function guessWSH(output: Uint8Array) {
         try {
-          payments.p2wsh({ output });
+          p2wsh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1552,7 +1589,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       function guessWPKH(output: Uint8Array) {
         try {
-          payments.p2wpkh({ output });
+          p2wpkh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1561,7 +1598,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       function guessPKH(output: Uint8Array) {
         try {
-          payments.p2pkh({ output });
+          p2pkh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1570,7 +1607,7 @@ export function DescriptorsFactory(ecc: TinySecp256k1Interface) {
       }
       function guessTR(output: Uint8Array) {
         try {
-          payments.p2tr({ output });
+          p2tr({ output });
           return true;
         } catch (err) {
           void err;
@@ -1838,8 +1875,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const witnessScript = this.getWitnessScript();
         if (!witnessScript)
           throw new Error('sh(wsh) must provide witnessScript');
-        const payment = payments.p2sh({
-          redeem: payments.p2wsh({
+        const payment = p2sh({
+          redeem: p2wsh({
             redeem: {
               input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
                 .scriptSatisfaction,
@@ -1858,7 +1895,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       } else if (expansion?.startsWith('sh(')) {
         const redeemScript = this.getRedeemScript();
         if (!redeemScript) throw new Error('sh() must provide redeemScript');
-        const payment = payments.p2sh({
+        const payment = p2sh({
           redeem: {
             input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
               .scriptSatisfaction,
@@ -1880,7 +1917,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       } else if (expansion?.startsWith('wsh(')) {
         const witnessScript = this.getWitnessScript();
         if (!witnessScript) throw new Error('wsh must provide witnessScript');
-        const payment = payments.p2wsh({
+        const payment = p2wsh({
           redeem: {
             input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
               .scriptSatisfaction,
@@ -1980,7 +2017,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
-     * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
+     * `( { psbt, validate = true } : { psbt: PsbtLike; validate: boolean | undefined } ) => void`
      *
      */
     updatePsbtAsInput({
@@ -1991,7 +2028,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       vout, //vector output index
       rbf = true
     }: {
-      psbt: Psbt;
+      psbt: PsbtLike;
       txHex?: string;
       txId?: string;
       value?: bigint;
@@ -2040,7 +2077,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           );
         const taprootLeafMetadata = buildTaprootLeafPsbtMetadata({
           tapTreeInfo,
-          internalPubkey: tapInternalKey
+          internalPubkey: tapInternalKey,
+          p2tr,
+          taggedHash: cryptoOps.taggedHash
         });
         tapLeafScript = taprootLeafMetadata.map(({ leaf, controlBlock }) => ({
           script: leaf.tapScript,
@@ -2054,7 +2093,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           );
         tapBip32Derivation = buildTaprootBip32Derivations({
           tapTreeInfo,
-          internalKeyInfo
+          internalKeyInfo,
+          taggedHash: cryptoOps.taggedHash
         });
       }
       const index = addPsbtInput({
@@ -2073,7 +2113,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         isSegwit,
         witnessScript: this.getWitnessScript(),
         redeemScript: this.getRedeemScript(),
-        rbf
+        rbf,
+        TransactionOps
       });
       //The finalizer adds the unlocking script (scriptSig/scriptWitness) once
       //signatures are ready.
@@ -2081,7 +2122,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         psbt,
         validate = true
       }: {
-        psbt: Psbt;
+        psbt: PsbtLike;
         /** Runs further test on the validity of the signatures.
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
@@ -2112,7 +2153,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             `Error: taprootSpendPath=script requires taproot tree info`
           );
         if (this.#tapTreeInfo && this.#taprootSpendPath === 'script') {
-          const input = psbt.data.inputs[index];
+          const input = psbt.getInput(index);
           const tapLeafScript = input?.tapLeafScript;
           if (!tapLeafScript || tapLeafScript.length === 0)
             throw new Error(
@@ -2131,7 +2172,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
                 tapleafHash({
                   output: leafScript.script,
                   version: leafScript.leafVersion
-                }),
+                }, cryptoOps.taggedHash),
                 taprootSatisfaction.tapLeafHash
               ) === 0
           );
@@ -2162,13 +2203,13 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           //Use standard finalizers
           psbt.finalizeInput(index);
         } else {
-          const signatures = psbt.data.inputs[index]?.partialSig;
+          const signatures = psbt.getInput(index)?.partialSig;
           if (!signatures)
             throw new Error(`Error: cannot finalize without signatures`);
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
           psbt.finalizeInput(
             index,
-            finalScriptsFuncFactory(scriptSatisfaction, this.#network)
+            finalScriptsFuncFactory(scriptSatisfaction, this.#network, { p2wsh, p2sh })
           );
         }
       };
@@ -2182,16 +2223,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * @param params.psbt - The Partially Signed Bitcoin Transaction.
      * @param params.value - The value for the output in satoshis.
      */
-    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: bigint }) {
+    updatePsbtAsOutput({ psbt, value }: { psbt: PsbtLike; value: bigint }) {
       if (typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value < 0n) throw new Error(`Error: value must be >= 0n`);
       psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
-    #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
-      const input = psbt.data.inputs[index];
-      const txInput = psbt.txInputs[index];
+    #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
+      const input = psbt.getInput(index);
+      const txInput = psbt.getTxInput(index);
       if (!input || !txInput)
         throw new Error(`Error: invalid input or txInput`);
       const { sequence: inputSequence, index: vout } = txInput;
@@ -2202,7 +2243,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           throw new Error(
             `Error: input should have either witnessUtxo or nonWitnessUtxo`
           );
-        const tx = Transaction.fromBuffer(input.nonWitnessUtxo);
+        const tx = TransactionOps.fromBuffer(input.nonWitnessUtxo);
         const out = tx.outs[vout];
         if (!out) throw new Error(`Error: utxo should exist`);
         scriptPubKey = out.script;
@@ -2272,7 +2313,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     parseKeyExpression,
     expand,
     ECPair,
-    BIP32
+    BIP32,
+    /** PsbtLike constructor backed by the active adapter. */
+    Psbt: lib.Psbt
   };
 }
 

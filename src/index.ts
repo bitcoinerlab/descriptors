@@ -41,6 +41,15 @@ export type {
   Preimage,
   TimeConstraints
 } from './types';
+export type {
+  BitcoinLib,
+  PsbtLike,
+  Network,
+  Payment,
+  FinalScriptsFunc,
+  ParsedTransaction,
+  Taptree
+} from './bitcoinLib';
 export {
   DescriptorsFactory,
   OutputInstance,

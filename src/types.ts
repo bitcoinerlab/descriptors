@@ -3,7 +3,7 @@
 
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
-import type { Payment, Network } from 'bitcoinjs-lib';
+import type { Payment, Network } from './bitcoinLib';
 import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
 /**

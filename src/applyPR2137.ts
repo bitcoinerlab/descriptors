@@ -131,7 +131,11 @@ function getTweakSignersFromHD(
     if (input.tapLeafScript && input.tapLeafScript.length > 0) return node;
 
     const h = calculateScriptTreeMerkleRoot(bipDv!.leafHashes);
-    const tweakValue = tapTweakHash(toXOnly(node.publicKey), h);
+    const tweakValue = tapTweakHash(
+      toXOnly(node.publicKey),
+      h,
+      crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array
+    );
 
     return node.tweak(tweakValue);
   });
