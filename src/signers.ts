@@ -1,11 +1,8 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { Psbt } from 'bitcoinjs-lib';
+import type { PsbtLike, ECPairInterface, BIP32Interface, BitcoinLib } from './bitcoinLib';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
-
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
 import {
   importAndValidateLedgerBitcoin,
   comparePolicies,
@@ -13,7 +10,6 @@ import {
   LedgerManager,
   ledgerPolicyFromPsbtInput
 } from './ledger';
-import { applyPR2137 } from './applyPR2137';
 type DefaultDescriptorTemplate =
   | 'pkh(@0/**)'
   | 'sh(wpkh(@0/**))'
@@ -46,30 +42,37 @@ function range(n: number): number[] {
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
+ * @param {Function} params.taggedHash - Tagged hash function from BitcoinLib.crypto
  */
 export function signInputECPair({
   psbt,
   index,
-  ecpair
+  ecpair,
+  taggedHash
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   ecpair: ECPairInterface;
+  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): void {
   //psbt.signInput(index, ecpair); <- Replaced for the code below
   //that can handle taproot inputs automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
-  const input = psbt.data.inputs[index];
+  const input = psbt.getInput(index);
   if (!input) throw new Error('Invalid index');
   if (isTaprootInput(input)) {
     // If script-path (tapLeafScript present) -> DO NOT TWEAK
     if (input.tapLeafScript && input.tapLeafScript.length > 0)
       psbt.signInput(index, ecpair);
     else {
-      const hash = tapTweakHash(ecpair.publicKey.slice(1, 33), undefined);
+      const hash = tapTweakHash(
+        ecpair.publicKey.slice(1, 33),
+        undefined,
+        taggedHash
+      );
       const tweakedEcpair = ecpair.tweak(hash);
       psbt.signInput(index, tweakedEcpair);
     }
@@ -92,23 +95,26 @@ export function signInputECPair({
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
+ * @param {Function} params.taggedHash - Tagged hash function from BitcoinLib.crypto
  */
 export function signECPair({
   psbt,
-  ecpair
+  ecpair,
+  taggedHash
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   ecpair: ECPairInterface;
+  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): void {
   //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
   //taptoot automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
   const results: boolean[] = [];
-  for (const index of range(psbt.data.inputs.length)) {
+  for (const index of range(psbt.inputCount)) {
     try {
-      signInputECPair({ psbt, index, ecpair });
+      signInputECPair({ psbt, index, ecpair, taggedHash });
       results.push(true);
     } catch (err) {
       void err;
@@ -124,11 +130,10 @@ export function signInputBIP32({
   index,
   node
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   node: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
   psbt.signInputHD(index, node);
 }
 
@@ -136,10 +141,9 @@ export function signBIP32({
   psbt,
   masterNode
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   masterNode: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
   psbt.signAllInputsHD(masterNode);
 }
 
@@ -158,11 +162,11 @@ function addLedgerSignaturesToInput({
   index,
   ledgerSignatures
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   ledgerSignatures: [number, PartialSignature][];
 }) {
-  const input = psbt.data.inputs[index];
+  const input = psbt.getInput(index);
   if (!input) throw new Error(`Error: input ${index} not available`);
 
   const signatures = ledgerSignaturesForInputIndex(index, ledgerSignatures);
@@ -188,7 +192,7 @@ function addLedgerSignaturesToInput({
     );
 
     if (tapScriptSig.length > 0) {
-      psbt.updateInput(index, { tapScriptSig });
+      psbt.updateInput(index, { tapScriptSig } as Record<string, unknown>);
     }
 
     if (tapKeySigs.length > 1)
@@ -197,7 +201,7 @@ function addLedgerSignaturesToInput({
       );
     const tapKeySig = tapKeySigs[0]?.signature;
     if (tapKeySig) {
-      psbt.updateInput(index, { tapKeySig });
+      psbt.updateInput(index, { tapKeySig } as Record<string, unknown>);
     }
 
     if (tapScriptSig.length === 0 && !tapKeySig)
@@ -209,7 +213,7 @@ function addLedgerSignaturesToInput({
       pubkey: sig.pubkey,
       signature: sig.signature
     }));
-    psbt.updateInput(index, { partialSig });
+    psbt.updateInput(index, { partialSig } as Record<string, unknown>);
   }
 }
 
@@ -222,20 +226,24 @@ function addLedgerSignaturesToInput({
 export async function signInputLedger({
   psbt,
   index,
-  ledgerManager
+  ledgerManager,
+  TransactionOps
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   ledgerManager: LedgerManager;
+  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void>;
 export async function signInputLedger({
   psbt,
   index,
-  ledgerManager
+  ledgerManager,
+  TransactionOps
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
   ledgerManager: LedgerManager;
+  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
@@ -248,7 +256,8 @@ export async function signInputLedger({
   const policy = await ledgerPolicyFromPsbtInput({
     psbt,
     index,
-    ledgerManager
+    ledgerManager,
+    TransactionOps
   });
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
@@ -296,17 +305,21 @@ export async function signInputLedger({
  */
 export async function signLedger({
   psbt,
-  ledgerManager
+  ledgerManager,
+  TransactionOps
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   ledgerManager: LedgerManager;
+  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void>;
 export async function signLedger({
   psbt,
-  ledgerManager
+  ledgerManager,
+  TransactionOps
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   ledgerManager: LedgerManager;
+  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
@@ -317,11 +330,12 @@ export async function signLedger({
     throw new Error(`Error: pass a valid ledgerClient`);
 
   const ledgerPolicies = [];
-  for (let index = 0; index < psbt.data.inputs.length; index++) {
+  for (let index = 0; index < psbt.inputCount; index++) {
     const policy = await ledgerPolicyFromPsbtInput({
       psbt,
       index,
-      ledgerManager
+      ledgerManager,
+      TransactionOps
     });
     if (policy) ledgerPolicies.push(policy);
   }

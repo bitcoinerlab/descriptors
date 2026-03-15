@@ -1,5 +1,6 @@
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { compare } from 'uint8array-tools';
+
 import { splitTopLevelComma } from './parseUtils';
 import type { ExpansionMap } from './types';
 
@@ -103,8 +104,14 @@ export function collectTapTreeLeaves(
   return leaves;
 }
 
-function computeTapLeafHash(leaf: TapLeafInfo): Uint8Array {
-  return tapleafHash({ output: leaf.tapScript, version: leaf.version });
+function computeTapLeafHash(
+  leaf: TapLeafInfo,
+  taggedHashFn: (tag: string, data: Uint8Array) => Uint8Array
+): Uint8Array {
+  return tapleafHash(
+    { output: leaf.tapScript, version: leaf.version },
+    taggedHashFn
+  );
 }
 
 function normalizeExpressionForMatch(expression: string): string {
@@ -130,15 +137,17 @@ function normalizeExpressionForMatch(expression: string): string {
  */
 export function selectTapLeafCandidates({
   tapTreeInfo,
-  tapLeaf
+  tapLeaf,
+  taggedHash
 }: {
   tapTreeInfo: TapTreeInfoNode;
   tapLeaf?: Uint8Array | string;
+  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): TapLeafSelection[] {
   const leaves = collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => ({
     leaf,
     depth,
-    tapLeafHash: computeTapLeafHash(leaf)
+    tapLeafHash: computeTapLeafHash(leaf, taggedHash)
   }));
 
   if (tapLeaf === undefined) return leaves;

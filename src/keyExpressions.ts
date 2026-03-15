@@ -1,9 +1,9 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network } from 'bitcoinjs-lib';
-import type { ECPairAPI, ECPairInterface } from 'ecpair';
-import type { BIP32API, BIP32Interface } from 'bip32';
+import type { Network, ECPairAPI, BIP32API } from './bitcoinLib';
+import type { ECPairInterface } from 'ecpair';
+import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
   LedgerManager,
@@ -53,7 +53,7 @@ export function parseKeyExpression({
   isTaproot,
   ECPair,
   BIP32,
-  network = networks.bitcoin
+  network
 }: {
   keyExpression: string;
   /** @default networks.bitcoin */

@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import type { BIP32Interface } from 'bip32';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
@@ -13,9 +13,12 @@ import {
 } from '../dist/ledger';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { toHex } from 'uint8array-tools';
+import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 
 const NETWORK = networks.regtest;
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const { Output, BIP32, Psbt } = DescriptorsFactory(ecc);
+const lib = createBitcoinjsLib(ecc);
+const TransactionOps = lib.Transaction;
 
 function makeMaster(seed: number): BIP32Interface {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
@@ -73,7 +76,7 @@ function buildWitnessPsbt({
     pubkey: Uint8Array;
     leafHashes: Uint8Array[];
   };
-}): Psbt {
+}) {
   const psbt = new Psbt({ network: NETWORK });
   psbt.addInput({
     hash: new Uint8Array(32),
@@ -82,9 +85,9 @@ function buildWitnessPsbt({
       script: scriptPubKey,
       value: 50_000n
     }
-  });
+  } as Record<string, unknown>);
 
-  const input = psbt.data.inputs[0];
+  const input = psbt.getInput(0);
   if (!input) throw new Error('psbt input not created');
   if (bip32Derivation !== undefined) input.bip32Derivation = [bip32Derivation];
   if (tapBip32Derivation !== undefined)
@@ -264,7 +267,8 @@ describe('ledger policy templates preserve sorted expressions', () => {
     const policy = await ledgerPolicyFromPsbtInput({
       ledgerManager,
       psbt,
-      index: 0
+      index: 0,
+      TransactionOps
     });
 
     expect(policy?.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
@@ -321,7 +325,8 @@ describe('ledger policy templates preserve sorted expressions', () => {
     const policy = await ledgerPolicyFromPsbtInput({
       ledgerManager,
       psbt,
-      index: 0
+      index: 0,
+      TransactionOps
     });
 
     expect(policy?.ledgerTemplate).toEqual(

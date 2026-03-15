@@ -5,7 +5,7 @@ console.log('Ledger taproot integration tests');
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { mnemonicToSeedSync } from 'bip39';
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import { RegtestUtils } from 'regtest-client';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -16,6 +16,7 @@ import {
   scriptExpressions,
   signers
 } from '../../dist/';
+import { createBitcoinjsLib } from '../../dist/adapters/bitcoinjs';
 
 const regtestUtils = new RegtestUtils();
 
@@ -25,7 +26,8 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const { Output, BIP32, Psbt } = DescriptorsFactory(ecc);
+const TransactionOps = createBitcoinjsLib(ecc).Transaction;
 const { signLedger } = signers;
 const { trLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
@@ -60,7 +62,7 @@ async function runSpendScenario({
   const psbt = new Psbt({ network: NETWORK });
   const finalize = output.updatePsbtAsInput({ psbt, txHex, vout });
 
-  const beforeSignInput = psbt.data.inputs[0];
+  const beforeSignInput = psbt.getInput(0);
   if (!beforeSignInput) throw new Error(`Error: ${name} input not found`);
 
   if (expectScriptPath) {
@@ -74,14 +76,14 @@ async function runSpendScenario({
     );
   }
 
-  psbt.addOutput({
+  (psbt as any).raw.addOutput({
     address: destinationAddress,
     value: BigInt(UTXO_VALUE - FEE)
   });
 
-  await signLedger({ psbt, ledgerManager });
+  await signLedger({ psbt, ledgerManager, TransactionOps });
 
-  const afterSignInput = psbt.data.inputs[0];
+  const afterSignInput = psbt.getInput(0);
   if (!afterSignInput)
     throw new Error(`Error: ${name} input not found after signing`);
 
@@ -103,7 +105,7 @@ async function runSpendScenario({
 
   finalize({ psbt });
 
-  const spendTx = psbt.extractTransaction();
+  const spendTx = (psbt as any).raw.extractTransaction();
   await regtestUtils.broadcast(spendTx.toHex());
   await regtestUtils.mine(1);
   await regtestUtils.verify({

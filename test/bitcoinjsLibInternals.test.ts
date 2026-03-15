@@ -4,7 +4,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { PsbtInput } from 'bip174';
-import { initEccLib } from 'bitcoinjs-lib';
+import { initEccLib, crypto } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { fromHex, toHex } from 'uint8array-tools';
 import {
@@ -35,7 +35,7 @@ describe('bitcoinjs-lib internals compatibility', () => {
     ];
 
     vectors.forEach(vector => {
-      expect(toHex(tapleafHash(vector))).toEqual(
+      expect(toHex(tapleafHash(vector, crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array))).toEqual(
         toHex(bip341.tapleafHash(vector))
       );
     });
@@ -45,10 +45,10 @@ describe('bitcoinjs-lib internals compatibility', () => {
     const internalPubkey = fromHex('11'.repeat(32));
     const merkleRoot = fromHex('22'.repeat(32));
 
-    expect(toHex(tapTweakHash(internalPubkey, undefined))).toEqual(
+    expect(toHex(tapTweakHash(internalPubkey, undefined, crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array))).toEqual(
       toHex(bip341.tapTweakHash(internalPubkey, undefined))
     );
-    expect(toHex(tapTweakHash(internalPubkey, merkleRoot))).toEqual(
+    expect(toHex(tapTweakHash(internalPubkey, merkleRoot, crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array))).toEqual(
       toHex(bip341.tapTweakHash(internalPubkey, merkleRoot))
     );
   });

@@ -1,10 +1,7 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-import { payments, script as bscript } from 'bitcoinjs-lib';
-import type { Network } from 'bitcoinjs-lib';
-
-const { p2sh } = payments;
+import type { Network, Payment, BitcoinLib } from './bitcoinLib';
 
 // See Sipa's Miniscript "Resource limitations":
 // https://bitcoin.sipa.be/miniscript/
@@ -34,18 +31,22 @@ const MAX_STANDARD_SCRIPTSIG_SIZE = 1650;
 const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE = 80;
 const MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE = 80;
 
-function countNonPushOnlyOPs(script: Uint8Array): number {
-  const chunks = bscript.decompile(script);
-  if (!chunks) throw new Error(`Error: could not decompile ${script}`);
-  return bscript.countNonPushOnlyOPs(chunks);
+/** Subset of BitcoinLib['script'] needed by this module. */
+interface ScriptOps {
+  decompile(scriptBuf: Uint8Array): Array<number | Uint8Array> | null;
+  countNonPushOnlyOPs(chunks: Array<number | Uint8Array>): number;
 }
 
 export function assertScriptNonPushOnlyOpsLimit({
-  script
+  script,
+  scriptOps
 }: {
   script: Uint8Array;
+  scriptOps: ScriptOps;
 }): void {
-  const nonPushOnlyOps = countNonPushOnlyOPs(script);
+  const chunks = scriptOps.decompile(script);
+  if (!chunks) throw new Error(`Error: could not decompile ${script}`);
+  const nonPushOnlyOps = scriptOps.countNonPushOnlyOPs(chunks);
   if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT)
     throw new Error(
       `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
@@ -120,16 +121,23 @@ export function assertTaprootScriptPathSatisfactionResourceLimits({
 export function assertP2shScriptSigStandardSize({
   scriptSatisfaction,
   redeemScript,
-  network
+  network,
+  p2sh
 }: {
   scriptSatisfaction: Uint8Array;
   redeemScript: Uint8Array;
   network: Network;
+  p2sh: BitcoinLib['payments']['p2sh'];
 }): void {
-  const scriptSig = p2sh({
-    redeem: { input: scriptSatisfaction, output: redeemScript, network },
-    network
-  }).input;
+  const scriptSig = (
+    p2sh({
+      redeem: {
+        input: scriptSatisfaction,
+        output: redeemScript
+      } as Payment,
+      network
+    })
+  ).input;
   if (!scriptSig)
     throw new Error(`Error: could not build scriptSig from satisfaction`);
   if (scriptSig.length > MAX_STANDARD_SCRIPTSIG_SIZE)

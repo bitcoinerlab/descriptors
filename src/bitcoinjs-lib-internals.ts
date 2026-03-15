@@ -6,7 +6,6 @@
  */
 
 import type { PsbtInput } from 'bip174';
-import { crypto } from 'bitcoinjs-lib';
 import { encode } from 'varuint-bitcoin';
 import { concat } from 'uint8array-tools';
 
@@ -33,16 +32,23 @@ function isP2TRScript(script: Uint8Array | undefined): boolean {
   );
 }
 
-export function tapleafHash(leaf: Tapleaf): Uint8Array {
+export function tapleafHash(
+  leaf: Tapleaf,
+  taggedHash: (tag: string, data: Uint8Array) => Uint8Array
+): Uint8Array {
   const version = leaf.version || TAPROOT_LEAF_VERSION_TAPSCRIPT;
-  return crypto.taggedHash(
+  return taggedHash(
     'TapLeaf',
     concat([Uint8Array.from([version]), serializeScript(leaf.output)])
   );
 }
 
-export function tapTweakHash(pubKey: Uint8Array, h?: Uint8Array): Uint8Array {
-  return crypto.taggedHash('TapTweak', concat(h ? [pubKey, h] : [pubKey]));
+export function tapTweakHash(
+  pubKey: Uint8Array,
+  h: Uint8Array | undefined,
+  taggedHash: (tag: string, data: Uint8Array) => Uint8Array
+): Uint8Array {
+  return taggedHash('TapTweak', concat(h ? [pubKey, h] : [pubKey]));
 }
 
 export function witnessStackToScriptWitness(witness: Uint8Array[]): Uint8Array {

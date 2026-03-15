@@ -25,9 +25,8 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
+import type { Network, PsbtLike, BitcoinLib } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
-import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
@@ -152,14 +151,19 @@ export async function assertLedgerApp({
   }
 }
 
+// BIP173 bech32 prefix 'bc' is the universal mainnet indicator.
+function coinTypeFromNetwork(network: Network): 0 | 1 {
+  return network.bech32 === 'bc' ? 0 : 1;
+}
+
 function isLedgerStandard({
   ledgerTemplate,
   keyRoots,
-  network = networks.bitcoin
+  network
 }: {
   ledgerTemplate: string;
   keyRoots: string[];
-  network?: Network;
+  network: Network;
 }): boolean {
   if (keyRoots.length !== 1) return false;
   const originPath = keyRoots[0]?.match(reOriginPath)?.[1];
@@ -285,25 +289,22 @@ export async function getLedgerXpub({
 export async function ledgerPolicyFromPsbtInput({
   ledgerManager,
   psbt,
-  index
+  index,
+  TransactionOps
 }: {
   ledgerManager: LedgerManager;
-  psbt: Psbt;
+  psbt: PsbtLike;
   index: number;
+  TransactionOps: BitcoinLib['Transaction'];
 }) {
   const { ledgerState, ecc, network } = ledgerManager;
 
   const { Output } = DescriptorsFactory(ecc);
-  const input = psbt.data.inputs[index];
-  if (!input) throw new Error(`Input numer ${index} not set.`);
+  const input = psbt.getInput(index);
   let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
-    const vout = psbt.txInputs[index]?.index;
-    if (vout === undefined)
-      throw new Error(
-        `Could not extract vout from nonWitnessUtxo for input ${index}.`
-      );
-    const nonWitnessScript = Transaction.fromBuffer(input.nonWitnessUtxo).outs[
+    const vout = psbt.getTxInput(index).index;
+    const nonWitnessScript = TransactionOps.fromBuffer(input.nonWitnessUtxo).outs[
       vout
     ]?.script;
     scriptPubKey = nonWitnessScript;
