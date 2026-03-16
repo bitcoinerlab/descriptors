@@ -105,13 +105,9 @@ export function collectTapTreeLeaves(
 }
 
 function computeTapLeafHash(
-  leaf: TapLeafInfo,
-  taggedHashFn: (tag: string, data: Uint8Array) => Uint8Array
+  leaf: TapLeafInfo
 ): Uint8Array {
-  return tapleafHash(
-    { output: leaf.tapScript, version: leaf.version },
-    taggedHashFn
-  );
+  return tapleafHash({ output: leaf.tapScript, version: leaf.version });
 }
 
 function normalizeExpressionForMatch(expression: string): string {
@@ -137,17 +133,15 @@ function normalizeExpressionForMatch(expression: string): string {
  */
 export function selectTapLeafCandidates({
   tapTreeInfo,
-  tapLeaf,
-  taggedHash
+  tapLeaf
 }: {
   tapTreeInfo: TapTreeInfoNode;
   tapLeaf?: Uint8Array | string;
-  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): TapLeafSelection[] {
   const leaves = collectTapTreeLeaves(tapTreeInfo).map(({ leaf, depth }) => ({
     leaf,
     depth,
-    tapLeafHash: computeTapLeafHash(leaf, taggedHash)
+    tapLeafHash: computeTapLeafHash(leaf)
   }));
 
   if (tapLeaf === undefined) return leaves;

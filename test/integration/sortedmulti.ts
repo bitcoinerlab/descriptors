@@ -5,7 +5,7 @@
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { networks, crypto } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -26,7 +26,6 @@ const SOFT_MNEMONIC =
 
 const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
 const { Output, BIP32, ECPair, Psbt } = DescriptorsFactory(ecc);
-const taggedHash = crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array;
 const masterNode = BIP32.fromSeed(seed, NETWORK);
 
 // Helpers -----------------------------------------------------
@@ -116,7 +115,7 @@ async function runIntegration(descriptor: string) {
   // Sign with ECPair ONLY if it matches one of the required pubkeys
   for (const k of manyKeys) {
     if (required.includes(toHex(k.publicKey)) && signed < m) {
-      signECPair({ psbt, ecpair: k, taggedHash });
+      signECPair({ psbt, ecpair: k });
       signed++;
     }
   }

@@ -8,16 +8,12 @@ import type { PartialSig } from 'bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
+import { hash160 } from './crypto';
 
 /** Subset of BitcoinLib['script'] needed by this module. */
 interface ScriptOps {
   fromASM(asm: string): Uint8Array;
   number: { encode(n: number): Uint8Array };
-}
-
-/** Subset of BitcoinLib['crypto'] needed by this module. */
-interface CryptoOps {
-  hash160(data: Uint8Array): Uint8Array;
 }
 
 /**
@@ -136,12 +132,10 @@ export function expandMiniscript({
 function substituteAsm({
   expandedAsm,
   expansionMap,
-  cryptoOps,
   scriptOps
 }: {
   expandedAsm: string;
   expansionMap: ExpansionMap;
-  cryptoOps: CryptoOps;
   scriptOps: ScriptOps;
 }): string {
   //Replace back variables into the pubkeys previously computed.
@@ -152,7 +146,7 @@ function substituteAsm({
     }
     return accAsm
       .replaceAll(`<${key}>`, `<${toHex(pubkey)}>`)
-      .replaceAll(`<HASH160(${key})>`, `<${toHex(cryptoOps.hash160(pubkey))}>`);
+      .replaceAll(`<HASH160(${key})>`, `<${toHex(hash160(pubkey))}>`);
   }, expandedAsm);
 
   //Now clean it and prepare it so that fromASM can be called:
@@ -181,14 +175,12 @@ export function miniscript2Script({
   expandedMiniscript,
   expansionMap,
   tapscript = false,
-  scriptOps,
-  cryptoOps
+  scriptOps
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   tapscript?: boolean;
   scriptOps: ScriptOps;
-  cryptoOps: CryptoOps;
 }): Uint8Array {
   const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
@@ -198,7 +190,6 @@ export function miniscript2Script({
     substituteAsm({
       expandedAsm: compiled.asm,
       expansionMap,
-      cryptoOps,
       scriptOps
     })
   );
@@ -239,8 +230,7 @@ export function satisfyMiniscript({
   preimages = [],
   timeConstraints,
   tapscript = false,
-  scriptOps,
-  cryptoOps
+  scriptOps
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
@@ -249,7 +239,6 @@ export function satisfyMiniscript({
   timeConstraints?: TimeConstraints;
   tapscript?: boolean;
   scriptOps: ScriptOps;
-  cryptoOps: CryptoOps;
 }): {
   scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
@@ -313,7 +302,7 @@ export function satisfyMiniscript({
     expandedAsm = expandedAsm.replaceAll(search, replace);
   }
   const scriptSatisfaction = scriptOps.fromASM(
-    substituteAsm({ expandedAsm, expansionMap, cryptoOps, scriptOps })
+    substituteAsm({ expandedAsm, expansionMap, scriptOps })
   );
 
   return {

@@ -21,14 +21,9 @@ import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const { Psbt } = DescriptorsFactory(ecc);
 
-const taggedHash = lib.crypto.taggedHash;
-const p2tr = lib.payments.p2tr as Parameters<typeof buildTaprootLeafPsbtMetadata>[0]['p2tr'];
-const scriptOps = lib.script as Parameters<typeof satisfyTapTree>[0]['scriptOps'];
-const cryptoOps = {
-  hash160: lib.crypto.hash160,
-  sha256: lib.crypto.sha256,
-  taggedHash
-} as Parameters<typeof satisfyTapTree>[0]['cryptoOps'];
+const p2tr = lib.payments.p2tr as Parameters<
+  typeof buildTaprootLeafPsbtMetadata
+>[0]['p2tr'];
 
 function createNextSigner<T>(
   ECPair: {
@@ -97,7 +92,10 @@ describe('taproot tree compilation', () => {
     // value as 8-byte LE
     const valueBuf = new Uint8Array(8);
     let v = value;
-    for (let i = 0; i < 8; i++) { valueBuf[i] = Number(v & 0xffn); v >>= 8n; }
+    for (let i = 0; i < 8; i++) {
+      valueBuf[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
     parts.push(valueBuf);
     // scriptPubKey length + script
     parts.push(new Uint8Array([scriptPubKey.length]));
@@ -108,7 +106,10 @@ describe('taproot tree compilation', () => {
     const total = parts.reduce((s, p) => s + p.length, 0);
     const buf = new Uint8Array(total);
     let offset = 0;
-    for (const p of parts) { buf.set(p, offset); offset += p.length; }
+    for (const p of parts) {
+      buf.set(p, offset);
+      offset += p.length;
+    }
     return toHex(buf);
   };
 
@@ -151,7 +152,6 @@ describe('taproot tree compilation', () => {
     const metadata = buildTaprootLeafPsbtMetadata({
       tapTreeInfo,
       internalPubkey,
-      taggedHash,
       p2tr
     });
     //console.log(JSON.stringify(metadata, null, 2));
@@ -190,8 +190,7 @@ describe('taproot tree compilation', () => {
 
     const derivations = buildTaprootBip32Derivations({
       tapTreeInfo,
-      internalKeyInfo,
-      taggedHash
+      internalKeyInfo
     });
     expect(derivations).toHaveLength(3);
 
@@ -308,7 +307,7 @@ describe('taproot tree compilation', () => {
     const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
     psbt.addOutput({ script: Uint8Array.from([0x51]), value: 40000n });
 
-    signInputECPair({ psbt, index: 0, ecpair: leafSignerA, taggedHash });
+    signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
     finalize({ psbt });
 
     const witness = psbt.extractTransaction().ins[0]?.witness;
@@ -358,7 +357,7 @@ describe('taproot tree compilation', () => {
     if (!input) throw new Error('missing psbt input');
     expect(input.tapLeafScript).toBeUndefined();
 
-    signInputECPair({ psbt, index: 0, ecpair: signer, taggedHash });
+    signInputECPair({ psbt, index: 0, ecpair: signer });
     finalize({ psbt });
 
     const witness = psbt.extractTransaction().ins[0]?.witness;
@@ -509,16 +508,14 @@ describe('taproot tree satisfactions', () => {
           preimage: toHex(PREIMAGE)
         }
       ],
-      scriptOps,
-      cryptoOps,
-      taggedHash
+      scriptOps
     });
     expect(best.leaf.expression).toEqual(`pk(${LEAF_KEY})`);
   });
 
   test('selects leaf by tapLeafHash', () => {
     const tapTreeInfo = buildTapTreeInfo();
-    const candidates = selectTapLeafCandidates({ tapTreeInfo, taggedHash });
+    const candidates = selectTapLeafCandidates({ tapTreeInfo });
     const target = candidates.find((entry: TapLeafSelection) =>
       entry.leaf.expression.startsWith('and_v(')
     );
@@ -539,9 +536,7 @@ describe('taproot tree satisfactions', () => {
           preimage: toHex(PREIMAGE)
         }
       ],
-      scriptOps,
-      cryptoOps,
-      taggedHash
+      scriptOps
     });
     expect(best.leaf.expression.startsWith('and_v(')).toBe(true);
     const hasPreimage = best.stackItems.some(
@@ -597,9 +592,7 @@ describe('taproot tree satisfactions', () => {
         signatures,
         tapLeaf: `pk(${LEAF_KEY})`,
         preimages: [],
-        scriptOps,
-        cryptoOps,
-        taggedHash
+        scriptOps
       })
     ).toThrow('ambiguous');
   });

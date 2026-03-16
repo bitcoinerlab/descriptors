@@ -45,18 +45,15 @@ function range(n: number): number[] {
  * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
- * @param {Function} params.taggedHash - Tagged hash function from BitcoinLib.crypto
  */
 export function signInputECPair({
   psbt,
   index,
-  ecpair,
-  taggedHash
+  ecpair
 }: {
   psbt: PsbtLike;
   index: number;
   ecpair: ECPairInterface;
-  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): void {
   //psbt.signInput(index, ecpair); <- Replaced for the code below
   //that can handle taproot inputs automatically.
@@ -68,11 +65,7 @@ export function signInputECPair({
     if (input.tapLeafScript && input.tapLeafScript.length > 0)
       psbt.signInput(index, ecpair);
     else {
-      const hash = tapTweakHash(
-        ecpair.publicKey.slice(1, 33),
-        undefined,
-        taggedHash
-      );
+      const hash = tapTweakHash(ecpair.publicKey.slice(1, 33), undefined);
       const tweakedEcpair = ecpair.tweak(hash);
       psbt.signInput(index, tweakedEcpair);
     }
@@ -97,16 +90,13 @@ export function signInputECPair({
  * @param {Object} params - The parameters object
  * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
- * @param {Function} params.taggedHash - Tagged hash function from BitcoinLib.crypto
  */
 export function signECPair({
   psbt,
-  ecpair,
-  taggedHash
+  ecpair
 }: {
   psbt: PsbtLike;
   ecpair: ECPairInterface;
-  taggedHash: (tag: string, data: Uint8Array) => Uint8Array;
 }): void {
   //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
   //taptoot automatically.
@@ -114,7 +104,7 @@ export function signECPair({
   const results: boolean[] = [];
   for (const index of range(psbt.inputCount)) {
     try {
-      signInputECPair({ psbt, index, ecpair, taggedHash });
+      signInputECPair({ psbt, index, ecpair });
       results.push(true);
     } catch (err) {
       void err;

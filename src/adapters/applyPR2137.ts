@@ -1,12 +1,12 @@
 //While this PR is not merged: https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137
 //The Async functions have not been "fixed"
 //Note that a further fix (look for FIX BITCOINERLAB) was done
-import { crypto } from 'bitcoinjs-lib';
 import type { Psbt, Signer } from 'bitcoinjs-lib';
 import { checkForInput } from 'bip174';
 import type { SignerAsync } from 'ecpair';
 import type { PsbtInput } from 'bip174';
 import { tapTweakHash, isTaprootInput } from './bitcoinjs-lib-internals';
+import { taggedHash } from './crypto';
 import { compare, concat } from 'uint8array-tools';
 
 interface HDSignerBase {
@@ -53,7 +53,7 @@ function range(n: number): number[] {
 }
 
 function tapBranchHash(a: Uint8Array, b: Uint8Array): Uint8Array {
-  return crypto.taggedHash('TapBranch', concat([a, b]));
+  return taggedHash('TapBranch', concat([a, b]));
 }
 
 function calculateScriptTreeMerkleRoot(
@@ -131,11 +131,7 @@ function getTweakSignersFromHD(
     if (input.tapLeafScript && input.tapLeafScript.length > 0) return node;
 
     const h = calculateScriptTreeMerkleRoot(bipDv!.leafHashes);
-    const tweakValue = tapTweakHash(
-      toXOnly(node.publicKey),
-      h,
-      crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array
-    );
+    const tweakValue = tapTweakHash(toXOnly(node.publicKey), h);
 
     return node.tweak(tweakValue);
   });

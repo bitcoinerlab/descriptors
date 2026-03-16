@@ -4,7 +4,7 @@
 //npm run test:integration:soft
 
 console.log('Standard output integration tests');
-import { networks, crypto } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
@@ -29,7 +29,6 @@ const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
 const { Output, BIP32, ECPair, Psbt } = DescriptorsFactory(ecc);
-const taggedHash = crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array;
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:
@@ -176,7 +175,7 @@ const expressionsECPair = [
       psbt: psbtECPair,
       value: BigInt(FINAL_VALUE)
     });
-    signECPair({ psbt: psbtECPair, ecpair, taggedHash });
+    signECPair({ psbt: psbtECPair, ecpair });
     inputFinalizer({ psbt: psbtECPair });
     const spendTxECPair = (psbtECPair as any).raw.extractTransaction();
     await regtestUtils.broadcast(spendTxECPair.toHex());
@@ -214,7 +213,7 @@ const expressionsECPair = [
     value: BigInt(FINAL_VALUE)
   });
   //Sign and finish psbtMultiInputs
-  signECPair({ psbt: psbtMultiInputs, ecpair, taggedHash });
+  signECPair({ psbt: psbtMultiInputs, ecpair });
   signBIP32({ psbt: psbtMultiInputs, masterNode });
   finalizers.forEach(finalizer => finalizer({ psbt: psbtMultiInputs }));
 

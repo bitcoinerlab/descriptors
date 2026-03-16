@@ -11,8 +11,6 @@
 
 import * as btc from '@scure/btc-signer';
 import { hex } from '@scure/base';
-import { sha256 } from '@noble/hashes/sha2.js';
-import { ripemd160 } from '@noble/hashes/legacy.js';
 import { RawTx, RawOldTx } from '@scure/btc-signer/script.js';
 import { BIP32Factory } from 'bip32';
 import type { BIP32API } from 'bip32';
@@ -30,22 +28,9 @@ import type {
 } from '../bitcoinLib';
 import type { PsbtInput } from 'bip174';
 import { compare } from 'uint8array-tools';
+import { hash160, sha256, taggedHash } from '../crypto';
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-function hash160(data: Uint8Array): Uint8Array {
-  return ripemd160(sha256(data));
-}
-
-function taggedHash(tag: string, data: Uint8Array): Uint8Array {
-  // BIP340 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || data)
-  const tagHash = sha256(new TextEncoder().encode(tag));
-  const buf = new Uint8Array(tagHash.length * 2 + data.length);
-  buf.set(tagHash, 0);
-  buf.set(tagHash, tagHash.length);
-  buf.set(data, tagHash.length * 2);
-  return sha256(buf);
-}
 
 /** Convert our Network to the format expected by @scure/btc-signer */
 function toBtcSignerNetwork(network: Network) {
@@ -119,9 +104,7 @@ function fromASM(asm: string): Uint8Array {
 /**
  * Decompile script to array of opcodes (numbers) and data (Uint8Array).
  */
-function decompileScript(
-  script: Uint8Array
-): (number | Uint8Array)[] | null {
+function decompileScript(script: Uint8Array): (number | Uint8Array)[] | null {
   try {
     const decoded = btc.Script.decode(script);
     return decoded.map(item => {
@@ -142,12 +125,9 @@ function decompileScript(
 /**
  * Count non-push-only opcodes (opcodes > OP_16) in a script.
  */
-function countNonPushOnlyOPs(
-  chunks: Array<number | Uint8Array>
-): number {
-  return chunks.filter(
-    op => typeof op === 'number' && op > btc.OP.OP_16
-  ).length;
+function countNonPushOnlyOPs(chunks: Array<number | Uint8Array>): number {
+  return chunks.filter(op => typeof op === 'number' && op > btc.OP.OP_16)
+    .length;
 }
 
 /**
@@ -486,16 +466,14 @@ class ScurePsbtAdapter implements PsbtLike {
     }
   }
 
-  signAllInputsHD(
-    hdSigner: {
+  signAllInputsHD(hdSigner: {
+    publicKey: Uint8Array;
+    fingerprint: Uint8Array;
+    derivePath(path: string): {
       publicKey: Uint8Array;
-      fingerprint: Uint8Array;
-      derivePath(path: string): {
-        publicKey: Uint8Array;
-        sign(hash: Uint8Array): Uint8Array;
-      };
-    }
-  ): void {
+      sign(hash: Uint8Array): Uint8Array;
+    };
+  }): void {
     // Handle taproot inputs individually
     let tapSigned = 0;
     for (let i = 0; i < this.#tx.inputsLength; i++) {
@@ -524,7 +502,10 @@ class ScurePsbtAdapter implements PsbtLike {
       const redeemScript = input.redeemScript;
       const witnessScript = input.witnessScript;
       const script =
-        witnessScript ?? redeemScript ?? witnessUtxo?.script ?? new Uint8Array();
+        witnessScript ??
+        redeemScript ??
+        witnessUtxo?.script ??
+        new Uint8Array();
       const isSegwit = !!witnessUtxo;
       const isP2SH = !!redeemScript;
       const isP2WSH = !!witnessScript;
@@ -548,7 +529,11 @@ class ScurePsbtAdapter implements PsbtLike {
   ): void {
     const result = finalizer();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.updateInput(index, { finalScriptWitness: result.finalScriptWitness } as any, true);
+    this.#tx.updateInput(
+      index,
+      { finalScriptWitness: result.finalScriptWitness } as any,
+      true
+    );
   }
 
   validateSignaturesOfInput(
@@ -631,13 +616,16 @@ class ScurePsbtAdapter implements PsbtLike {
 // ─── HD Key helpers ─────────────────────────────────────────────────
 
 function readUInt32BE(buf: Uint8Array): number {
-  return (
-    ((buf[0]! << 24) | (buf[1]! << 16) | (buf[2]! << 8) | buf[3]!) >>> 0
-  );
+  return ((buf[0]! << 24) | (buf[1]! << 16) | (buf[2]! << 8) | buf[3]!) >>> 0;
 }
 
 function uint32ToBytes(n: number): Uint8Array {
-  return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
+  return new Uint8Array([
+    (n >>> 24) & 0xff,
+    (n >>> 16) & 0xff,
+    (n >>> 8) & 0xff,
+    n & 0xff
+  ]);
 }
 
 function pathArrayToString(path: number[]): string {
@@ -934,7 +922,10 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
                 compare(leaf.script, a.redeem!.output) === 0
             );
             if (matchingLeaf) {
-              payment.witness = [matchingLeaf.script, matchingLeaf.controlBlock];
+              payment.witness = [
+                matchingLeaf.script,
+                matchingLeaf.controlBlock
+              ];
             }
           }
           return payment;
@@ -968,9 +959,9 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
     },
 
     crypto: {
-      hash160: data => hash160(data),
-      sha256: data => sha256(data),
-      taggedHash: (tag, data) => taggedHash(tag, data)
+      hash160,
+      sha256,
+      taggedHash
     },
 
     Transaction: {

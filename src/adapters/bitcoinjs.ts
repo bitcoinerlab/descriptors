@@ -17,8 +17,7 @@ import {
   Transaction,
   Psbt,
   initEccLib,
-  script as bscript,
-  crypto
+  script as bscript
 } from 'bitcoinjs-lib';
 import { BIP32Factory } from 'bip32';
 import type { BIP32API } from 'bip32';
@@ -33,6 +32,7 @@ import type {
   ParsedTransaction
 } from '../bitcoinLib';
 import { applyPR2137 } from './applyPR2137';
+import { hash160, sha256, taggedHash } from '../crypto';
 
 // ─── PsbtLike wrapper around bitcoinjs-lib Psbt ──────────────────────
 
@@ -105,31 +105,36 @@ class BitcoinjsPsbtAdapter implements PsbtLike {
       derivePath(path: string): {
         publicKey: Uint8Array;
         sign(hash: Uint8Array): Uint8Array;
-        tweak?(
-          t: Uint8Array
-        ): { publicKey: Uint8Array; sign(hash: Uint8Array): Uint8Array };
+        tweak?(t: Uint8Array): {
+          publicKey: Uint8Array;
+          sign(hash: Uint8Array): Uint8Array;
+        };
       };
     }
   ): void {
     applyPR2137(this.#psbt);
-    this.#psbt.signInputHD(index, hdSigner as Parameters<Psbt['signInputHD']>[1]);
+    this.#psbt.signInputHD(
+      index,
+      hdSigner as Parameters<Psbt['signInputHD']>[1]
+    );
   }
 
-  signAllInputsHD(
-    hdSigner: {
+  signAllInputsHD(hdSigner: {
+    publicKey: Uint8Array;
+    fingerprint: Uint8Array;
+    derivePath(path: string): {
       publicKey: Uint8Array;
-      fingerprint: Uint8Array;
-      derivePath(path: string): {
+      sign(hash: Uint8Array): Uint8Array;
+      tweak?(t: Uint8Array): {
         publicKey: Uint8Array;
         sign(hash: Uint8Array): Uint8Array;
-        tweak?(
-          t: Uint8Array
-        ): { publicKey: Uint8Array; sign(hash: Uint8Array): Uint8Array };
       };
-    }
-  ): void {
+    };
+  }): void {
     applyPR2137(this.#psbt);
-    this.#psbt.signAllInputsHD(hdSigner as Parameters<Psbt['signAllInputsHD']>[0]);
+    this.#psbt.signAllInputsHD(
+      hdSigner as Parameters<Psbt['signAllInputsHD']>[0]
+    );
   }
 
   finalizeInput(index: number, finalizer?: FinalScriptsFunc): void {
@@ -182,10 +187,7 @@ class BitcoinjsPsbtAdapter implements PsbtLike {
   }
 
   updateInput(index: number, data: Record<string, unknown>): void {
-    this.#psbt.updateInput(
-      index,
-      data as Parameters<Psbt['updateInput']>[1]
-    );
+    this.#psbt.updateInput(index, data as Parameters<Psbt['updateInput']>[1]);
   }
 
   extractTransaction() {
@@ -203,7 +205,9 @@ class BitcoinjsPsbtAdapter implements PsbtLike {
 
 // ─── Transaction wrapper ──────────────────────────────────────────────
 
-function wrapTransaction(tx: InstanceType<typeof Transaction>): ParsedTransaction {
+function wrapTransaction(
+  tx: InstanceType<typeof Transaction>
+): ParsedTransaction {
   return {
     getId: () => tx.getId(),
     outs: tx.outs.map(o => ({ script: o.script, value: o.value })),
@@ -226,7 +230,8 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
 
   return {
     payments: {
-      p2pk: a => payments.p2pk(a as Parameters<typeof payments.p2pk>[0]) as Payment,
+      p2pk: a =>
+        payments.p2pk(a as Parameters<typeof payments.p2pk>[0]) as Payment,
       p2pkh: a =>
         payments.p2pkh(a as Parameters<typeof payments.p2pkh>[0]) as Payment,
       p2sh: a =>
@@ -256,10 +261,9 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
     },
 
     crypto: {
-      hash160: data => crypto.hash160(data),
-      sha256: data => crypto.sha256(data),
-      taggedHash: (tag, data) =>
-        crypto.taggedHash(tag as Parameters<typeof crypto.taggedHash>[0], data)
+      hash160,
+      sha256,
+      taggedHash
     },
 
     Transaction: {

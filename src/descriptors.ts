@@ -237,7 +237,9 @@ function parseTrExpression(expression: string): {
  * [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
-export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib) {
+export function DescriptorsFactory(
+  eccOrLib: TinySecp256k1Interface | BitcoinLib
+) {
   // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let lib: BitcoinLib;
@@ -262,13 +264,13 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
     lib = createBitcoinjsLib(ecc);
   }
   lib.initEccLib();
-  const { payments: paymentsOps, script: scriptOps, crypto: cryptoOps } = lib;
-  const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr, p2ms } = paymentsOps;
+  const { payments, script: scriptOps } = lib;
+  const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const addressOps = lib.address;
   const TransactionOps = lib.Transaction;
   const BIP32: BIP32API = lib.BIP32;
   const ECPair: ECPairAPI = lib.ECPair;
-  const bitcoinNetwork: Network = lib.networks.bitcoin;
+  const networks = lib.networks;
 
   const signatureValidator = (
     pubkey: Uint8Array,
@@ -295,7 +297,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
     keyExpression,
     isSegwit,
     isTaproot,
-    network = bitcoinNetwork
+    network = networks.bitcoin
   }) => {
     return globalParseKeyExpression({
       keyExpression,
@@ -329,7 +331,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
 
   function buildTapLeafSortedMultiAOverride({
     expression,
-    network = bitcoinNetwork
+    network = networks.bitcoin
   }: {
     expression: string;
     network?: Network;
@@ -384,8 +386,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       expandedMiniscript: compileExpandedMiniscript,
       expansionMap,
       tapscript: true,
-      scriptOps,
-      cryptoOps
+      scriptOps
     });
 
     return { expandedExpression, expansionMap, tapScript };
@@ -444,7 +445,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
     index,
     change,
     checksumRequired = false,
-    network = bitcoinNetwork,
+    network = networks.bitcoin,
     allowMiniscriptInP2SH = false
   }: {
     descriptor: string;
@@ -662,11 +663,11 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = p2ms({ m, pubkeys, network });
+        const redeem = payments.p2ms({ m, pubkeys, network });
         redeemScript = redeem.output;
         if (!redeemScript) throw new Error(`Error creating redeemScript`);
 
-        payment = p2sh({ redeem, network });
+        payment = payments.p2sh({ redeem, network });
       }
     }
     // wsh(sortedmulti())
@@ -700,11 +701,11 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = p2ms({ m, pubkeys, network });
+        const redeem = payments.p2ms({ m, pubkeys, network });
         witnessScript = redeem.output;
         if (!witnessScript) throw new Error(`Error computing witnessScript`);
 
-        payment = p2wsh({ redeem, network });
+        payment = payments.p2wsh({ redeem, network });
       }
     }
     // sh(wsh(sortedmulti()))
@@ -740,13 +741,13 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
         });
         pubkeys.sort((a, b) => compare(a, b));
 
-        const redeem = p2ms({ m, pubkeys, network });
-        const wsh = p2wsh({ redeem, network });
+        const redeem = payments.p2ms({ m, pubkeys, network });
+        const wsh = payments.p2wsh({ redeem, network });
 
         witnessScript = redeem.output;
         redeemScript = wsh.output;
 
-        payment = p2sh({ redeem: wsh, network });
+        payment = payments.p2sh({ redeem: wsh, network });
       }
     }
     //sh(wsh(miniscript))
@@ -764,7 +765,11 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       expandedExpression = `sh(wsh(${expandedMiniscript}))`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
+        const script = miniscript2Script({
+          expandedMiniscript,
+          expansionMap,
+          scriptOps
+        });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
@@ -815,7 +820,11 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       expandedExpression = `sh(${expandedMiniscript})`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
+        const script = miniscript2Script({
+          expandedMiniscript,
+          expansionMap,
+          scriptOps
+        });
         redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
           throw new Error(
@@ -841,7 +850,11 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       expandedExpression = `wsh(${expandedMiniscript})`;
 
       if (!isCanonicalRanged) {
-        const script = miniscript2Script({ expandedMiniscript, expansionMap, scriptOps, cryptoOps });
+        const script = miniscript2Script({
+          expandedMiniscript,
+          expansionMap,
+          scriptOps
+        });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
           throw new Error(
@@ -878,7 +891,6 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
             BIP32,
             ECPair,
             scriptOps,
-            cryptoOps,
             // `leafExpansionOverride` runs per leaf expression.
             // For non-matching leaves it returns undefined and
             // normal miniscript expansion is used;
@@ -940,7 +952,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
   function expandMiniscript({
     miniscript,
     isSegwit,
-    network = bitcoinNetwork
+    network = networks.bitcoin
   }: {
     miniscript: string;
     isSegwit: boolean;
@@ -995,7 +1007,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       change,
       checksumRequired = false,
       allowMiniscriptInP2SH = false,
-      network = bitcoinNetwork,
+      network = networks.bitcoin,
       preimages = [],
       signersPubKeys,
       taprootSpendPath,
@@ -1320,8 +1332,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
           nLockTime: constraints?.nLockTime,
           nSequence: constraints?.nSequence
         },
-        scriptOps,
-        cryptoOps
+        scriptOps
       });
       this.#assertMiniscriptSatisfactionResourceLimits(
         satisfaction.scriptSatisfaction
@@ -1385,9 +1396,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
               }
             }
           : {}),
-        scriptOps,
-        cryptoOps,
-        taggedHash: cryptoOps.taggedHash
+        scriptOps
       });
     }
 
@@ -1438,8 +1447,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
           expansionMap,
           signatures: fakeSignatures,
           preimages,
-          scriptOps,
-          cryptoOps
+          scriptOps
         });
         this.#assertMiniscriptSatisfactionResourceLimits(
           satisfaction.scriptSatisfaction
@@ -1458,9 +1466,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
           preimages: this.#preimages,
           signatures: fakeSignatures,
           ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {}),
-          scriptOps,
-          cryptoOps,
-          taggedHash: cryptoOps.taggedHash
+          scriptOps
         });
         return { nLockTime, nSequence, tapLeafHash };
       }
@@ -1571,7 +1577,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
     guessOutput() {
       function guessSH(output: Uint8Array) {
         try {
-          p2sh({ output });
+          payments.p2sh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1580,7 +1586,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       }
       function guessWSH(output: Uint8Array) {
         try {
-          p2wsh({ output });
+          payments.p2wsh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1589,7 +1595,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       }
       function guessWPKH(output: Uint8Array) {
         try {
-          p2wpkh({ output });
+          payments.p2wpkh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1598,7 +1604,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       }
       function guessPKH(output: Uint8Array) {
         try {
-          p2pkh({ output });
+          payments.p2pkh({ output });
           return true;
         } catch (err) {
           void err;
@@ -1607,7 +1613,7 @@ export function DescriptorsFactory(eccOrLib: TinySecp256k1Interface | BitcoinLib
       }
       function guessTR(output: Uint8Array) {
         try {
-          p2tr({ output });
+          payments.p2tr({ output });
           return true;
         } catch (err) {
           void err;
@@ -1875,8 +1881,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const witnessScript = this.getWitnessScript();
         if (!witnessScript)
           throw new Error('sh(wsh) must provide witnessScript');
-        const payment = p2sh({
-          redeem: p2wsh({
+        const payment = payments.p2sh({
+          redeem: payments.p2wsh({
             redeem: {
               input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
                 .scriptSatisfaction,
@@ -1895,7 +1901,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       } else if (expansion?.startsWith('sh(')) {
         const redeemScript = this.getRedeemScript();
         if (!redeemScript) throw new Error('sh() must provide redeemScript');
-        const payment = p2sh({
+        const payment = payments.p2sh({
           redeem: {
             input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
               .scriptSatisfaction,
@@ -1917,7 +1923,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       } else if (expansion?.startsWith('wsh(')) {
         const witnessScript = this.getWitnessScript();
         if (!witnessScript) throw new Error('wsh must provide witnessScript');
-        const payment = p2wsh({
+        const payment = payments.p2wsh({
           redeem: {
             input: this.getScriptSatisfaction(resolveMiniscriptSignatures())
               .scriptSatisfaction,
@@ -2078,8 +2084,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const taprootLeafMetadata = buildTaprootLeafPsbtMetadata({
           tapTreeInfo,
           internalPubkey: tapInternalKey,
-          p2tr,
-          taggedHash: cryptoOps.taggedHash
+          p2tr
         });
         tapLeafScript = taprootLeafMetadata.map(({ leaf, controlBlock }) => ({
           script: leaf.tapScript,
@@ -2093,8 +2098,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           );
         tapBip32Derivation = buildTaprootBip32Derivations({
           tapTreeInfo,
-          internalKeyInfo,
-          taggedHash: cryptoOps.taggedHash
+          internalKeyInfo
         });
       }
       const index = addPsbtInput({
@@ -2172,7 +2176,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
                 tapleafHash({
                   output: leafScript.script,
                   version: leafScript.leafVersion
-                }, cryptoOps.taggedHash),
+                }),
                 taprootSatisfaction.tapLeafHash
               ) === 0
           );
@@ -2209,7 +2213,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
           psbt.finalizeInput(
             index,
-            finalScriptsFuncFactory(scriptSatisfaction, this.#network, { p2wsh, p2sh })
+            finalScriptsFuncFactory(scriptSatisfaction, this.#network, {
+              p2wsh,
+              p2sh
+            })
           );
         }
       };

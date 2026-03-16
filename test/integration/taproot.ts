@@ -3,7 +3,7 @@
 console.log('Taproot integration tests');
 
 import { createHash } from 'crypto';
-import { networks, crypto } from 'bitcoinjs-lib';
+import { networks } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
@@ -28,7 +28,6 @@ import type { OutputInstance } from '../../dist';
 
 const { Output, ECPair, BIP32, expand, Psbt } = DescriptorsFactory(ecc);
 const { signInputECPair, signBIP32 } = signers;
-const taggedHash = crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array;
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
@@ -128,7 +127,7 @@ const runScenario = async ({
   } else {
     if (!signer)
       throw new Error(`Error: ${name} requires signer or masterNode`);
-    signInputECPair({ psbt, index: 0, ecpair: signer, taggedHash });
+    signInputECPair({ psbt, index: 0, ecpair: signer });
   }
 
   const afterSignInput = psbt.getInput(0);
@@ -228,8 +227,7 @@ const runScenario = async ({
   if (!tapTreeInfo) throw new Error('Error: tapTreeInfo not available');
   const selected = selectTapLeafCandidates({
     tapTreeInfo,
-    tapLeaf: leafAExpression,
-    taggedHash
+    tapLeaf: leafAExpression
   })[0];
   if (!selected)
     throw new Error('Error: could not derive tapLeafHash for selected leaf');
@@ -338,8 +336,7 @@ const runScenario = async ({
           throw new Error('Error: tapTreeInfo not available for BIP32 tree');
         const selectedLeaf = selectTapLeafCandidates({
           tapTreeInfo,
-          tapLeaf: `pk(${leafA})`,
-          taggedHash
+          tapLeaf: `pk(${leafA})`
         })[0];
         if (!selectedLeaf)
           throw new Error('Error: could not derive tapLeafHash for BIP32 leaf');
