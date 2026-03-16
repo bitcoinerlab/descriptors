@@ -13,13 +13,25 @@
     "bitcoin",
     "descriptors",
     "bitcoinjs",
-    "miniscript"
+    "miniscript",
+    "scure",
+    "noble"
   ],
   "bugs": {
     "url": "https://github.com/bitcoinerlab/descriptors/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./scure": {
+      "types": "./dist/scure.d.ts",
+      "default": "./dist/scure.js"
+    }
+  },
   "prettier": "@bitcoinerlab/configs/prettierConfig.json",
   "eslintConfig": {
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
@@ -39,7 +51,8 @@
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
     "test:unit": "jest",
-    "test": "npm run lint && npm run build && npm run test:unit && npm run test:integration:soft",
+    "test:scure": "node test/scureAdapter.cjs",
+    "test": "npm run lint && npm run build && npm run test:unit && npm run test:scure && npm run test:integration:soft",
     "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
     "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger"
   },
@@ -47,23 +60,54 @@
     "dist"
   ],
   "peerDependencies": {
-    "@ledgerhq/ledger-bitcoin": "^0.3.0"
+    "@ledgerhq/ledger-bitcoin": "^0.3.0",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/btc-signer": "^2.0.1",
+    "bitcoinjs-lib": "^7.0.1"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
       "optional": true
+    },
+    "bitcoinjs-lib": {
+      "optional": true
+    },
+    "@scure/btc-signer": {
+      "optional": true
+    },
+    "@scure/base": {
+      "optional": true
+    },
+    "@noble/hashes": {
+      "optional": true
+    },
+    "@noble/curves": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.0",
     "@bitcoinerlab/configs": "^2.0.0",
     "@bitcoinerlab/miniscript-policies": "^1.0.0",
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.0",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/btc-signer": "^2.0.1",
     "@types/lodash.memoize": "^4.1.9",
+    "babel-jest": "^30.3.0",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
+    "bitcoinjs-lib": "^7.0.1",
+    "jest": "^30.3.0",
     "regtest-client": "^0.2.1",
+    "ts-jest": "^29.4.6",
     "yargs": "^17.7.2"
   },
   "dependencies": {
@@ -71,7 +115,6 @@
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "bip174": "^3.0.0",
     "bip32": "^5.0.1",
-    "bitcoinjs-lib": "^7.0.1",
     "ecpair": "^3.0.1",
     "lodash.memoize": "^4.1.2",
     "uint8array-tools": "^0.0.9",

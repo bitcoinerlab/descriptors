@@ -99,6 +99,43 @@ npm install @bitcoinerlab/miniscript
 npm install @bitcoinerlab/secp256k1
 ```
 
+### Choosing a Bitcoin Backend
+
+This library supports two Bitcoin backends. You only need to install one:
+
+#### Option A: bitcoinjs-lib (default)
+
+```bash
+npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 bitcoinjs-lib
+```
+
+```javascript
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+const { Output, expand } = DescriptorsFactory(ecc);
+```
+
+This is the traditional backend and the one used throughout most of this README.
+
+#### Option B: @scure/btc-signer
+
+```bash
+npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @scure/btc-signer @noble/curves @noble/hashes @scure/base
+```
+
+```javascript
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+import { createScureLib } from '@bitcoinerlab/descriptors/scure';
+
+const lib = createScureLib(ecc);
+const { Output, expand } = DescriptorsFactory(lib);
+```
+
+The `@scure/btc-signer` backend uses audited, minimal libraries from the [noble/scure](https://paulmillr.com/noble/) family. Once you have the `Output` class, the API is identical regardless of which backend you chose.
+
+Both backends are declared as optional peer dependencies, so only the one you install gets bundled.
+
 The library can be split into four main parts:
 
 - The `Output` class is the central component for managing descriptors. It facilitates the creation of outputs to receive funds and enables the signing and finalization of PSBTs (Partially Signed Bitcoin Transactions) for spending UTXOs (Unspent Transaction Outputs).
@@ -108,7 +145,7 @@ The library can be split into four main parts:
 
 ### Output class
 
-The `Output` class is dynamically created by providing a cryptographic secp256k1 engine as shown below:
+The `Output` class is dynamically created by providing a cryptographic secp256k1 engine (or a full `BitcoinLib` adapter — see [Choosing a Bitcoin Backend](#choosing-a-bitcoin-backend)):
 
 ```javascript
 import * as ecc from '@bitcoinerlab/secp256k1';

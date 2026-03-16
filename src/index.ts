@@ -56,6 +56,7 @@ export {
   OutputConstructor
 } from './descriptors';
 export { DescriptorChecksum as checksum } from './checksum';
+export { createBitcoinjsLib } from './adapters/bitcoinjs';
 
 import * as signers from './signers';
 export { signers };
