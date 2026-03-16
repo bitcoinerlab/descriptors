@@ -176,11 +176,7 @@ export interface BitcoinLib {
       output?: Uint8Array;
       network?: Network;
     }): Payment;
-    p2ms(a: {
-      m: number;
-      pubkeys: Uint8Array[];
-      network?: Network;
-    }): Payment;
+    p2ms(a: { m: number; pubkeys: Uint8Array[]; network?: Network }): Payment;
     p2tr(a: {
       internalPubkey?: Uint8Array;
       scriptTree?: Taptree;
@@ -194,22 +190,11 @@ export interface BitcoinLib {
   script: {
     fromASM(asm: string): Uint8Array;
     toStack(scriptBuf: Uint8Array): Uint8Array[];
-    decompile(
-      scriptBuf: Uint8Array
-    ): Array<number | Uint8Array> | null;
-    countNonPushOnlyOPs(
-      chunks: Array<number | Uint8Array>
-    ): number;
+    decompile(scriptBuf: Uint8Array): Array<number | Uint8Array> | null;
+    countNonPushOnlyOPs(chunks: Array<number | Uint8Array>): number;
     number: {
       encode(n: number): Uint8Array;
     };
-  };
-
-  // ── Crypto ──
-  crypto: {
-    hash160(data: Uint8Array): Uint8Array;
-    sha256(data: Uint8Array): Uint8Array;
-    taggedHash(tag: string, data: Uint8Array): Uint8Array;
   };
 
   // ── Transaction parsing ──

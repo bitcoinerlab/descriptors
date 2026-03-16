@@ -244,7 +244,7 @@ export function DescriptorsFactory(
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let lib: BitcoinLib;
   let ecc: TinySecp256k1Interface;
-  if ('payments' in eccOrLib && 'script' in eccOrLib && 'crypto' in eccOrLib) {
+  if ('payments' in eccOrLib && 'script' in eccOrLib) {
     lib = eccOrLib as BitcoinLib;
     // BitcoinLib adapters must expose the raw ecc interface for signature
     // validation (verifySchnorr). We cast to access it.

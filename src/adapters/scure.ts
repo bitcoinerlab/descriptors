@@ -28,7 +28,7 @@ import type {
 } from '../bitcoinLib';
 import type { PsbtInput } from 'bip174';
 import { compare } from 'uint8array-tools';
-import { hash160, sha256, taggedHash } from '../crypto';
+import { hash160, sha256 } from '../crypto';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -956,12 +956,6 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
       number: {
         encode: n => numberEncode(n)
       }
-    },
-
-    crypto: {
-      hash160,
-      sha256,
-      taggedHash
     },
 
     Transaction: {

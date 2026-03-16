@@ -17,7 +17,7 @@ import {
   Transaction,
   Psbt,
   initEccLib,
-  script as bscript
+  script
 } from 'bitcoinjs-lib';
 import { BIP32Factory } from 'bip32';
 import type { BIP32API } from 'bip32';
@@ -27,12 +27,10 @@ import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
   PsbtLike,
-  Payment,
   FinalScriptsFunc,
   ParsedTransaction
 } from '../bitcoinLib';
-import { applyPR2137 } from './applyPR2137';
-import { hash160, sha256, taggedHash } from '../crypto';
+import { applyPR2137 } from '../applyPR2137';
 
 // ─── PsbtLike wrapper around bitcoinjs-lib Psbt ──────────────────────
 
@@ -229,42 +227,8 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
   const BIP32: BIP32API = BIP32Factory(ecc);
 
   return {
-    payments: {
-      p2pk: a =>
-        payments.p2pk(a as Parameters<typeof payments.p2pk>[0]) as Payment,
-      p2pkh: a =>
-        payments.p2pkh(a as Parameters<typeof payments.p2pkh>[0]) as Payment,
-      p2sh: a =>
-        payments.p2sh(a as Parameters<typeof payments.p2sh>[0]) as Payment,
-      p2wpkh: a =>
-        payments.p2wpkh(a as Parameters<typeof payments.p2wpkh>[0]) as Payment,
-      p2wsh: a =>
-        payments.p2wsh(a as Parameters<typeof payments.p2wsh>[0]) as Payment,
-      p2ms: a =>
-        payments.p2ms(a as Parameters<typeof payments.p2ms>[0]) as Payment,
-      p2tr: a =>
-        payments.p2tr(a as Parameters<typeof payments.p2tr>[0]) as Payment
-    },
-
-    script: {
-      fromASM: asm => bscript.fromASM(asm),
-      toStack: buf => bscript.toStack(buf) as Uint8Array[],
-      decompile: buf =>
-        bscript.decompile(buf) as Array<number | Uint8Array> | null,
-      countNonPushOnlyOPs: chunks =>
-        bscript.countNonPushOnlyOPs(
-          chunks as Parameters<typeof bscript.countNonPushOnlyOPs>[0]
-        ),
-      number: {
-        encode: n => bscript.number.encode(n)
-      }
-    },
-
-    crypto: {
-      hash160,
-      sha256,
-      taggedHash
-    },
+    payments,
+    script,
 
     Transaction: {
       fromHex: hex => wrapTransaction(Transaction.fromHex(hex)),
