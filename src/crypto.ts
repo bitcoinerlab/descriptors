@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
+// https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/crypto.ts
 
 import { ripemd160 } from '@noble/hashes/legacy.js';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
@@ -68,10 +69,6 @@ export function sha256(data: Uint8Array): Uint8Array {
 
 export function hash160(data: Uint8Array): Uint8Array {
   return ripemd160(sha256(data));
-}
-
-export function hash256(data: Uint8Array): Uint8Array {
-  return sha256(sha256(data));
 }
 
 export function taggedHash(tag: string, data: Uint8Array): Uint8Array {

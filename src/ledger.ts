@@ -304,9 +304,8 @@ export async function ledgerPolicyFromPsbtInput({
   let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
     const vout = psbt.getTxInput(index).index;
-    const nonWitnessScript = TransactionOps.fromBuffer(input.nonWitnessUtxo).outs[
-      vout
-    ]?.script;
+    const nonWitnessScript = TransactionOps.fromBuffer(input.nonWitnessUtxo)
+      .outs[vout]?.script;
     scriptPubKey = nonWitnessScript;
   } else if (input.witnessUtxo) {
     scriptPubKey = input.witnessUtxo.script;

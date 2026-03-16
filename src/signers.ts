@@ -1,7 +1,12 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { PsbtLike, ECPairInterface, BIP32Interface, BitcoinLib } from './bitcoinLib';
+import type {
+  PsbtLike,
+  ECPairInterface,
+  BIP32Interface,
+  BitcoinLib
+} from './bitcoinLib';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 import {
   importAndValidateLedgerBitcoin,
