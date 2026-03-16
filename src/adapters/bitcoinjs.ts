@@ -32,7 +32,7 @@ import type {
   FinalScriptsFunc,
   ParsedTransaction
 } from '../bitcoinLib';
-import { applyPR2137 } from '../applyPR2137';
+import { applyPR2137 } from './applyPR2137';
 
 // ─── PsbtLike wrapper around bitcoinjs-lib Psbt ──────────────────────
 
@@ -186,6 +186,14 @@ class BitcoinjsPsbtAdapter implements PsbtLike {
       index,
       data as Parameters<Psbt['updateInput']>[1]
     );
+  }
+
+  extractTransaction() {
+    const tx = this.#psbt.extractTransaction();
+    return {
+      toHex: () => tx.toHex(),
+      ins: tx.ins.map(i => ({ witness: i.witness }))
+    };
   }
 
   toBase64(): string {

@@ -8,7 +8,7 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation } from 'bip174';
-import { Psbt as BitcoinjsPsbt, Transaction, crypto, payments, script as bscript } from 'bitcoinjs-lib';
+import { lib } from './getLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { signInputECPair } from '../dist/signers';
 import {
@@ -21,18 +21,12 @@ import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const { Psbt } = DescriptorsFactory(ecc);
 
-const taggedHash = crypto.taggedHash as (tag: string, data: Uint8Array) => Uint8Array;
-const p2tr = payments.p2tr as Parameters<typeof buildTaprootLeafPsbtMetadata>[0]['p2tr'];
-const scriptOps = {
-  fromASM: bscript.fromASM,
-  toStack: bscript.toStack,
-  decompile: bscript.decompile,
-  countNonPushOnlyOPs: bscript.countNonPushOnlyOPs,
-  number: bscript.number
-} as Parameters<typeof satisfyTapTree>[0]['scriptOps'];
+const taggedHash = lib.crypto.taggedHash;
+const p2tr = lib.payments.p2tr as Parameters<typeof buildTaprootLeafPsbtMetadata>[0]['p2tr'];
+const scriptOps = lib.script as Parameters<typeof satisfyTapTree>[0]['scriptOps'];
 const cryptoOps = {
-  hash160: crypto.hash160,
-  sha256: crypto.sha256,
+  hash160: lib.crypto.hash160,
+  sha256: lib.crypto.sha256,
   taggedHash
 } as Parameters<typeof satisfyTapTree>[0]['cryptoOps'];
 
@@ -81,14 +75,41 @@ describe('taproot tree compilation', () => {
 
   const xOnly = (pubkey: Uint8Array): string => toHex(pubkey.slice(1, 33));
 
+  // Build a minimal valid funding tx hex using raw serialization.
+  // Format: version(4) + vinCount(1) + vin(hash32+vout4+scriptLen1+seq4) +
+  //         voutCount(1) + vout(value8+scriptLen+script) + locktime(4)
   const buildFundingTxHex = (
     scriptPubKey: Uint8Array,
     value = 50000n
   ): string => {
-    const tx = new Transaction();
-    tx.addInput(new Uint8Array(32), 0);
-    tx.addOutput(scriptPubKey, value);
-    return tx.toHex();
+    const parts: Uint8Array[] = [];
+    // version = 2
+    parts.push(new Uint8Array([0x02, 0x00, 0x00, 0x00]));
+    // 1 input
+    parts.push(new Uint8Array([0x01]));
+    // prevHash (32 zero bytes) + prevIndex (0) + scriptSig (empty) + sequence
+    parts.push(new Uint8Array(32)); // txid
+    parts.push(new Uint8Array([0x00, 0x00, 0x00, 0x00])); // vout=0
+    parts.push(new Uint8Array([0x00])); // scriptSig length=0
+    parts.push(new Uint8Array([0xff, 0xff, 0xff, 0xff])); // sequence
+    // 1 output
+    parts.push(new Uint8Array([0x01]));
+    // value as 8-byte LE
+    const valueBuf = new Uint8Array(8);
+    let v = value;
+    for (let i = 0; i < 8; i++) { valueBuf[i] = Number(v & 0xffn); v >>= 8n; }
+    parts.push(valueBuf);
+    // scriptPubKey length + script
+    parts.push(new Uint8Array([scriptPubKey.length]));
+    parts.push(scriptPubKey);
+    // locktime = 0
+    parts.push(new Uint8Array([0x00, 0x00, 0x00, 0x00]));
+    // Concatenate and hex-encode
+    const total = parts.reduce((s, p) => s + p.length, 0);
+    const buf = new Uint8Array(total);
+    let offset = 0;
+    for (const p of parts) { buf.set(p, offset); offset += p.length; }
+    return toHex(buf);
   };
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
@@ -290,7 +311,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: leafSignerA, taggedHash });
     finalize({ psbt });
 
-    const witness = BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction().ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBeGreaterThanOrEqual(3);
     const controlBlock = witness[witness.length - 1];
@@ -340,7 +361,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: signer, taggedHash });
     finalize({ psbt });
 
-    const witness = BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction().ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBe(1);
   });

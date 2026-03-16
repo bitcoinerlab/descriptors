@@ -10,7 +10,7 @@
 
 'use strict';
 
-const { DescriptorsFactory } = require('../dist/index.js');
+const { DescriptorsFactory } = require('../dist/descriptors.js');
 const { createScureLib } = require('../dist/adapters/scure.js');
 const ecc = require('@bitcoinerlab/secp256k1');
 const { toHex } = require('uint8array-tools');

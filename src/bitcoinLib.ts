@@ -100,6 +100,10 @@ export interface PsbtLike {
   // ── Update ──
   updateInput(index: number, data: Record<string, unknown>): void;
 
+  // ── Extraction ──
+  /** Extract the finalized transaction from the PSBT. */
+  extractTransaction(): ExtractedTransaction;
+
   // ── Serialization ──
   toBase64(): string;
 }
@@ -115,6 +119,13 @@ export type FinalScriptsFunc = (
   finalScriptSig: Uint8Array | undefined;
   finalScriptWitness: Uint8Array | undefined;
 };
+
+// ─── Extracted Transaction (from finalized PSBT) ────────────────────
+
+export interface ExtractedTransaction {
+  toHex(): string;
+  ins: Array<{ witness?: Uint8Array[] }>;
+}
 
 // ─── Parsed Transaction ──────────────────────────────────────────────
 

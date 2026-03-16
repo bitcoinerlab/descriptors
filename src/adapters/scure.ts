@@ -29,6 +29,7 @@ import type {
   Taptree
 } from '../bitcoinLib';
 import type { PsbtInput } from 'bip174';
+import { compare } from 'uint8array-tools';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -597,6 +598,21 @@ class ScurePsbtAdapter implements PsbtLike {
     this.#tx.updateInput(index, data as any);
   }
 
+  extractTransaction() {
+    const rawBytes = this.#tx.extract();
+    const parsed = RawTx.decode(rawBytes);
+    const witnesses = parsed.witnesses;
+    return {
+      toHex: () => hex.encode(rawBytes),
+      ins: parsed.inputs.map((_inp, i) => {
+        const w = witnesses?.[i];
+        const result: { witness?: Uint8Array[] } = {};
+        if (w && w.length > 0) result.witness = w as Uint8Array[];
+        return result;
+      })
+    };
+  }
+
   toBase64(): string {
     // Convert PSBT bytes to base64
     const psbtBytes = this.#tx.toPSBT();
@@ -904,11 +920,24 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
           } else {
             result = btc.p2tr(a.internalPubkey, undefined, net);
           }
-          return {
+          const payment: Payment = {
             output: result.script,
             address: result.address,
             internalPubkey: a.internalPubkey
-          } as Payment;
+          };
+          // When redeem is provided, find the matching leaf and build the
+          // witness array [tapScript, controlBlock] that bitcoinjs-lib returns.
+          if (a.redeem?.output && result.leaves) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const matchingLeaf = (result.leaves as any[]).find(
+              (leaf: { script: Uint8Array }) =>
+                compare(leaf.script, a.redeem!.output) === 0
+            );
+            if (matchingLeaf) {
+              payment.witness = [matchingLeaf.script, matchingLeaf.controlBlock];
+            }
+          }
+          return payment;
         }
         if (a.output) {
           const decoded = btc.OutScript.decode(a.output);

@@ -7,7 +7,7 @@
 // Note that the fixtures are generated using @bitcoinerlab/coinselect using
 // test/tools
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from './getLib';
 import { DescriptorsFactory } from '../dist';
 import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
@@ -63,7 +63,6 @@ describe('vsize', () => {
             })
         );
 
-        const psbt = Psbt.fromBase64(fixture.psbt);
         // Deserialize signaturesPerInput
         const signaturesPerInput = fixture.signaturesPerInput.map(signatures =>
           signatures.map(sig => ({
@@ -84,7 +83,7 @@ describe('vsize', () => {
         // Check if the fixture size using signatures is exactly the
         // same as the signed one:
         if (txSize !== expectedSize)
-          console.error(psbt.extractTransaction().toHex());
+          console.error('PSBT (base64):', fixture.psbt);
         expect(txSize).toBe(expectedSize);
 
         // Check if the best guess fixture size is within the expected range:
