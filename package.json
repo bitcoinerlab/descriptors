@@ -64,7 +64,6 @@
   "peerDependencies": {
     "@ledgerhq/ledger-bitcoin": "^0.3.0",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/btc-signer": "^2.0.1",
     "bitcoinjs-lib": "^7.0.1"
@@ -82,9 +81,6 @@
     "@scure/base": {
       "optional": true
     },
-    "@noble/hashes": {
-      "optional": true
-    },
     "@noble/curves": {
       "optional": true
     }
@@ -97,7 +93,6 @@
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.0",
     "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
@@ -116,6 +111,7 @@
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
     "@bitcoinerlab/secp256k1": "^1.2.0",
+    "@noble/hashes": "^2.0.1",
     "bip174": "^3.0.0",
     "bip32": "^5.0.1",
     "ecpair": "^3.0.1",
