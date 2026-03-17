@@ -20,7 +20,6 @@ import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
   Psbt,
-  PsbtLikeInput,
   PsbtLikeInputUpdate,
   Payment,
   FinalScriptsFunc,
@@ -362,7 +361,7 @@ class ScurePsbtAdapter implements Psbt {
     };
   }
 
-  addInput(input: PsbtLikeInput): void {
+  addInput(input: PsbtInput): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.#tx.addInput(input as any);
   }
@@ -954,11 +953,7 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
     ECPair,
     BIP32,
 
-    ecc,
-
-    initEccLib: () => {
-      // No-op for scure — ecc is used directly, no global state to initialize
-    }
+    ecc
   };
 }
 

@@ -10,12 +10,7 @@ import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 import { hash160 } from './crypto';
-
-/** Subset of BitcoinLib['script'] needed by this module. */
-interface ScriptLib {
-  fromASM(asm: string): Uint8Array;
-  number: { encode(n: number): Uint8Array };
-}
+import { BitcoinLib } from '../dist';
 
 /**
  * Expand a miniscript to a generalized form using variables instead of key
@@ -137,7 +132,7 @@ function substituteAsm({
 }: {
   expandedAsm: string;
   expansionMap: ExpansionMap;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): string {
   //Replace back variables into the pubkeys previously computed.
   let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
@@ -179,7 +174,7 @@ export function miniscript2Script({
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   tapscript?: boolean;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): Uint8Array {
   const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
@@ -237,7 +232,7 @@ export function satisfyMiniscript({
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
   tapscript?: boolean;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): {
   scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
@@ -365,7 +360,10 @@ export function satisfyMiniscript({
  * @param {number} number An integer.
  * @returns {string} Returns `"OP_0"` for `number === 0` and a hex string representing other numbers in Little Endian encoding.
  */
-export function numberEncodeAsm(number: number, scriptLib: ScriptLib) {
+export function numberEncodeAsm(
+  number: number,
+  scriptLib: BitcoinLib['script']
+) {
   if (Number.isSafeInteger(number) === false) {
     throw new Error(`Error: invalid number ${number}`);
   }

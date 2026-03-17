@@ -7,8 +7,7 @@ import type {
   Psbt,
   BitcoinLib,
   ECPairAPI,
-  BIP32API,
-  PartialSig
+  BIP32API
 } from './bitcoinLib';
 import {
   tapleafHash,
@@ -16,6 +15,7 @@ import {
 } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, fromHex, toHex } from 'uint8array-tools';
+import type { PartialSig } from 'bip174';
 
 import type {
   TinySecp256k1Interface,
@@ -245,7 +245,7 @@ export function DescriptorsFactory(
   let lib: BitcoinLib;
   let ecc: TinySecp256k1Interface;
   if ('payments' in eccOrLib && 'script' in eccOrLib) {
-    lib = eccOrLib as BitcoinLib;
+    lib = eccOrLib;
     // BitcoinLib adapters must expose the raw ecc interface for signature
     // validation (verifySchnorr). We cast to access it.
     const libWithEcc = eccOrLib as BitcoinLib & { ecc: TinySecp256k1Interface };
@@ -255,15 +255,12 @@ export function DescriptorsFactory(
       );
     ecc = libWithEcc.ecc;
   } else {
-    ecc = eccOrLib as TinySecp256k1Interface;
+    ecc = eccOrLib;
     // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createBitcoinjsLib } = require('./adapters/bitcoinjs') as {
-      createBitcoinjsLib: (e: TinySecp256k1Interface) => BitcoinLib;
-    };
+    const { createBitcoinjsLib } = require('./adapters/bitcoinjs');
     lib = createBitcoinjsLib(ecc);
   }
-  lib.initEccLib();
   const { payments, script: scriptLib } = lib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const address = lib.address;

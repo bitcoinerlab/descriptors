@@ -17,10 +17,8 @@ import {
   initEccLib,
   script
 } from 'bitcoinjs-lib';
-import { BIP32Factory } from 'bip32';
-import type { BIP32API } from 'bip32';
-import { ECPairFactory } from 'ecpair';
-import type { ECPairAPI } from 'ecpair';
+import { type BIP32API, BIP32Factory } from 'bip32';
+import { type ECPairAPI, ECPairFactory } from 'ecpair';
 import type { TinySecp256k1Interface } from '../types';
 import type { BitcoinLib } from '../bitcoinLib';
 
@@ -40,16 +38,11 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
   return {
     payments,
     script,
-
     Transaction,
-
     address,
-
     Psbt,
-
     ECPair,
     BIP32,
-    ecc,
-    initEccLib: () => initEccLib(ecc)
+    ecc
   };
 }

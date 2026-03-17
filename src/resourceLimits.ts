@@ -32,18 +32,12 @@ const MAX_STANDARD_SCRIPTSIG_SIZE = 1650;
 const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE = 80;
 const MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE = 80;
 
-/** Subset of BitcoinLib['script'] needed by this module. */
-interface ScriptLib {
-  decompile(scriptBuf: Uint8Array): Array<number | Uint8Array> | null;
-  countNonPushOnlyOPs(chunks: Array<number | Uint8Array>): number;
-}
-
 export function assertScriptNonPushOnlyOpsLimit({
   script,
   scriptLib
 }: {
   script: Uint8Array;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): void {
   const chunks = scriptLib.decompile(script);
   if (!chunks) throw new Error(`Error: could not decompile ${script}`);
