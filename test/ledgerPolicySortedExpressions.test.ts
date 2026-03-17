@@ -18,7 +18,7 @@ import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 const NETWORK = networks.regtest;
 const { Output, BIP32, Psbt } = DescriptorsFactory(ecc);
 const lib = createBitcoinjsLib(ecc);
-const TransactionOps = lib.Transaction;
+const Transaction= lib.Transaction;
 
 function makeMaster(seed: number): BIP32Interface {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
@@ -268,7 +268,7 @@ describe('ledger policy templates preserve sorted expressions', () => {
       ledgerManager,
       psbt,
       index: 0,
-      TransactionOps
+      Transaction
     });
 
     expect(policy?.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
@@ -326,7 +326,7 @@ describe('ledger policy templates preserve sorted expressions', () => {
       ledgerManager,
       psbt,
       index: 0,
-      TransactionOps
+      Transaction
     });
 
     expect(policy?.ledgerTemplate).toEqual(
