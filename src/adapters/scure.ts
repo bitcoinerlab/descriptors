@@ -25,13 +25,12 @@ import type {
   Payment,
   FinalScriptsFunc,
   Transaction,
-  Network,
   Taptree
 } from '../bitcoinLib';
 import type { PsbtInput } from 'bip174';
 import { compare } from 'uint8array-tools';
 import { hash160, sha256 } from '../crypto';
-import { networks } from '../networks';
+import { type Network, networks } from '../networks';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 

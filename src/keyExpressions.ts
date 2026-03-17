@@ -1,7 +1,8 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { Network, ECPairAPI, BIP32API } from './bitcoinLib';
+import type { ECPairAPI, BIP32API } from './bitcoinLib';
+import type { Network } from './networks';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';

@@ -44,12 +44,12 @@ export type {
 export type {
   BitcoinLib,
   Psbt,
-  Network,
   Payment,
   FinalScriptsFunc,
   Transaction,
   Taptree
 } from './bitcoinLib';
+export type { Network } from './networks';
 export {
   DescriptorsFactory,
   OutputInstance,

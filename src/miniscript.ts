@@ -1,9 +1,9 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { Network, ECPairAPI, BIP32API } from './bitcoinLib';
+import type { ECPairAPI, BIP32API } from './bitcoinLib';
 import { parseKeyExpression } from './keyExpressions';
-import { networks } from './networks';
+import { type Network, networks } from './networks';
 import * as RE from './re';
 import type { PartialSig } from 'bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';

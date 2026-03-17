@@ -3,7 +3,6 @@
 
 import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
 import type {
-  Network,
   Payment,
   Psbt,
   BitcoinLib,
@@ -28,7 +27,7 @@ import type {
 
 import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
 import { DescriptorChecksum } from './checksum';
-import { networks } from './networks';
+import { type Network, networks } from './networks';
 
 import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
 import * as RE from './re';

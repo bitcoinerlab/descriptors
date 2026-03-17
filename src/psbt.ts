@@ -9,12 +9,12 @@ import type {
 } from 'bip174';
 import type { KeyInfo } from './types';
 import type {
-  Network,
   Psbt,
   FinalScriptsFunc,
   BitcoinLib,
   PsbtTxInput
 } from './bitcoinLib';
+import type { Network } from './networks';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
 

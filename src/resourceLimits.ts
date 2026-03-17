@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-import type { Network, BitcoinLib } from './bitcoinLib';
+import type { BitcoinLib } from './bitcoinLib';
+import type { Network } from './networks';
 
 // See Sipa's Miniscript "Resource limitations":
 // https://bitcoin.sipa.be/miniscript/

@@ -210,4 +210,3 @@ export type {
   TapLeafScript,
   PartialSig
 };
-export type { Network } from './networks';

@@ -1,10 +1,10 @@
 // Distributed under the MIT software license
 
-import type { Network, BitcoinLib, Taptree } from './bitcoinLib';
+import type { BitcoinLib, Taptree } from './bitcoinLib';
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
-import { networks } from './networks';
+import { type Network, networks } from './networks';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
 import type { PartialSig, TapBip32Derivation } from 'bip174';
