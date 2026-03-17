@@ -23,8 +23,6 @@ import {
 } from './tapTree';
 import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
-type ScriptLib = BitcoinLib['script'];
-
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
 export type TapLeafExpansionOverride = {
@@ -106,7 +104,7 @@ export function buildTapTreeInfo({
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): TapTreeInfoNode {
   // Defensive: parseTapTreeExpression() already enforces this for descriptor
   // strings, but buildTapTreeInfo is exported and can be called directly.
@@ -532,7 +530,7 @@ export function collectTaprootLeafSatisfactions({
   signatures: PartialSig[];
   timeConstraints?: TimeConstraints;
   tapLeaf?: Uint8Array | string;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): TaprootLeafSatisfaction[] {
   const candidates = selectTapLeafCandidates({
     tapTreeInfo,
@@ -688,7 +686,7 @@ export function satisfyTapTree({
   preimages: Preimage[];
   tapLeaf?: Uint8Array | string;
   timeConstraints?: TimeConstraints;
-  scriptLib: ScriptLib;
+  scriptLib: BitcoinLib['script'];
 }): TaprootLeafSatisfaction {
   const satisfactions = collectTaprootLeafSatisfactions({
     tapTreeInfo,

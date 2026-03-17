@@ -1,6 +1,5 @@
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { compare } from 'uint8array-tools';
-
 import { splitTopLevelComma } from './parseUtils';
 import type { ExpansionMap } from './types';
 
@@ -104,9 +103,7 @@ export function collectTapTreeLeaves(
   return leaves;
 }
 
-function computeTapLeafHash(
-  leaf: TapLeafInfo
-): Uint8Array {
+function computeTapLeafHash(leaf: TapLeafInfo): Uint8Array {
   return tapleafHash({ output: leaf.tapScript, version: leaf.version });
 }
 

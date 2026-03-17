@@ -337,11 +337,11 @@ export function satisfyMiniscript({
  * However, the `0` number is an edge case that we specially handle with this
  * function.
  *
- * bitcoinjs-lib's `bscript.number.encode(0)` produces an empty array.
+ * bitcoinjs-lib's `scriptLib.number.encode(0)` produces an empty array.
  * This is what the Bitcoin interpreter does and it is what `script.number.encode` was
  * implemented to do.
  *
- * The problem is `bscript.number.encode(0).toString('hex')` produces an
+ * The problem is `scriptLib.number.encode(0).toString('hex')` produces an
  * empty string and thus it should not be used to serialize number zero before `fromASM`.
  *
  * A zero should produce the OP_0 ASM symbolic code (corresponding to a `0` when

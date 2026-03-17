@@ -102,7 +102,7 @@ export function signECPair({
   //taptoot automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
   const results: boolean[] = [];
-  for (const index of range(psbt.inputCount)) {
+  for (const index of range(psbt.data.inputs.length)) {
     try {
       signInputECPair({ psbt, index, ecpair });
       results.push(true);

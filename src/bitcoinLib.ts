@@ -45,7 +45,7 @@ export interface Payment {
  * `bitcoinjs-lib.Psbt` instances can be passed directly to public APIs.
  * The scure adapter maps `@scure/btc-signer.Transaction` to this surface.
  */
-interface PsbtTxInput {
+export interface PsbtTxInput {
   hash: Uint8Array;
   index: number;
   sequence?: number;

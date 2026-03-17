@@ -11,18 +11,14 @@ import type { KeyInfo } from './types';
 import type {
   Network,
   Psbt,
-  Transaction,
   FinalScriptsFunc,
-  BitcoinLib
+  BitcoinLib,
+  PsbtTxInput
 } from './bitcoinLib';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
 
-interface PsbtInputExtended extends PsbtInput {
-  hash: Uint8Array;
-  index: number;
-  sequence?: number;
-}
+interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
 function reverseBytes(buffer: Uint8Array): Uint8Array {
   if (buffer.length < 1) return buffer;
@@ -37,12 +33,17 @@ function reverseBytes(buffer: Uint8Array): Uint8Array {
   }
   return copy;
 }
-
 export function finalScriptsFuncFactory(
   scriptSatisfaction: Uint8Array,
   network: Network,
   payments: BitcoinLib['payments']
 ): FinalScriptsFunc {
+  /**
+   * This function must do two things:
+   * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
+   *   ie. `Can not finalize input #${inputIndex}`
+   * 2. Create finalScriptSig and finalScriptWitness.
+   */
   const finalScriptsFunc: FinalScriptsFunc = (
     _index,
     _input,
@@ -56,10 +57,7 @@ export function finalScriptsFuncFactory(
     //p2wsh
     if (isSegwit && !isP2SH) {
       const payment = payments.p2wsh({
-        redeem: {
-          input: scriptSatisfaction,
-          output: lockingScript
-        },
+        redeem: { input: scriptSatisfaction, output: lockingScript },
         network
       });
       if (!payment.witness)
@@ -70,10 +68,7 @@ export function finalScriptsFuncFactory(
     else if (isSegwit && isP2SH) {
       const payment = payments.p2sh({
         redeem: payments.p2wsh({
-          redeem: {
-            input: scriptSatisfaction,
-            output: lockingScript
-          },
+          redeem: { input: scriptSatisfaction, output: lockingScript },
           network
         }),
         network
@@ -86,10 +81,7 @@ export function finalScriptsFuncFactory(
     //p2sh
     else {
       finalScriptSig = payments.p2sh({
-        redeem: {
-          input: scriptSatisfaction,
-          output: lockingScript
-        },
+        redeem: { input: scriptSatisfaction, output: lockingScript },
         network
       }).input;
     }
@@ -163,7 +155,7 @@ export function addPsbtInput({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const tx: Transaction = Transaction.fromHex(txHex);
+    const tx = Transaction.fromHex(txHex);
     const out = tx.outs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script;
@@ -285,5 +277,5 @@ export function addPsbtInput({
   if (redeemScript) input.redeemScript = redeemScript;
 
   psbt.addInput(input);
-  return psbt.inputCount - 1;
+  return psbt.data.inputs.length - 1;
 }
