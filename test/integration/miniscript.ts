@@ -3,7 +3,7 @@
 
 //npm run test:integration
 
-import { networks } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
@@ -32,7 +32,7 @@ import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 import { toHex } from 'uint8array-tools';
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair, Psbt } = DescriptorsFactory(ecc);
+const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();
@@ -141,7 +141,7 @@ const keys: {
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         inputFinalizer({ psbt });
-        const spendTx = (psbt as any).raw.extractTransaction();
+        const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.
         await regtestUtils.mine(BLOCKS - 1);
@@ -179,7 +179,7 @@ const keys: {
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
             psbt.locktime
-          }, input sequence: ${psbt.getTxInput(0)?.sequence?.toString(
+          }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
             16
           )}, ${output
             .expand()

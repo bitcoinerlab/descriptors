@@ -4,7 +4,7 @@
 //npm run test:integration:soft
 
 console.log('Standard output integration tests');
-import { networks } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 const regtestUtils = new RegtestUtils();
@@ -28,7 +28,7 @@ import { toHex } from 'uint8array-tools';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair, Psbt } = DescriptorsFactory(ecc);
+const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:
@@ -82,7 +82,7 @@ const expressionsECPair = [
     const psbt = new Psbt();
     //Add an input and update timelock (if necessary):
     const inputFinalizer = outputBIP32.updatePsbtAsInput({ psbt, vout, txHex });
-    const index = psbt.inputCount - 1;
+    const index = psbt.data.inputs.length - 1;
     if (outputBIP32.isSegwit()) {
       //Do some additional tests. Create a tmp psbt using txId and value instead
       //of txHex using Segwit. Passing the value instead of the txHex is not
@@ -102,14 +102,14 @@ const expressionsECPair = [
         txId,
         value: BigInt(INITIAL_VALUE)
       });
-      const indexSegwit = tmpPsbtSegwit.inputCount - 1;
+      const indexSegwit = tmpPsbtSegwit.data.inputs.length - 1;
       if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
         throw new Error(`Error: did not warn about fee attacks`);
       console.warn = originalWarn;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nonFinalTxHex = (psbt as any).raw.__CACHE.__TX.toHex();
+      const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nonFinalSegwitTxHex = (tmpPsbtSegwit as any).raw.__CACHE.__TX.toHex();
+      const nonFinalSegwitTxHex = (tmpPsbtSegwit as any).__CACHE.__TX.toHex();
       if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
         throw new Error(
           `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
@@ -123,7 +123,7 @@ const expressionsECPair = [
     }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
     signBIP32({ psbt, masterNode });
     inputFinalizer({ psbt });
-    const spendTx = (psbt as any).raw.extractTransaction();
+    const spendTx = psbt.extractTransaction();
     await regtestUtils.broadcast(spendTx.toHex());
     await regtestUtils.verify({
       txId: spendTx.getId(),
@@ -177,7 +177,7 @@ const expressionsECPair = [
     });
     signECPair({ psbt: psbtECPair, ecpair });
     inputFinalizer({ psbt: psbtECPair });
-    const spendTxECPair = (psbtECPair as any).raw.extractTransaction();
+    const spendTxECPair = psbtECPair.extractTransaction();
     await regtestUtils.broadcast(spendTxECPair.toHex());
     await regtestUtils.verify({
       txId: spendTxECPair.getId(),
@@ -217,7 +217,7 @@ const expressionsECPair = [
   signBIP32({ psbt: psbtMultiInputs, masterNode });
   finalizers.forEach(finalizer => finalizer({ psbt: psbtMultiInputs }));
 
-  const spendTxMultiInputs = (psbtMultiInputs as any).raw.extractTransaction();
+  const spendTxMultiInputs = psbtMultiInputs.extractTransaction();
   await regtestUtils.broadcast(spendTxMultiInputs.toHex());
   await regtestUtils.verify({
     txId: spendTxMultiInputs.getId(),

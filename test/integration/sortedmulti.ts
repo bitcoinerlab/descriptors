@@ -5,7 +5,7 @@
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { networks } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -25,7 +25,7 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
-const { Output, BIP32, ECPair, Psbt } = DescriptorsFactory(ecc);
+const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
 const masterNode = BIP32.fromSeed(seed, NETWORK);
 
 // Helpers -----------------------------------------------------
@@ -123,7 +123,7 @@ async function runIntegration(descriptor: string) {
   // Finalize
   finalizeInput({ psbt });
 
-  const tx = (psbt as any).raw.extractTransaction();
+  const tx = psbt.extractTransaction();
 
   // Broadcast
   await regtestUtils.broadcast(tx.toHex());

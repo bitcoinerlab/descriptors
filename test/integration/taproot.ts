@@ -3,7 +3,7 @@
 console.log('Taproot integration tests');
 
 import { createHash } from 'crypto';
-import { networks } from 'bitcoinjs-lib';
+import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
@@ -26,7 +26,7 @@ import type { BIP32Interface } from 'bip32';
 import type { PartialSig, PsbtInput } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
-const { Output, ECPair, BIP32, expand, Psbt } = DescriptorsFactory(ecc);
+const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
 const { signInputECPair, signBIP32 } = signers;
 const regtestUtils = new RegtestUtils();
 
@@ -92,7 +92,7 @@ const runScenario = async ({
   const psbt = new Psbt({ network: NETWORK });
   const finalize = input.updatePsbtAsInput({ psbt, vout, txHex });
 
-  const beforeSignInput = psbt.getInput(0);
+  const beforeSignInput = psbt.data.inputs[0];
   if (!beforeSignInput) throw new Error('Error: missing PSBT input');
 
   if (expectScriptPath) {
@@ -130,13 +130,13 @@ const runScenario = async ({
     signInputECPair({ psbt, index: 0, ecpair: signer });
   }
 
-  const afterSignInput = psbt.getInput(0);
+  const afterSignInput = psbt.data.inputs[0];
   if (!afterSignInput)
     throw new Error('Error: missing PSBT input after signing');
   const signatures = signaturesFromInput(afterSignInput);
 
   finalize({ psbt });
-  const tx = (psbt as any).raw.extractTransaction();
+  const tx = psbt.extractTransaction();
   const realVsize = tx.virtualSize();
 
   const estimatedVsize = vsize([input], [destination], [signatures]);

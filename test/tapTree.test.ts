@@ -7,7 +7,8 @@ import {
   selectTapLeafCandidates
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
-import type { TapBip32Derivation } from 'bip174';
+import type { TapBip32Derivation, TapLeafScript } from 'bip174';
+import { Psbt as BitcoinjsPsbt, Transaction } from 'bitcoinjs-lib';
 import { lib } from './getLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { signInputECPair } from '../dist/signers';
@@ -20,10 +21,16 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const { Psbt } = DescriptorsFactory(ecc);
+const payments = lib.payments as NonNullable<
+  Parameters<typeof buildTaprootLeafPsbtMetadata>[0]['payments']
+>;
+const scriptLib = lib.script as NonNullable<
+  Parameters<typeof satisfyTapTree>[0]['scriptLib']
+>;
 
-const p2tr = lib.payments.p2tr as Parameters<
-  typeof buildTaprootLeafPsbtMetadata
->[0]['p2tr'];
+function extractTransaction(psbt: { toBase64(): string }) {
+  return BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction();
+}
 
 function createNextSigner<T>(
   ECPair: {
@@ -70,47 +77,14 @@ describe('taproot tree compilation', () => {
 
   const xOnly = (pubkey: Uint8Array): string => toHex(pubkey.slice(1, 33));
 
-  // Build a minimal valid funding tx hex using raw serialization.
-  // Format: version(4) + vinCount(1) + vin(hash32+vout4+scriptLen1+seq4) +
-  //         voutCount(1) + vout(value8+scriptLen+script) + locktime(4)
   const buildFundingTxHex = (
     scriptPubKey: Uint8Array,
     value = 50000n
   ): string => {
-    const parts: Uint8Array[] = [];
-    // version = 2
-    parts.push(new Uint8Array([0x02, 0x00, 0x00, 0x00]));
-    // 1 input
-    parts.push(new Uint8Array([0x01]));
-    // prevHash (32 zero bytes) + prevIndex (0) + scriptSig (empty) + sequence
-    parts.push(new Uint8Array(32)); // txid
-    parts.push(new Uint8Array([0x00, 0x00, 0x00, 0x00])); // vout=0
-    parts.push(new Uint8Array([0x00])); // scriptSig length=0
-    parts.push(new Uint8Array([0xff, 0xff, 0xff, 0xff])); // sequence
-    // 1 output
-    parts.push(new Uint8Array([0x01]));
-    // value as 8-byte LE
-    const valueBuf = new Uint8Array(8);
-    let v = value;
-    for (let i = 0; i < 8; i++) {
-      valueBuf[i] = Number(v & 0xffn);
-      v >>= 8n;
-    }
-    parts.push(valueBuf);
-    // scriptPubKey length + script
-    parts.push(new Uint8Array([scriptPubKey.length]));
-    parts.push(scriptPubKey);
-    // locktime = 0
-    parts.push(new Uint8Array([0x00, 0x00, 0x00, 0x00]));
-    // Concatenate and hex-encode
-    const total = parts.reduce((s, p) => s + p.length, 0);
-    const buf = new Uint8Array(total);
-    let offset = 0;
-    for (const p of parts) {
-      buf.set(p, offset);
-      offset += p.length;
-    }
-    return toHex(buf);
+    const tx = new Transaction();
+    tx.addInput(new Uint8Array(32), 0);
+    tx.addOutput(scriptPubKey, value);
+    return tx.toHex();
   };
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
@@ -152,7 +126,7 @@ describe('taproot tree compilation', () => {
     const metadata = buildTaprootLeafPsbtMetadata({
       tapTreeInfo,
       internalPubkey,
-      p2tr
+      payments
     });
     //console.log(JSON.stringify(metadata, null, 2));
     expect(metadata).toHaveLength(2);
@@ -235,13 +209,13 @@ describe('taproot tree compilation', () => {
       vout: 0
     });
 
-    const input = psbt.getInput(0);
+    const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
     expect(input.tapInternalKey).toBeInstanceOf(Uint8Array);
     expect(input.tapInternalKey?.length).toBe(32);
     expect(input.tapLeafScript).toBeDefined();
     expect(input.tapLeafScript).toHaveLength(2);
-    input.tapLeafScript?.forEach(entry => {
+    input.tapLeafScript?.forEach((entry: TapLeafScript) => {
       expect(entry.script.length).toBeGreaterThan(0);
       expect(entry.controlBlock.length).toBe(65);
     });
@@ -251,15 +225,16 @@ describe('taproot tree compilation', () => {
     const internalPubkey = output.expand().expansionMap?.['@0']?.pubkey;
     if (!internalPubkey) throw new Error('expected internal pubkey');
     const internalDerivation = input.tapBip32Derivation?.find(
-      entry => compare(entry.pubkey, internalPubkey) === 0
+      (entry: TapBip32Derivation) => compare(entry.pubkey, internalPubkey) === 0
     );
     expect(internalDerivation?.leafHashes).toHaveLength(0);
     const scriptDerivations =
       input.tapBip32Derivation?.filter(
-        entry => compare(entry.pubkey, internalPubkey) !== 0
+        (entry: TapBip32Derivation) =>
+          compare(entry.pubkey, internalPubkey) !== 0
       ) || [];
     expect(scriptDerivations).toHaveLength(2);
-    scriptDerivations.forEach(entry => {
+    scriptDerivations.forEach((entry: TapBip32Derivation) => {
       expect(entry.leafHashes).toHaveLength(1);
     });
   });
@@ -282,7 +257,7 @@ describe('taproot tree compilation', () => {
       vout: 0
     });
 
-    const input = psbt.getInput(0);
+    const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
     expect(input.tapLeafScript).toBeUndefined();
   });
@@ -310,7 +285,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
     finalize({ psbt });
 
-    const witness = psbt.extractTransaction().ins[0]?.witness;
+    const witness = extractTransaction(psbt).ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBeGreaterThanOrEqual(3);
     const controlBlock = witness[witness.length - 1];
@@ -353,14 +328,14 @@ describe('taproot tree compilation', () => {
     const finalize = output.updatePsbtAsInput({ psbt, txHex, vout: 0 });
     psbt.addOutput({ script: Uint8Array.from([0x51]), value: 40000n });
 
-    const input = psbt.getInput(0);
+    const input = psbt.data.inputs[0];
     if (!input) throw new Error('missing psbt input');
     expect(input.tapLeafScript).toBeUndefined();
 
     signInputECPair({ psbt, index: 0, ecpair: signer });
     finalize({ psbt });
 
-    const witness = psbt.extractTransaction().ins[0]?.witness;
+    const witness = extractTransaction(psbt).ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBe(1);
   });
@@ -508,7 +483,7 @@ describe('taproot tree satisfactions', () => {
           preimage: toHex(PREIMAGE)
         }
       ],
-      scriptOps
+      scriptLib
     });
     expect(best.leaf.expression).toEqual(`pk(${LEAF_KEY})`);
   });
@@ -536,7 +511,7 @@ describe('taproot tree satisfactions', () => {
           preimage: toHex(PREIMAGE)
         }
       ],
-      scriptOps
+      scriptLib
     });
     expect(best.leaf.expression.startsWith('and_v(')).toBe(true);
     const hasPreimage = best.stackItems.some(
@@ -592,7 +567,7 @@ describe('taproot tree satisfactions', () => {
         signatures,
         tapLeaf: `pk(${LEAF_KEY})`,
         preimages: [],
-        scriptOps
+        scriptLib
       })
     ).toThrow('ambiguous');
   });
