@@ -250,15 +250,8 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
 
     ECPair,
     BIP32,
-
-    networks: {
-      bitcoin: networks.bitcoin as unknown as import('../bitcoinLib').Network,
-      testnet: networks.testnet as unknown as import('../bitcoinLib').Network,
-      regtest: networks.regtest as unknown as import('../bitcoinLib').Network
-    },
-
+    networks,
     ecc,
-
     initEccLib: () => initEccLib(ecc)
   };
 }
