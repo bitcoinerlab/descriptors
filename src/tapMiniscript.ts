@@ -22,8 +22,7 @@ import {
 } from './tapTree';
 import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
-type ScriptOps = BitcoinLib['script'];
-type P2trFn = BitcoinLib['payments']['p2tr'];
+type ScriptLib = BitcoinLib['script'];
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
@@ -97,7 +96,7 @@ export function buildTapTreeInfo({
   BIP32,
   ECPair,
   leafExpansionOverride,
-  scriptOps
+  scriptLib
 }: {
   tapTree: TapTreeNode;
   network: Network;
@@ -106,7 +105,7 @@ export function buildTapTreeInfo({
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): TapTreeInfoNode {
   // Defensive: parseTapTreeExpression() already enforces this for descriptor
   // strings, but buildTapTreeInfo is exported and can be called directly.
@@ -144,7 +143,7 @@ export function buildTapTreeInfo({
         expandedMiniscript: expanded.expandedMiniscript,
         expansionMap,
         tapscript: true,
-        scriptOps
+        scriptLib
       });
     }
 
@@ -164,7 +163,7 @@ export function buildTapTreeInfo({
       BIP32,
       ECPair,
       leafExpansionOverride,
-      scriptOps
+      scriptLib
     }),
     right: buildTapTreeInfo({
       tapTree: tapTree.right,
@@ -172,7 +171,7 @@ export function buildTapTreeInfo({
       BIP32,
       ECPair,
       leafExpansionOverride,
-      scriptOps
+      scriptLib
     })
   };
 }
@@ -254,11 +253,11 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
 export function buildTaprootLeafPsbtMetadata({
   tapTreeInfo,
   internalPubkey,
-  p2tr
+  payments
 }: {
   tapTreeInfo: TapTreeInfoNode;
   internalPubkey: Uint8Array;
-  p2tr: P2trFn;
+  payments: BitcoinLib['payments'];
 }): TaprootPsbtLeafMetadata[] {
   const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
   const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
@@ -273,7 +272,7 @@ export function buildTaprootLeafPsbtMetadata({
       output: leaf.tapScript,
       version: leaf.version
     });
-    const payment = p2tr({
+    const payment = payments.p2tr({
       internalPubkey: normalizedInternalPubkey,
       scriptTree,
       redeem: {
@@ -525,14 +524,14 @@ export function collectTaprootLeafSatisfactions({
   signatures,
   timeConstraints,
   tapLeaf,
-  scriptOps
+  scriptLib
 }: {
   tapTreeInfo: TapTreeInfoNode;
   preimages: Preimage[];
   signatures: PartialSig[];
   timeConstraints?: TimeConstraints;
   tapLeaf?: Uint8Array | string;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): TaprootLeafSatisfaction[] {
   const candidates = selectTapLeafCandidates({
     tapTreeInfo,
@@ -590,9 +589,9 @@ export function collectTaprootLeafSatisfactions({
         preimages,
         ...(timeConstraints !== undefined ? { timeConstraints } : {}),
         tapscript: true,
-        scriptOps
+        scriptLib
       });
-      const satisfactionStackItems = scriptOps.toStack(scriptSatisfaction);
+      const satisfactionStackItems = scriptLib.toStack(scriptSatisfaction);
       assertTaprootScriptPathSatisfactionResourceLimits({
         stackItems: satisfactionStackItems
       });
@@ -681,14 +680,14 @@ export function satisfyTapTree({
   preimages,
   tapLeaf,
   timeConstraints,
-  scriptOps
+  scriptLib
 }: {
   tapTreeInfo: TapTreeInfoNode;
   signatures: PartialSig[];
   preimages: Preimage[];
   tapLeaf?: Uint8Array | string;
   timeConstraints?: TimeConstraints;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): TaprootLeafSatisfaction {
   const satisfactions = collectTaprootLeafSatisfactions({
     tapTreeInfo,
@@ -696,7 +695,7 @@ export function satisfyTapTree({
     signatures,
     ...(tapLeaf !== undefined ? { tapLeaf } : {}),
     ...(timeConstraints !== undefined ? { timeConstraints } : {}),
-    scriptOps
+    scriptLib
   });
   return selectBestTaprootLeafSatisfaction(satisfactions);
 }

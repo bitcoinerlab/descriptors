@@ -11,7 +11,7 @@ import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 import { hash160 } from './crypto';
 
 /** Subset of BitcoinLib['script'] needed by this module. */
-interface ScriptOps {
+interface ScriptLib {
   fromASM(asm: string): Uint8Array;
   number: { encode(n: number): Uint8Array };
 }
@@ -132,11 +132,11 @@ export function expandMiniscript({
 function substituteAsm({
   expandedAsm,
   expansionMap,
-  scriptOps
+  scriptLib
 }: {
   expandedAsm: string;
   expansionMap: ExpansionMap;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): string {
   //Replace back variables into the pubkeys previously computed.
   let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
@@ -160,9 +160,7 @@ function substituteAsm({
     //The regex below will match one or more digits within a string,
     //except if the sequence is surrounded by "<" and ">"
     .replace(/(<\d+>)|\b\d+\b/g, match =>
-      match.startsWith('<')
-        ? match
-        : numberEncodeAsm(Number(match), scriptOps)
+      match.startsWith('<') ? match : numberEncodeAsm(Number(match), scriptLib)
     )
     //we don't have numbers anymore, now it's safe to remove < and > since we
     //know that every remaining is either an op_code or a hex encoded number
@@ -175,22 +173,22 @@ export function miniscript2Script({
   expandedMiniscript,
   expansionMap,
   tapscript = false,
-  scriptOps
+  scriptLib
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   tapscript?: boolean;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): Uint8Array {
   const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
-  return scriptOps.fromASM(
+  return scriptLib.fromASM(
     substituteAsm({
       expandedAsm: compiled.asm,
       expansionMap,
-      scriptOps
+      scriptLib
     })
   );
 }
@@ -230,7 +228,7 @@ export function satisfyMiniscript({
   preimages = [],
   timeConstraints,
   tapscript = false,
-  scriptOps
+  scriptLib
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
@@ -238,7 +236,7 @@ export function satisfyMiniscript({
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
   tapscript?: boolean;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): {
   scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
@@ -301,8 +299,8 @@ export function satisfyMiniscript({
       throw new Error(`Error: invalid expandedKnownsMap`);
     expandedAsm = expandedAsm.replaceAll(search, replace);
   }
-  const scriptSatisfaction = scriptOps.fromASM(
-    substituteAsm({ expandedAsm, expansionMap, scriptOps })
+  const scriptSatisfaction = scriptLib.fromASM(
+    substituteAsm({ expandedAsm, expansionMap, scriptLib })
   );
 
   return {
@@ -366,14 +364,11 @@ export function satisfyMiniscript({
  * @param {number} number An integer.
  * @returns {string} Returns `"OP_0"` for `number === 0` and a hex string representing other numbers in Little Endian encoding.
  */
-export function numberEncodeAsm(
-  number: number,
-  scriptOps: ScriptOps
-) {
+export function numberEncodeAsm(number: number, scriptLib: ScriptLib) {
   if (Number.isSafeInteger(number) === false) {
     throw new Error(`Error: invalid number ${number}`);
   }
   if (number === 0) {
     return 'OP_0';
-  } else return toHex(scriptOps.number.encode(number));
+  } else return toHex(scriptLib.number.encode(number));
 }

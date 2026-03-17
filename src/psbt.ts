@@ -11,9 +11,9 @@ import type { KeyInfo } from './types';
 import type {
   Network,
   Payment,
-  PsbtLike,
+  Psbt,
   PsbtLikeInput,
-  TransactionLike,
+  Transaction,
   FinalScriptsFunc,
   BitcoinLib
 } from './bitcoinLib';
@@ -43,10 +43,7 @@ function reverseBytes(buffer: Uint8Array): Uint8Array {
 export function finalScriptsFuncFactory(
   scriptSatisfaction: Uint8Array,
   network: Network,
-  paymentsOps: {
-    p2wsh: BitcoinLib['payments']['p2wsh'];
-    p2sh: BitcoinLib['payments']['p2sh'];
-  }
+  payments: BitcoinLib['payments']
 ): FinalScriptsFunc {
   const finalScriptsFunc: FinalScriptsFunc = (
     _index,
@@ -60,7 +57,7 @@ export function finalScriptsFuncFactory(
     let finalScriptSig: Uint8Array | undefined;
     //p2wsh
     if (isSegwit && !isP2SH) {
-      const payment = paymentsOps.p2wsh({
+      const payment = payments.p2wsh({
         redeem: {
           input: scriptSatisfaction,
           output: lockingScript
@@ -73,8 +70,8 @@ export function finalScriptsFuncFactory(
     }
     //p2sh-p2wsh
     else if (isSegwit && isP2SH) {
-      const payment = paymentsOps.p2sh({
-        redeem: paymentsOps.p2wsh({
+      const payment = payments.p2sh({
+        redeem: payments.p2wsh({
           redeem: {
             input: scriptSatisfaction,
             output: lockingScript
@@ -90,7 +87,7 @@ export function finalScriptsFuncFactory(
     }
     //p2sh
     else {
-      finalScriptSig = paymentsOps.p2sh({
+      finalScriptSig = payments.p2sh({
         redeem: {
           input: scriptSatisfaction,
           output: lockingScript
@@ -126,9 +123,9 @@ export function addPsbtInput({
   witnessScript,
   redeemScript,
   rbf,
-  TransactionOps
+  Transaction
 }: {
-  psbt: PsbtLike;
+  psbt: Psbt;
   vout: number;
   txHex?: string;
   txId?: string;
@@ -147,7 +144,7 @@ export function addPsbtInput({
   witnessScript: Uint8Array | undefined;
   redeemScript: Uint8Array | undefined;
   rbf: boolean;
-  TransactionOps: BitcoinLib['Transaction'];
+  Transaction: BitcoinLib['Transaction'];
 }): number {
   if (value !== undefined && typeof value !== 'bigint')
     throw new Error(`Error: value must be a bigint`);
@@ -168,7 +165,7 @@ export function addPsbtInput({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const tx: TransactionLike = TransactionOps.fromHex(txHex);
+    const tx: Transaction = Transaction.fromHex(txHex);
     const out = tx.outs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script;
@@ -232,7 +229,7 @@ export function addPsbtInput({
     index: vout
   };
   if (txHex !== undefined) {
-    input.nonWitnessUtxo = TransactionOps.fromHex(txHex).toBuffer();
+    input.nonWitnessUtxo = Transaction.fromHex(txHex).toBuffer();
   }
 
   if (tapInternalKey) {

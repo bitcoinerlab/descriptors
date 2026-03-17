@@ -19,12 +19,12 @@ import type { ECPairAPI } from 'ecpair';
 import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
-  PsbtLike,
+  Psbt,
   PsbtLikeInput,
   PsbtLikeInputUpdate,
   Payment,
   FinalScriptsFunc,
-  TransactionLike,
+  Transaction,
   Network,
   Taptree
 } from '../bitcoinLib';
@@ -266,16 +266,16 @@ function safeP2sh(
   }
 }
 
-// ─── PsbtLike wrapper around @scure/btc-signer Transaction ─────────
+// ─── Psbt wrapper around @scure/btc-signer Transaction ─────────────
 
-class ScurePsbtAdapter implements PsbtLike {
+class ScurePsbtAdapter implements Psbt {
   readonly #tx: InstanceType<typeof btc.Transaction>;
 
   constructor(tx: InstanceType<typeof btc.Transaction>) {
     this.#tx = tx;
   }
 
-  /** Access the underlying scure Transaction for operations not in PsbtLike */
+  /** Access the underlying scure Transaction for operations not in Psbt */
   get raw(): InstanceType<typeof btc.Transaction> {
     return this.#tx;
   }
@@ -353,7 +353,7 @@ class ScurePsbtAdapter implements PsbtLike {
     return input as PsbtInput;
   }
 
-  #mapTxInput(index: number): PsbtLike['txInputs'][number] {
+  #mapTxInput(index: number): Psbt['txInputs'][number] {
     const raw = this.#tx.getInput(index);
     return {
       hash: raw.txid ?? new Uint8Array(32),
@@ -378,7 +378,7 @@ class ScurePsbtAdapter implements PsbtLike {
     return this.#tx.inputsLength;
   }
 
-  get data(): PsbtLike['data'] {
+  get data(): Psbt['data'] {
     return {
       inputs: Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
         this.#mapInput(index)
@@ -386,7 +386,7 @@ class ScurePsbtAdapter implements PsbtLike {
     };
   }
 
-  get txInputs(): PsbtLike['txInputs'] {
+  get txInputs(): Psbt['txInputs'] {
     return Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
       this.#mapTxInput(index)
     );
@@ -666,7 +666,7 @@ function toScureHDKey(hdSigner: any): any {
 
 // ─── Transaction wrapper ──────────────────────────────────────────────
 
-function parseRawTx(rawBytes: Uint8Array): TransactionLike {
+function parseRawTx(rawBytes: Uint8Array): Transaction {
   const parsed = RawTx.decode(rawBytes);
   // Compute txid: double-SHA256 of non-witness serialization, reversed
   const nonWitnessSerialization = RawOldTx.encode(parsed);
@@ -976,9 +976,9 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (adapter as any)._network = opts.network;
         }
-        return adapter as unknown as PsbtLike;
+        return adapter as unknown as Psbt;
       }
-    } as unknown as { new (opts?: { network?: Network }): PsbtLike },
+    } as unknown as { new (opts?: { network?: Network }): Psbt },
 
     ECPair,
     BIP32,

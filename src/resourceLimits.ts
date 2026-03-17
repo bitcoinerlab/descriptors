@@ -32,21 +32,21 @@ const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE = 80;
 const MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE = 80;
 
 /** Subset of BitcoinLib['script'] needed by this module. */
-interface ScriptOps {
+interface ScriptLib {
   decompile(scriptBuf: Uint8Array): Array<number | Uint8Array> | null;
   countNonPushOnlyOPs(chunks: Array<number | Uint8Array>): number;
 }
 
 export function assertScriptNonPushOnlyOpsLimit({
   script,
-  scriptOps
+  scriptLib
 }: {
   script: Uint8Array;
-  scriptOps: ScriptOps;
+  scriptLib: ScriptLib;
 }): void {
-  const chunks = scriptOps.decompile(script);
+  const chunks = scriptLib.decompile(script);
   if (!chunks) throw new Error(`Error: could not decompile ${script}`);
-  const nonPushOnlyOps = scriptOps.countNonPushOnlyOPs(chunks);
+  const nonPushOnlyOps = scriptLib.countNonPushOnlyOPs(chunks);
   if (nonPushOnlyOps > MAX_OPS_PER_SCRIPT)
     throw new Error(
       `Error: too many non-push ops, ${nonPushOnlyOps} non-push ops is larger than ${MAX_OPS_PER_SCRIPT}`
@@ -122,22 +122,17 @@ export function assertP2shScriptSigStandardSize({
   scriptSatisfaction,
   redeemScript,
   network,
-  p2sh
+  payments
 }: {
   scriptSatisfaction: Uint8Array;
   redeemScript: Uint8Array;
   network: Network;
-  p2sh: BitcoinLib['payments']['p2sh'];
+  payments: BitcoinLib['payments'];
 }): void {
-  const scriptSig = (
-    p2sh({
-      redeem: {
-        input: scriptSatisfaction,
-        output: redeemScript
-      } as Payment,
-      network
-    })
-  ).input;
+  const scriptSig = payments.p2sh({
+    redeem: { input: scriptSatisfaction, output: redeemScript },
+    network
+  }).input;
   if (!scriptSig)
     throw new Error(`Error: could not build scriptSig from satisfaction`);
   if (scriptSig.length > MAX_STANDARD_SCRIPTSIG_SIZE)

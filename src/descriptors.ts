@@ -5,7 +5,7 @@ import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
 import type {
   Network,
   Payment,
-  PsbtLike,
+  Psbt,
   BitcoinLib,
   ECPairAPI,
   BIP32API,
@@ -264,10 +264,10 @@ export function DescriptorsFactory(
     lib = createBitcoinjsLib(ecc);
   }
   lib.initEccLib();
-  const { payments, script: scriptOps } = lib;
+  const { payments, script: scriptLib } = lib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
-  const addressOps = lib.address;
-  const TransactionOps = lib.Transaction;
+  const address = lib.address;
+  const Transaction = lib.Transaction;
   const BIP32: BIP32API = lib.BIP32;
   const ECPair: ECPairAPI = lib.ECPair;
   const networks = lib.networks;
@@ -386,7 +386,7 @@ export function DescriptorsFactory(
       expandedMiniscript: compileExpandedMiniscript,
       expansionMap,
       tapscript: true,
-      scriptOps
+      scriptLib
     });
 
     return { expandedExpression, expansionMap, tapScript };
@@ -492,7 +492,7 @@ export function DescriptorsFactory(
         throw new Error(`Error: could not get an address in ${descriptor}`);
       let output;
       try {
-        output = addressOps.toOutputScript(matchedAddress, network);
+        output = address.toOutputScript(matchedAddress, network);
       } catch (e) {
         void e;
         throw new Error(`Error: invalid address ${matchedAddress}`);
@@ -768,7 +768,7 @@ export function DescriptorsFactory(
         const script = miniscript2Script({
           expandedMiniscript,
           expansionMap,
-          scriptOps
+          scriptLib
         });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -776,7 +776,7 @@ export function DescriptorsFactory(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
         payment = p2sh({
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
@@ -823,7 +823,7 @@ export function DescriptorsFactory(
         const script = miniscript2Script({
           expandedMiniscript,
           expansionMap,
-          scriptOps
+          scriptLib
         });
         redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
@@ -831,7 +831,7 @@ export function DescriptorsFactory(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
         payment = p2sh({ redeem: { output: script, network }, network });
       }
     }
@@ -853,7 +853,7 @@ export function DescriptorsFactory(
         const script = miniscript2Script({
           expandedMiniscript,
           expansionMap,
-          scriptOps
+          scriptLib
         });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -861,7 +861,7 @@ export function DescriptorsFactory(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptOps });
+        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
@@ -890,7 +890,7 @@ export function DescriptorsFactory(
             network,
             BIP32,
             ECPair,
-            scriptOps,
+            scriptLib,
             // `leafExpansionOverride` runs per leaf expression.
             // For non-matching leaves it returns undefined and
             // normal miniscript expansion is used;
@@ -1242,7 +1242,7 @@ export function DescriptorsFactory(
     ): void {
       if (!this.#miniscript) return;
 
-      const satisfactionStackItems = scriptOps.toStack(scriptSatisfaction);
+      const satisfactionStackItems = scriptLib.toStack(scriptSatisfaction);
 
       // For wsh(...) and sh(wsh(...)), enforce witness stack limits.
       if (this.#isSegwit && !this.#isTaproot) {
@@ -1270,7 +1270,7 @@ export function DescriptorsFactory(
           scriptSatisfaction,
           redeemScript,
           network: this.#network,
-          p2sh
+          payments
         });
       }
     }
@@ -1332,7 +1332,7 @@ export function DescriptorsFactory(
           nLockTime: constraints?.nLockTime,
           nSequence: constraints?.nSequence
         },
-        scriptOps
+        scriptLib
       });
       this.#assertMiniscriptSatisfactionResourceLimits(
         satisfaction.scriptSatisfaction
@@ -1396,7 +1396,7 @@ export function DescriptorsFactory(
               }
             }
           : {}),
-        scriptOps
+        scriptLib
       });
     }
 
@@ -1447,7 +1447,7 @@ export function DescriptorsFactory(
           expansionMap,
           signatures: fakeSignatures,
           preimages,
-          scriptOps
+          scriptLib
         });
         this.#assertMiniscriptSatisfactionResourceLimits(
           satisfaction.scriptSatisfaction
@@ -1466,7 +1466,7 @@ export function DescriptorsFactory(
           preimages: this.#preimages,
           signatures: fakeSignatures,
           ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {}),
-          scriptOps
+          scriptLib
         });
         return { nLockTime, nSequence, tapLeafHash };
       }
@@ -2023,7 +2023,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
-     * `( { psbt, validate = true } : { psbt: PsbtLike; validate: boolean | undefined } ) => void`
+     * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
      *
      */
     updatePsbtAsInput({
@@ -2034,7 +2034,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       vout, //vector output index
       rbf = true
     }: {
-      psbt: PsbtLike;
+      psbt: Psbt;
       txHex?: string;
       txId?: string;
       value?: bigint;
@@ -2084,7 +2084,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         const taprootLeafMetadata = buildTaprootLeafPsbtMetadata({
           tapTreeInfo,
           internalPubkey: tapInternalKey,
-          p2tr
+          payments
         });
         tapLeafScript = taprootLeafMetadata.map(({ leaf, controlBlock }) => ({
           script: leaf.tapScript,
@@ -2118,7 +2118,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         witnessScript: this.getWitnessScript(),
         redeemScript: this.getRedeemScript(),
         rbf,
-        TransactionOps
+        Transaction
       });
       //The finalizer adds the unlocking script (scriptSig/scriptWitness) once
       //signatures are ready.
@@ -2126,7 +2126,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         psbt,
         validate = true
       }: {
-        psbt: PsbtLike;
+        psbt: Psbt;
         /** Runs further test on the validity of the signatures.
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
@@ -2213,10 +2213,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
           psbt.finalizeInput(
             index,
-            finalScriptsFuncFactory(scriptSatisfaction, this.#network, {
-              p2wsh,
-              p2sh
-            })
+            finalScriptsFuncFactory(scriptSatisfaction, this.#network, payments)
           );
         }
       };
@@ -2230,14 +2227,14 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * @param params.psbt - The Partially Signed Bitcoin Transaction.
      * @param params.value - The value for the output in satoshis.
      */
-    updatePsbtAsOutput({ psbt, value }: { psbt: PsbtLike; value: bigint }) {
+    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: bigint }) {
       if (typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value < 0n) throw new Error(`Error: value must be >= 0n`);
       psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
-    #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
+    #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
       const input = psbt.data.inputs[index];
       const txInput = psbt.txInputs[index];
       if (!input || !txInput)
@@ -2250,7 +2247,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           throw new Error(
             `Error: input should have either witnessUtxo or nonWitnessUtxo`
           );
-        const tx = TransactionOps.fromBuffer(input.nonWitnessUtxo);
+        const tx = Transaction.fromBuffer(input.nonWitnessUtxo);
         const out = tx.outs[vout];
         if (!out) throw new Error(`Error: utxo should exist`);
         scriptPubKey = out.script;
@@ -2321,7 +2318,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     expand,
     ECPair,
     BIP32,
-    /** PsbtLike constructor backed by the active adapter. */
     Psbt: lib.Psbt
   };
 }

@@ -55,7 +55,7 @@ export interface Payment {
  * `bitcoinjs-lib.Psbt` instances can be passed directly to public APIs.
  * The scure adapter maps `@scure/btc-signer.Transaction` to this surface.
  */
-interface PsbtLikeTxInput {
+interface PsbtTxInput {
   hash: Uint8Array;
   index: number;
   sequence?: number;
@@ -69,14 +69,14 @@ export interface PsbtLikeInput extends Partial<PsbtInput> {
 
 export type PsbtLikeInputUpdate = Partial<PsbtInput>;
 
-export interface PsbtLike {
+export interface Psbt {
   addInput(input: PsbtLikeInput): void;
   addOutput(output: { script: Uint8Array; value: bigint }): void;
   readonly inputCount: number;
   readonly data: {
     inputs: PsbtInput[];
   };
-  readonly txInputs: PsbtLikeTxInput[];
+  readonly txInputs: PsbtTxInput[];
   setLocktime(locktime: number): void;
   readonly locktime: number;
   signInput(index: number, signer: ECPairInterface): void;
@@ -115,7 +115,7 @@ export type FinalScriptsFunc = (
 
 // ─── Transaction ─────────────────────────────────────────────────────
 
-export interface TransactionLike {
+export interface Transaction {
   getId(): string;
   outs: Array<{ script: Uint8Array; value: bigint }>;
   toBuffer(): Uint8Array;
@@ -183,8 +183,8 @@ export interface BitcoinLib {
 
   // ── Transaction parsing ──
   Transaction: {
-    fromHex(hex: string): TransactionLike;
-    fromBuffer(buf: Uint8Array): TransactionLike;
+    fromHex(hex: string): Transaction;
+    fromBuffer(buf: Uint8Array): Transaction;
   };
 
   // ── Address ──
@@ -194,7 +194,7 @@ export interface BitcoinLib {
 
   // ── PSBT factory ──
   Psbt: {
-    new (opts?: { network?: Network }): PsbtLike;
+    new (opts?: { network?: Network }): Psbt;
   };
 
   // ── Key factories ──

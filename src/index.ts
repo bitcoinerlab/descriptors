@@ -43,11 +43,11 @@ export type {
 } from './types';
 export type {
   BitcoinLib,
-  PsbtLike,
+  Psbt,
   Network,
   Payment,
   FinalScriptsFunc,
-  TransactionLike,
+  Transaction,
   Taptree
 } from './bitcoinLib';
 export {

@@ -25,7 +25,7 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type { Network, PsbtLike, TransactionLike } from './bitcoinLib';
+import type { Network, Psbt, Transaction } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
@@ -92,7 +92,7 @@ export async function importAndValidateLedgerBitcoin(
  *
  */
 function requireBitcoinjsTransaction(): {
-  fromBuffer(buffer: Uint8Array): TransactionLike;
+  fromBuffer(buffer: Uint8Array): Transaction;
 } {
   let bitcoinjsModule: unknown;
   try {
@@ -106,7 +106,7 @@ function requireBitcoinjsTransaction(): {
     );
   }
   const { Transaction } = bitcoinjsModule as {
-    Transaction?: { fromBuffer(buffer: Uint8Array): TransactionLike };
+    Transaction?: { fromBuffer(buffer: Uint8Array): Transaction };
   };
   if (!Transaction || typeof Transaction.fromBuffer !== 'function') {
     throw new Error('Error: invalid bitcoinjs-lib Transaction export');
@@ -322,7 +322,7 @@ export async function ledgerPolicyFromPsbtInput({
   index
 }: {
   ledgerManager: LedgerManager;
-  psbt: PsbtLike;
+  psbt: Psbt;
   index: number;
 }) {
   const { ledgerState, ecc, network } = ledgerManager;
