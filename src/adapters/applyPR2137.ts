@@ -5,8 +5,8 @@ import type { Psbt, Signer } from 'bitcoinjs-lib';
 import { checkForInput } from 'bip174';
 import type { SignerAsync } from 'ecpair';
 import type { PsbtInput } from 'bip174';
-import { tapTweakHash, isTaprootInput } from './bitcoinjs-lib-internals';
-import { taggedHash } from './crypto';
+import { tapTweakHash, isTaprootInput } from '../bitcoinjs-lib-internals';
+import { taggedHash } from '../crypto';
 import { compare, concat } from 'uint8array-tools';
 
 interface HDSignerBase {

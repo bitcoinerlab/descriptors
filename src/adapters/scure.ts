@@ -20,6 +20,8 @@ import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
   PsbtLike,
+  PsbtLikeInput,
+  PsbtLikeInputUpdate,
   Payment,
   FinalScriptsFunc,
   ParsedTransaction,
@@ -278,23 +280,7 @@ class ScurePsbtAdapter implements PsbtLike {
     return this.#tx;
   }
 
-  addInput(input: Record<string, unknown>): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.addInput(input as any);
-  }
-
-  addOutput(output: { script: Uint8Array; value: bigint }): void {
-    this.#tx.addOutput({
-      script: output.script,
-      amount: output.value
-    });
-  }
-
-  get inputCount(): number {
-    return this.#tx.inputsLength;
-  }
-
-  getInput(index: number): PsbtInput {
+  #mapInput(index: number): PsbtInput {
     const raw = this.#tx.getInput(index);
     // Map scure's input format to bip174 PsbtInput format
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,20 +339,13 @@ class ScurePsbtAdapter implements PsbtLike {
       ).map(([pubkey, signature]) => ({ pubkey, signature }));
     }
 
-    // tapLeafScript: scure stores differently
     if (raw.tapLeafScript && Array.isArray(raw.tapLeafScript)) {
       input.tapLeafScript = raw.tapLeafScript;
     }
-
-    // tapScriptSig
     if (raw.tapScriptSig && Array.isArray(raw.tapScriptSig)) {
       input.tapScriptSig = raw.tapScriptSig;
     }
-
-    // sighashType
     if (raw.sighashType !== undefined) input.sighashType = raw.sighashType;
-
-    // finalScriptSig / finalScriptWitness
     if (raw.finalScriptSig) input.finalScriptSig = raw.finalScriptSig;
     if (raw.finalScriptWitness)
       input.finalScriptWitness = raw.finalScriptWitness;
@@ -374,17 +353,43 @@ class ScurePsbtAdapter implements PsbtLike {
     return input as PsbtInput;
   }
 
-  getTxInput(index: number): {
-    hash: Uint8Array;
-    index: number;
-    sequence: number;
-  } {
+  #mapTxInput(index: number): PsbtLike['txInputs'][number] {
     const raw = this.#tx.getInput(index);
     return {
       hash: raw.txid ?? new Uint8Array(32),
       index: raw.index ?? 0,
       sequence: raw.sequence ?? 0xffffffff
     };
+  }
+
+  addInput(input: PsbtLikeInput): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.#tx.addInput(input as any);
+  }
+
+  addOutput(output: { script: Uint8Array; value: bigint }): void {
+    this.#tx.addOutput({
+      script: output.script,
+      amount: output.value
+    });
+  }
+
+  get inputCount(): number {
+    return this.#tx.inputsLength;
+  }
+
+  get data(): PsbtLike['data'] {
+    return {
+      inputs: Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
+        this.#mapInput(index)
+      )
+    };
+  }
+
+  get txInputs(): PsbtLike['txInputs'] {
+    return Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
+      this.#mapTxInput(index)
+    );
   }
 
   setLocktime(locktime: number): void {
@@ -497,7 +502,8 @@ class ScurePsbtAdapter implements PsbtLike {
   finalizeInput(index: number, finalizer?: FinalScriptsFunc): void {
     if (finalizer) {
       // Custom finalizer for miniscript
-      const input = this.getInput(index);
+      const input = this.data.inputs[index];
+      if (!input) throw new Error(`Invalid input index ${index}`);
       const witnessUtxo = input.witnessUtxo;
       const redeemScript = input.redeemScript;
       const witnessScript = input.witnessScript;
@@ -546,7 +552,8 @@ class ScurePsbtAdapter implements PsbtLike {
   ): boolean {
     // scure doesn't expose a direct validateSignaturesOfInput.
     // We check for partial signatures and validate them manually.
-    const input = this.getInput(index);
+    const input = this.data.inputs[index];
+    if (!input) throw new Error(`Invalid input index ${index}`);
 
     // Check tapKeySig
     if (input.tapKeySig) {
@@ -577,25 +584,10 @@ class ScurePsbtAdapter implements PsbtLike {
     return false;
   }
 
-  updateInput(index: number, data: Record<string, unknown>): void {
+  updateInput(index: number, data: PsbtLikeInputUpdate): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.#tx.updateInput(index, data as any);
-  }
-
-  extractTransaction() {
-    const rawBytes = this.#tx.extract();
-    const parsed = RawTx.decode(rawBytes);
-    const witnesses = parsed.witnesses;
-    return {
-      toHex: () => hex.encode(rawBytes),
-      ins: parsed.inputs.map((_inp, i) => {
-        const w = witnesses?.[i];
-        const result: { witness?: Uint8Array[] } = {};
-        if (w && w.length > 0) result.witness = w as Uint8Array[];
-        return result;
-      })
-    };
   }
 
   toBase64(): string {
