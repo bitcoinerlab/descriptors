@@ -11,7 +11,6 @@
 
 import {
   address,
-  networks,
   payments,
   Transaction,
   Psbt,
@@ -50,7 +49,6 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
 
     ECPair,
     BIP32,
-    networks,
     ecc,
     initEccLib: () => initEccLib(ecc)
   };

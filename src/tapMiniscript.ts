@@ -4,6 +4,7 @@ import type { Network, BitcoinLib, Taptree } from './bitcoinLib';
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
+import { networks } from './networks';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
 import type { PartialSig, TapBip32Derivation } from 'bip174';
@@ -55,12 +56,12 @@ export type TaprootPsbtLeafMetadata = {
 
 function expandTaprootMiniscript({
   miniscript,
-  network,
+  network = networks.bitcoin,
   BIP32,
   ECPair
 }: {
   miniscript: string;
-  network: Network;
+  network?: Network;
   BIP32: BIP32API;
   ECPair: ECPairAPI;
 }): {
@@ -92,14 +93,14 @@ function expandTaprootMiniscript({
  */
 export function buildTapTreeInfo({
   tapTree,
-  network,
+  network = networks.bitcoin,
   BIP32,
   ECPair,
   leafExpansionOverride,
   scriptLib
 }: {
   tapTree: TapTreeNode;
-  network: Network;
+  network?: Network;
   BIP32: BIP32API;
   ECPair: ECPairAPI;
   leafExpansionOverride: (

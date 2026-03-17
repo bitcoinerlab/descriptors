@@ -25,11 +25,14 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type { Network, Psbt, Transaction } from './bitcoinLib';
+import type { Psbt, Transaction } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
+import { networks } from './networks';
+import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
+import type { Network } from './networks';
 
 /**
  * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
@@ -181,19 +184,14 @@ export async function assertLedgerApp({
   }
 }
 
-// BIP173 bech32 prefix 'bc' is the universal mainnet indicator.
-function coinTypeFromNetwork(network: Network): 0 | 1 {
-  return network.bech32 === 'bc' ? 0 : 1;
-}
-
 function isLedgerStandard({
   ledgerTemplate,
   keyRoots,
-  network
+  network = networks.bitcoin
 }: {
   ledgerTemplate: string;
   keyRoots: string[];
-  network: Network;
+  network?: Network;
 }): boolean {
   if (keyRoots.length !== 1) return false;
   const originPath = keyRoots[0]?.match(reOriginPath)?.[1];

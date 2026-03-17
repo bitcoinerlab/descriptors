@@ -3,6 +3,7 @@
 
 import type { Network, ECPairAPI, BIP32API } from './bitcoinLib';
 import { parseKeyExpression } from './keyExpressions';
+import { networks } from './networks';
 import * as RE from './re';
 import type { PartialSig } from 'bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
@@ -27,14 +28,14 @@ export function expandMiniscript({
   miniscript,
   isSegwit,
   isTaproot,
-  network,
+  network = networks.bitcoin,
   ECPair,
   BIP32
 }: {
   miniscript: string;
   isSegwit: boolean;
   isTaproot: boolean;
-  network: Network;
+  network?: Network;
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 }): {

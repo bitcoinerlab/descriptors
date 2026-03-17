@@ -1,20 +1,9 @@
-import type { Network, BIP32Interface } from './bitcoinLib';
+import type { BIP32Interface } from './bitcoinLib';
 import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import { coinTypeFromNetwork } from './networkUtils';
-
-/**
- * Well-known Bitcoin mainnet network parameters.
- * Used as default when no network is provided.
- */
-const BITCOIN_MAINNET: Network = {
-  messagePrefix: '\x18Bitcoin Signed Message:\n',
-  bech32: 'bc',
-  bip32: { public: 0x0488b21e, private: 0x0488ade4 },
-  pubKeyHash: 0x00,
-  scriptHash: 0x05,
-  wif: 0x80
-};
+import { networks } from './networks';
+import type { Network } from './networks';
 
 function assertStandardKeyPath(keyPath: string) {
   // Regular expression to match "/change/index" or "/change/*" format
@@ -45,7 +34,7 @@ function standardExpressionsBIP32Maker(
    */
   function standardScriptExpressionBIP32({
     masterNode,
-    network = BITCOIN_MAINNET,
+    network = networks.bitcoin,
     keyPath,
     account,
     change,
@@ -65,7 +54,7 @@ function standardExpressionsBIP32Maker(
      */
     isPublic?: boolean;
   }) {
-    const originPath = `/${purpose}'/${coinTypeFromNetwork(network, BITCOIN_MAINNET)}'/${account}'`;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = keyExpressionBIP32({
       masterNode,
@@ -126,7 +115,7 @@ function standardExpressionsLedgerMaker(
     index?: number | undefined | '*';
   }) {
     const { network } = ledgerManager;
-    const originPath = `/${purpose}'/${coinTypeFromNetwork(network, BITCOIN_MAINNET)}'/${account}'`;
+    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
     const keyExpression = await keyExpressionLedger({
       ledgerManager,

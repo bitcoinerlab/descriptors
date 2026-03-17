@@ -28,6 +28,7 @@ import type {
 
 import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
 import { DescriptorChecksum } from './checksum';
+import { networks } from './networks';
 
 import { parseKeyExpression as globalParseKeyExpression } from './keyExpressions';
 import * as RE from './re';
@@ -270,7 +271,6 @@ export function DescriptorsFactory(
   const Transaction = lib.Transaction;
   const BIP32: BIP32API = lib.BIP32;
   const ECPair: ECPairAPI = lib.ECPair;
-  const networks = lib.networks;
 
   const signatureValidator = (
     pubkey: Uint8Array,

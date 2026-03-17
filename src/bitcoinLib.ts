@@ -12,6 +12,7 @@
 
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
+import type { Network } from './networks';
 import type {
   PsbtInput,
   Bip32Derivation,
@@ -19,17 +20,6 @@ import type {
   TapLeafScript,
   PartialSig
 } from 'bip174';
-
-// ─── Network ─────────────────────────────────────────────────────────
-
-export interface Network {
-  messagePrefix: string;
-  bech32: string;
-  bip32: { public: number; private: number };
-  pubKeyHash: number;
-  scriptHash: number;
-  wif: number;
-}
 
 // ─── Payment ─────────────────────────────────────────────────────────
 
@@ -201,13 +191,6 @@ export interface BitcoinLib {
   ECPair: ECPairAPI;
   BIP32: BIP32API;
 
-  // ── Networks ──
-  networks: {
-    bitcoin: Network;
-    testnet: Network;
-    regtest: Network;
-  };
-
   // ── Raw ECC interface (needed for signature validation: verifySchnorr) ──
   ecc: import('./types').TinySecp256k1Interface;
 
@@ -227,3 +210,4 @@ export type {
   TapLeafScript,
   PartialSig
 };
+export type { Network } from './networks';
