@@ -25,7 +25,7 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type { Network, PsbtLike, BitcoinLib } from './bitcoinLib';
+import type { Network, PsbtLike, TransactionLike } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
@@ -82,6 +82,36 @@ export async function importAndValidateLedgerBitcoin(
     throw new Error('Error: invalid AppClient instance');
   }
   return ledgerBitcoinModule;
+}
+
+/**
+ *
+ * bitcoinjs-lib is a peerDependency. However, it is a dependency for
+ * @ledgerhq/ledger-bitcoin anyway, so it is safe to assume that it will be
+ * installed if @ledgerhq/ledger-bitcoin is also installed.
+ *
+ */
+function requireBitcoinjsTransaction(): {
+  fromBuffer(buffer: Uint8Array): TransactionLike;
+} {
+  let bitcoinjsModule: unknown;
+  try {
+    // Read comments above (importAndValidateLedgerBitcoin)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    bitcoinjsModule = require('bitcoinjs-lib');
+  } catch (error) {
+    void error;
+    throw new Error(
+      'Could not import "bitcoinjs-lib". Ledger signing requires this peer dependency to parse nonWitnessUtxo transactions. Please run "npm install bitcoinjs-lib" to use Ledger Hardware Wallet functionality.'
+    );
+  }
+  const { Transaction } = bitcoinjsModule as {
+    Transaction?: { fromBuffer(buffer: Uint8Array): TransactionLike };
+  };
+  if (!Transaction || typeof Transaction.fromBuffer !== 'function') {
+    throw new Error('Error: invalid bitcoinjs-lib Transaction export');
+  }
+  return Transaction;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -289,15 +319,14 @@ export async function getLedgerXpub({
 export async function ledgerPolicyFromPsbtInput({
   ledgerManager,
   psbt,
-  index,
-  TransactionOps
+  index
 }: {
   ledgerManager: LedgerManager;
   psbt: PsbtLike;
   index: number;
-  TransactionOps: BitcoinLib['Transaction'];
 }) {
   const { ledgerState, ecc, network } = ledgerManager;
+  const Transaction = requireBitcoinjsTransaction();
 
   const { Output } = DescriptorsFactory(ecc);
   const input = psbt.data.inputs[index];
@@ -307,8 +336,9 @@ export async function ledgerPolicyFromPsbtInput({
     const txInput = psbt.txInputs[index];
     if (!txInput) throw new Error(`Error: tx input ${index} not available`);
     const vout = txInput.index;
-    const nonWitnessScript = TransactionOps.fromBuffer(input.nonWitnessUtxo)
-      .outs[vout]?.script;
+    const nonWitnessScript = Transaction.fromBuffer(input.nonWitnessUtxo).outs[
+      vout
+    ]?.script;
     scriptPubKey = nonWitnessScript;
   } else if (input.witnessUtxo) {
     scriptPubKey = input.witnessUtxo.script;

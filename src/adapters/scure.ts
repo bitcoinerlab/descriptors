@@ -534,9 +534,9 @@ class ScurePsbtAdapter implements PsbtLike {
     finalizer: () => { finalScriptWitness: Uint8Array }
   ): void {
     const result = finalizer();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.#tx.updateInput(
       index,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { finalScriptWitness: result.finalScriptWitness } as any,
       true
     );
@@ -585,7 +585,6 @@ class ScurePsbtAdapter implements PsbtLike {
   }
 
   updateInput(index: number, data: PsbtLikeInputUpdate): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.#tx.updateInput(index, data as any);
   }

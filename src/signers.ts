@@ -1,13 +1,7 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type {
-  PsbtLike,
-  PsbtLikeInputUpdate,
-  ECPairInterface,
-  BIP32Interface,
-  BitcoinLib
-} from './bitcoinLib';
+import type { PsbtLike, ECPairInterface, BIP32Interface } from './bitcoinLib';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 import {
   importAndValidateLedgerBitcoin,
@@ -188,7 +182,7 @@ function addLedgerSignaturesToInput({
     );
 
     if (tapScriptSig.length > 0) {
-      psbt.updateInput(index, { tapScriptSig } as PsbtLikeInputUpdate);
+      psbt.updateInput(index, { tapScriptSig });
     }
 
     if (tapKeySigs.length > 1)
@@ -197,7 +191,7 @@ function addLedgerSignaturesToInput({
       );
     const tapKeySig = tapKeySigs[0]?.signature;
     if (tapKeySig) {
-      psbt.updateInput(index, { tapKeySig } as PsbtLikeInputUpdate);
+      psbt.updateInput(index, { tapKeySig });
     }
 
     if (tapScriptSig.length === 0 && !tapKeySig)
@@ -209,7 +203,7 @@ function addLedgerSignaturesToInput({
       pubkey: sig.pubkey,
       signature: sig.signature
     }));
-    psbt.updateInput(index, { partialSig } as PsbtLikeInputUpdate);
+    psbt.updateInput(index, { partialSig });
   }
 }
 
@@ -222,24 +216,20 @@ function addLedgerSignaturesToInput({
 export async function signInputLedger({
   psbt,
   index,
-  ledgerManager,
-  TransactionOps
+  ledgerManager
 }: {
   psbt: PsbtLike;
   index: number;
   ledgerManager: LedgerManager;
-  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void>;
 export async function signInputLedger({
   psbt,
   index,
-  ledgerManager,
-  TransactionOps
+  ledgerManager
 }: {
   psbt: PsbtLike;
   index: number;
   ledgerManager: LedgerManager;
-  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
@@ -252,8 +242,7 @@ export async function signInputLedger({
   const policy = await ledgerPolicyFromPsbtInput({
     psbt,
     index,
-    ledgerManager,
-    TransactionOps
+    ledgerManager
   });
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
@@ -301,21 +290,17 @@ export async function signInputLedger({
  */
 export async function signLedger({
   psbt,
-  ledgerManager,
-  TransactionOps
+  ledgerManager
 }: {
   psbt: PsbtLike;
   ledgerManager: LedgerManager;
-  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void>;
 export async function signLedger({
   psbt,
-  ledgerManager,
-  TransactionOps
+  ledgerManager
 }: {
   psbt: PsbtLike;
   ledgerManager: LedgerManager;
-  TransactionOps: BitcoinLib['Transaction'];
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
@@ -326,12 +311,11 @@ export async function signLedger({
     throw new Error(`Error: pass a valid ledgerClient`);
 
   const ledgerPolicies = [];
-  for (let index = 0; index < psbt.inputCount; index++) {
+  for (let index = 0; index < psbt.data.inputs.length; index++) {
     const policy = await ledgerPolicyFromPsbtInput({
       psbt,
       index,
-      ledgerManager,
-      TransactionOps
+      ledgerManager
     });
     if (policy) ledgerPolicies.push(policy);
   }
