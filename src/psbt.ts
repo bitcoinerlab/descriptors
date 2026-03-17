@@ -13,7 +13,7 @@ import type {
   Payment,
   PsbtLike,
   PsbtLikeInput,
-  ParsedTransaction,
+  TransactionLike,
   FinalScriptsFunc,
   BitcoinLib
 } from './bitcoinLib';
@@ -168,7 +168,7 @@ export function addPsbtInput({
   )
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
-    const tx: ParsedTransaction = TransactionOps.fromHex(txHex);
+    const tx: TransactionLike = TransactionOps.fromHex(txHex);
     const out = tx.outs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script;

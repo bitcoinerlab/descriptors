@@ -24,7 +24,7 @@ import type {
   PsbtLikeInputUpdate,
   Payment,
   FinalScriptsFunc,
-  ParsedTransaction,
+  TransactionLike,
   Network,
   Taptree
 } from '../bitcoinLib';
@@ -667,7 +667,7 @@ function toScureHDKey(hdSigner: any): any {
 
 // ─── Transaction wrapper ──────────────────────────────────────────────
 
-function parseRawTx(rawBytes: Uint8Array): ParsedTransaction {
+function parseRawTx(rawBytes: Uint8Array): TransactionLike {
   const parsed = RawTx.decode(rawBytes);
   // Compute txid: double-SHA256 of non-witness serialization, reversed
   const nonWitnessSerialization = RawOldTx.encode(parsed);

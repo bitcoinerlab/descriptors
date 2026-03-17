@@ -113,9 +113,9 @@ export type FinalScriptsFunc = (
   finalScriptWitness: Uint8Array | undefined;
 };
 
-// ─── Parsed Transaction ──────────────────────────────────────────────
+// ─── Transaction ─────────────────────────────────────────────────────
 
-export interface ParsedTransaction {
+export interface TransactionLike {
   getId(): string;
   outs: Array<{ script: Uint8Array; value: bigint }>;
   toBuffer(): Uint8Array;
@@ -185,8 +185,8 @@ export interface BitcoinLib {
 
   // ── Transaction parsing ──
   Transaction: {
-    fromHex(hex: string): ParsedTransaction;
-    fromBuffer(buf: Uint8Array): ParsedTransaction;
+    fromHex(hex: string): TransactionLike;
+    fromBuffer(buf: Uint8Array): TransactionLike;
   };
 
   // ── Address ──

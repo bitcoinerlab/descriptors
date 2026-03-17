@@ -47,7 +47,7 @@ export type {
   Network,
   Payment,
   FinalScriptsFunc,
-  ParsedTransaction,
+  TransactionLike,
   Taptree
 } from './bitcoinLib';
 export {
