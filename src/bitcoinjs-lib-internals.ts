@@ -14,10 +14,7 @@ const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 const OP_1 = 0x51;
 const PUSH_DATA_32 = 0x20;
 
-type Tapleaf = {
-  output: Uint8Array;
-  version?: number;
-};
+import { type Tapleaf } from './bitcoinLib';
 
 function serializeScript(script: Uint8Array): Uint8Array {
   const { buffer: encodedLength } = encode(script.length);

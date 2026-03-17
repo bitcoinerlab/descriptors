@@ -123,10 +123,8 @@ export interface TransactionLike {
 
 // ─── Taptree (for p2tr) ──────────────────────────────────────────────
 
-type BitcoinJsTapleaf = { output: Uint8Array; version?: number };
-export type Taptree =
-  | [Taptree | BitcoinJsTapleaf, Taptree | BitcoinJsTapleaf]
-  | BitcoinJsTapleaf;
+export type Tapleaf = { output: Uint8Array; version?: number };
+export type Taptree = [Taptree | Tapleaf, Taptree | Tapleaf] | Tapleaf;
 
 // ─── BitcoinLib ──────────────────────────────────────────────────────
 
