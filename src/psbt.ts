@@ -12,6 +12,7 @@ import type {
   Network,
   Payment,
   PsbtLike,
+  PsbtLikeInput,
   ParsedTransaction,
   FinalScriptsFunc,
   BitcoinLib
@@ -288,6 +289,6 @@ export function addPsbtInput({
   if (witnessScript) input.witnessScript = witnessScript;
   if (redeemScript) input.redeemScript = redeemScript;
 
-  psbt.addInput(input as unknown as Record<string, unknown>);
+  psbt.addInput(input as PsbtLikeInput);
   return psbt.inputCount - 1;
 }

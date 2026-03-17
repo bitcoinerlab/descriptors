@@ -51,43 +51,44 @@ export interface Payment {
 /**
  * Minimal PSBT interface consumed by this library.
  *
- * bitcoinjs adapter: thin wrapper around `bitcoinjs-lib.Psbt`.
- * scure adapter:     wrapper around `@scure/btc-signer.Transaction`.
+ * This is intentionally a bitcoinjs-compatible structural subset so raw
+ * `bitcoinjs-lib.Psbt` instances can be passed directly to public APIs.
+ * The scure adapter maps `@scure/btc-signer.Transaction` to this surface.
  */
+interface PsbtLikeTxInput {
+  hash: Uint8Array;
+  index: number;
+  sequence?: number;
+}
+
+export interface PsbtLikeInput extends Partial<PsbtInput> {
+  hash: string | Uint8Array;
+  index: number;
+  sequence?: number;
+}
+
+export type PsbtLikeInputUpdate = Partial<PsbtInput>;
+
 export interface PsbtLike {
-  // ── Input/Output management ──
-  addInput(input: Record<string, unknown>): void;
+  addInput(input: PsbtLikeInput): void;
   addOutput(output: { script: Uint8Array; value: bigint }): void;
-
-  // ── Reading inputs ──
   readonly inputCount: number;
-  getInput(index: number): PsbtInput;
-  /** Transaction-level input data (hash, index, sequence). */
-  getTxInput(index: number): {
-    hash: Uint8Array;
-    index: number;
-    sequence: number;
+  readonly data: {
+    inputs: PsbtInput[];
   };
-
-  // ── Locktime ──
+  readonly txInputs: PsbtLikeTxInput[];
   setLocktime(locktime: number): void;
   readonly locktime: number;
-
-  // ── Signing ──
   signInput(index: number, signer: ECPairInterface): void;
   signAllInputs(signer: ECPairInterface): void;
   signInputHD(index: number, hdSigner: BIP32Interface): void;
   signAllInputsHD(hdSigner: BIP32Interface): void;
-
-  // ── Finalization ──
   finalizeInput(index: number, finalizer?: FinalScriptsFunc): void;
   finalizeTaprootInput(
     index: number,
     tapLeafHashToFinalize: Uint8Array | undefined,
     finalizer: () => { finalScriptWitness: Uint8Array }
   ): void;
-
-  // ── Validation ──
   validateSignaturesOfInput(
     index: number,
     validator: (
@@ -96,15 +97,7 @@ export interface PsbtLike {
       signature: Uint8Array
     ) => boolean
   ): boolean;
-
-  // ── Update ──
-  updateInput(index: number, data: Record<string, unknown>): void;
-
-  // ── Extraction ──
-  /** Extract the finalized transaction from the PSBT. */
-  extractTransaction(): ExtractedTransaction;
-
-  // ── Serialization ──
+  updateInput(index: number, data: PsbtLikeInputUpdate): void;
   toBase64(): string;
 }
 
@@ -119,13 +112,6 @@ export type FinalScriptsFunc = (
   finalScriptSig: Uint8Array | undefined;
   finalScriptWitness: Uint8Array | undefined;
 };
-
-// ─── Extracted Transaction (from finalized PSBT) ────────────────────
-
-export interface ExtractedTransaction {
-  toHex(): string;
-  ins: Array<{ witness?: Uint8Array[] }>;
-}
 
 // ─── Parsed Transaction ──────────────────────────────────────────────
 

@@ -300,10 +300,13 @@ export async function ledgerPolicyFromPsbtInput({
   const { ledgerState, ecc, network } = ledgerManager;
 
   const { Output } = DescriptorsFactory(ecc);
-  const input = psbt.getInput(index);
+  const input = psbt.data.inputs[index];
+  if (!input) throw new Error(`Error: input ${index} not available`);
   let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
-    const vout = psbt.getTxInput(index).index;
+    const txInput = psbt.txInputs[index];
+    if (!txInput) throw new Error(`Error: tx input ${index} not available`);
+    const vout = txInput.index;
     const nonWitnessScript = TransactionOps.fromBuffer(input.nonWitnessUtxo)
       .outs[vout]?.script;
     scriptPubKey = nonWitnessScript;

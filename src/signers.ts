@@ -3,6 +3,7 @@
 
 import type {
   PsbtLike,
+  PsbtLikeInputUpdate,
   ECPairInterface,
   BIP32Interface,
   BitcoinLib
@@ -63,7 +64,7 @@ export function signInputECPair({
   //psbt.signInput(index, ecpair); <- Replaced for the code below
   //that can handle taproot inputs automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
-  const input = psbt.getInput(index);
+  const input = psbt.data.inputs[index];
   if (!input) throw new Error('Invalid index');
   if (isTaprootInput(input)) {
     // If script-path (tapLeafScript present) -> DO NOT TWEAK
@@ -161,7 +162,7 @@ function addLedgerSignaturesToInput({
   index: number;
   ledgerSignatures: [number, PartialSignature][];
 }) {
-  const input = psbt.getInput(index);
+  const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);
 
   const signatures = ledgerSignaturesForInputIndex(index, ledgerSignatures);
@@ -187,7 +188,7 @@ function addLedgerSignaturesToInput({
     );
 
     if (tapScriptSig.length > 0) {
-      psbt.updateInput(index, { tapScriptSig } as Record<string, unknown>);
+      psbt.updateInput(index, { tapScriptSig } as PsbtLikeInputUpdate);
     }
 
     if (tapKeySigs.length > 1)
@@ -196,7 +197,7 @@ function addLedgerSignaturesToInput({
       );
     const tapKeySig = tapKeySigs[0]?.signature;
     if (tapKeySig) {
-      psbt.updateInput(index, { tapKeySig } as Record<string, unknown>);
+      psbt.updateInput(index, { tapKeySig } as PsbtLikeInputUpdate);
     }
 
     if (tapScriptSig.length === 0 && !tapKeySig)
@@ -208,7 +209,7 @@ function addLedgerSignaturesToInput({
       pubkey: sig.pubkey,
       signature: sig.signature
     }));
-    psbt.updateInput(index, { partialSig } as Record<string, unknown>);
+    psbt.updateInput(index, { partialSig } as PsbtLikeInputUpdate);
   }
 }
 

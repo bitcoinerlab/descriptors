@@ -2157,7 +2157,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             `Error: taprootSpendPath=script requires taproot tree info`
           );
         if (this.#tapTreeInfo && this.#taprootSpendPath === 'script') {
-          const input = psbt.getInput(index);
+          const input = psbt.data.inputs[index];
           const tapLeafScript = input?.tapLeafScript;
           if (!tapLeafScript || tapLeafScript.length === 0)
             throw new Error(
@@ -2207,7 +2207,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           //Use standard finalizers
           psbt.finalizeInput(index);
         } else {
-          const signatures = psbt.getInput(index)?.partialSig;
+          const signatures = psbt.data.inputs[index]?.partialSig;
           if (!signatures)
             throw new Error(`Error: cannot finalize without signatures`);
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
@@ -2238,8 +2238,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
 
     #assertPsbtInput({ psbt, index }: { psbt: PsbtLike; index: number }): void {
-      const input = psbt.getInput(index);
-      const txInput = psbt.getTxInput(index);
+      const input = psbt.data.inputs[index];
+      const txInput = psbt.txInputs[index];
       if (!input || !txInput)
         throw new Error(`Error: invalid input or txInput`);
       const { sequence: inputSequence, index: vout } = txInput;
