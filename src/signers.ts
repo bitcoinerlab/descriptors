@@ -26,6 +26,26 @@ declare class PartialSignature {
   );
 }
 
+/**
+ * This applies a bitcoinjs-lib speciffic patch.
+ * This won't be run if using the scure lib
+ */
+function ensureBitcoinjsHdPatch(psbt: Psbt): void {
+  let BitcoinjsPsbt;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ({ Psbt: BitcoinjsPsbt } = require('bitcoinjs-lib'));
+  } catch (error) {
+    void error;
+    return;
+  }
+  if (!BitcoinjsPsbt || !(psbt instanceof BitcoinjsPsbt)) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { applyPR2137 } = require('./adapters/applyPR2137');
+  applyPR2137(psbt);
+}
+
 function range(n: number): number[] {
   return [...Array(n).keys()];
 }
@@ -124,6 +144,7 @@ export function signInputBIP32({
   index: number;
   node: BIP32Interface;
 }): void {
+  ensureBitcoinjsHdPatch(psbt);
   psbt.signInputHD(index, node);
 }
 
@@ -134,6 +155,7 @@ export function signBIP32({
   psbt: Psbt;
   masterNode: BIP32Interface;
 }): void {
+  ensureBitcoinjsHdPatch(psbt);
   psbt.signAllInputsHD(masterNode);
 }
 
