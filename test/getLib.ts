@@ -6,7 +6,7 @@
 // BITCOIN_LIB=bitcoinjs (or unset) → bitcoinjs-lib adapter (default)
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import type { BitcoinLib, Network } from '../dist/bitcoinLib';
+import { networks, type BitcoinLib, type Network } from '../dist';
 
 let _lib: BitcoinLib | undefined;
 
@@ -33,6 +33,10 @@ export function getLib(): BitcoinLib {
 // instead of:
 //   import { networks } from 'bitcoinjs-lib';
 export const lib: BitcoinLib = getLib();
-export const networks: { bitcoin: Network; testnet: Network; regtest: Network } =
-  lib.networks;
+export const testNetworks: {
+  bitcoin: Network;
+  testnet: Network;
+  regtest: Network;
+} = networks;
+export { testNetworks as networks };
 export type { Network };

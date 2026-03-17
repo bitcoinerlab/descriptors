@@ -4,27 +4,49 @@
 /**
  * Tests for the @scure/btc-signer adapter.
  *
- * Runs as a standalone CJS script (Node 22+ supports require() of ESM packages).
- * Usage: node test/scureAdapter.cjs
+ * Usage after `npm run build:test`: `node test/scureAdapter.js`
  */
 
-'use strict';
-
-const { DescriptorsFactory } = require('../dist/descriptors.js');
-const { createScureLib } = require('../dist/adapters/scure.js');
-const ecc = require('@bitcoinerlab/secp256k1');
-const { toHex } = require('uint8array-tools');
-const { fixtures: customFixtures } = require('./fixtures/custom.js');
-const { fixtures: bitcoinCoreFixtures } = require('./fixtures/bitcoinCore.js');
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { toHex } from 'uint8array-tools';
+import { DescriptorsFactory, networks } from '../dist';
+import { createScureLib } from '../dist/scure';
+import { fixtures as customFixtures } from './fixtures/custom';
+import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
 
 const lib = createScureLib(ecc);
 const { Output, expand } = DescriptorsFactory(lib);
 
 let passed = 0;
 let failed = 0;
-const failures = [];
+const failures: string[] = [];
 
-function assert(condition, message) {
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function expandFixture(fixture: {
+  descriptor: string;
+  network?: unknown;
+  allowMiniscriptInP2SH?: unknown;
+}): void {
+  const args: {
+    descriptor: string;
+    network?: typeof networks.bitcoin;
+    allowMiniscriptInP2SH?: boolean;
+  } = {
+    descriptor: fixture.descriptor
+  };
+  if (fixture.network && typeof fixture.network === 'object') {
+    args.network = fixture.network as typeof networks.bitcoin;
+  }
+  if (typeof fixture.allowMiniscriptInP2SH === 'boolean') {
+    args.allowMiniscriptInP2SH = fixture.allowMiniscriptInP2SH;
+  }
+  expand(args);
+}
+
+function assert(condition: boolean, message: string): void {
   if (condition) {
     passed++;
   } else {
@@ -34,7 +56,7 @@ function assert(condition, message) {
   }
 }
 
-function assertThrows(fn, message) {
+function assertThrows(fn: () => void, message: string): void {
   try {
     fn();
     failed++;
@@ -51,40 +73,33 @@ console.log('Testing adapter basics...');
 
 assert(lib.payments !== undefined, 'lib.payments defined');
 assert(lib.script !== undefined, 'lib.script defined');
-assert(lib.crypto !== undefined, 'lib.crypto defined');
 assert(lib.Transaction !== undefined, 'lib.Transaction defined');
 assert(lib.address !== undefined, 'lib.address defined');
 assert(lib.Psbt !== undefined, 'lib.Psbt defined');
 assert(lib.ECPair !== undefined, 'lib.ECPair defined');
 assert(lib.BIP32 !== undefined, 'lib.BIP32 defined');
-assert(lib.networks !== undefined, 'lib.networks defined');
 assert(lib.ecc !== undefined, 'lib.ecc defined');
 
 // Psbt interface
-const psbt = new lib.Psbt({ network: lib.networks.regtest });
+const psbt = new lib.Psbt({ network: networks.regtest });
 assert(psbt.inputCount === 0, 'Psbt inputCount is 0');
+assert(psbt.data.inputs.length === 0, 'Psbt data.inputs is empty');
+assert(psbt.txInputs.length === 0, 'Psbt txInputs is empty');
 assert(typeof psbt.addInput === 'function', 'Psbt.addInput');
 assert(typeof psbt.addOutput === 'function', 'Psbt.addOutput');
 assert(typeof psbt.toBase64 === 'function', 'Psbt.toBase64');
 assert(typeof psbt.signInput === 'function', 'Psbt.signInput');
 assert(typeof psbt.signInputHD === 'function', 'Psbt.signInputHD');
 assert(typeof psbt.finalizeInput === 'function', 'Psbt.finalizeInput');
-assert(typeof psbt.getInput === 'function', 'Psbt.getInput');
-assert(typeof psbt.getTxInput === 'function', 'Psbt.getTxInput');
-
-// Crypto
-assert(lib.crypto.hash160(new Uint8Array([0])).length === 20, 'hash160 → 20 bytes');
-assert(lib.crypto.sha256(new Uint8Array([0])).length === 32, 'sha256 → 32 bytes');
-assert(lib.crypto.taggedHash('TapLeaf', new Uint8Array([0])).length === 32, 'taggedHash → 32 bytes');
 
 // Script
 const script1 = lib.script.fromASM('OP_1');
 assert(script1.length > 0, 'fromASM(OP_1)');
 
 // Networks
-assert(lib.networks.bitcoin.bech32 === 'bc', 'bitcoin bech32');
-assert(lib.networks.testnet.bech32 === 'tb', 'testnet bech32');
-assert(lib.networks.regtest.bech32 === 'bcrt', 'regtest bech32');
+assert(networks.bitcoin.bech32 === 'bc', 'bitcoin bech32');
+assert(networks.testnet.bech32 === 'tb', 'testnet bech32');
+assert(networks.regtest.bech32 === 'bcrt', 'regtest bech32');
 
 // Keys
 const pair = lib.ECPair.makeRandom();
@@ -94,11 +109,15 @@ const child = root.derivePath("m/44'/0'/0'");
 assert(child.publicKey.length === 33, 'BIP32 derived pubkey');
 
 // Address
-const addrScript = lib.address.toOutputScript('1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH', lib.networks.bitcoin);
+const addrScript = lib.address.toOutputScript(
+  '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH',
+  networks.bitcoin
+);
 assert(addrScript.length > 0, 'toOutputScript');
 
 // Transaction parsing
-const txHex = '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000';
+const txHex =
+  '01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff0704ffff001d0104ffffffff0100f2052a0100000043410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac00000000';
 const tx = lib.Transaction.fromHex(txHex);
 assert(tx.getId().length > 0, 'Transaction.fromHex getId');
 assert(tx.outs.length > 0, 'Transaction has outputs');
@@ -123,30 +142,36 @@ console.log('Testing custom fixtures...');
 for (const fixture of customFixtures.valid) {
   try {
     const descriptor = new Output(fixture);
-    expand({
-      descriptor: fixture.descriptor,
-      network: fixture.network,
-      allowMiniscriptInP2SH: fixture.allowMiniscriptInP2SH
-    });
+    expandFixture(fixture);
 
-    if (fixture.script) {
+    if ('script' in fixture && fixture.script !== undefined) {
       const actual = toHex(descriptor.getScriptPubKey());
-      assert(actual === fixture.script, `custom valid script: ${fixture.descriptor}`);
-    } else if (fixture.address) {
+      assert(
+        actual === fixture.script,
+        `custom valid script: ${fixture.descriptor}`
+      );
+    } else if ('address' in fixture && fixture.address !== undefined) {
       const actual = descriptor.getAddress();
-      assert(actual === fixture.address, `custom valid address: ${fixture.descriptor}`);
+      assert(
+        actual === fixture.address,
+        `custom valid address: ${fixture.descriptor}`
+      );
     } else {
       passed++; // no assertion to check, just that it didn't throw
     }
-  } catch (e) {
+  } catch (error) {
     failed++;
-    failures.push(`custom valid threw: ${fixture.descriptor}: ${e.message}`);
-    console.error(`  FAIL custom valid: ${fixture.descriptor}: ${e.message}`);
+    const message = errorMessage(error);
+    failures.push(`custom valid threw: ${fixture.descriptor}: ${message}`);
+    console.error(`  FAIL custom valid: ${fixture.descriptor}: ${message}`);
   }
 }
 
 for (const fixture of customFixtures.invalid) {
-  assertThrows(() => new Output(fixture), `custom invalid: ${fixture.descriptor}`);
+  assertThrows(
+    () => new Output(fixture),
+    `custom invalid: ${fixture.descriptor}`
+  );
 }
 
 // ── Descriptor parsing: Bitcoin Core fixtures ──
@@ -155,25 +180,28 @@ console.log('Testing Bitcoin Core fixtures...');
 for (const fixture of bitcoinCoreFixtures.valid) {
   try {
     const descriptor = new Output(fixture);
-    expand({
-      descriptor: fixture.descriptor,
-      network: fixture.network,
-      allowMiniscriptInP2SH: fixture.allowMiniscriptInP2SH
-    });
+    expandFixture(fixture);
 
-    if (fixture.script) {
+    if ('script' in fixture && fixture.script !== undefined) {
       const actual = toHex(descriptor.getScriptPubKey());
-      assert(actual === fixture.script, `core valid script: ${fixture.descriptor}`);
-    } else if (fixture.address) {
+      assert(
+        actual === fixture.script,
+        `core valid script: ${fixture.descriptor}`
+      );
+    } else if ('address' in fixture && fixture.address !== undefined) {
       const actual = descriptor.getAddress();
-      assert(actual === fixture.address, `core valid address: ${fixture.descriptor}`);
+      assert(
+        actual === fixture.address,
+        `core valid address: ${fixture.descriptor}`
+      );
     } else {
       passed++;
     }
-  } catch (e) {
+  } catch (error) {
     failed++;
-    failures.push(`core valid threw: ${fixture.descriptor}: ${e.message}`);
-    console.error(`  FAIL core valid: ${fixture.descriptor}: ${e.message}`);
+    const message = errorMessage(error);
+    failures.push(`core valid threw: ${fixture.descriptor}: ${message}`);
+    console.error(`  FAIL core valid: ${fixture.descriptor}: ${message}`);
   }
 }
 
@@ -191,7 +219,10 @@ for (const fixture of bitcoinCoreFixtures.invalid) {
     passed++; // skip known difference
     continue;
   }
-  assertThrows(() => new Output(fixture), `core invalid: ${fixture.descriptor}`);
+  assertThrows(
+    () => new Output(fixture),
+    `core invalid: ${fixture.descriptor}`
+  );
 }
 
 // ── Summary ──
