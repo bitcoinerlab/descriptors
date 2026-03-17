@@ -41,22 +41,14 @@ export type {
   Preimage,
   TimeConstraints
 } from './types';
-export type {
-  BitcoinLib,
-  Psbt,
-  Payment,
-  FinalScriptsFunc,
-  Transaction,
-  Taptree
-} from './bitcoinLib';
-export type { Network } from './networks';
+export type { BitcoinLib, Psbt, Payment, Transaction } from './bitcoinLib';
+export { networks, type Network } from './networks';
 export {
   DescriptorsFactory,
   OutputInstance,
   OutputConstructor
 } from './descriptors';
 export { DescriptorChecksum as checksum } from './checksum';
-export { createBitcoinjsLib } from './adapters/bitcoinjs';
 
 import * as signers from './signers';
 export { signers };

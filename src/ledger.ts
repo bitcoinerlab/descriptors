@@ -27,12 +27,11 @@
 import { OutputInstance, DescriptorsFactory } from './descriptors';
 import type { Psbt, Transaction } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
-import { networks } from './networks';
+import { type Network, networks } from './networks';
 import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
-import type { Network } from './networks';
 
 /**
  * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.

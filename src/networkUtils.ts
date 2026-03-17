@@ -1,5 +1,4 @@
-import { networks } from './networks';
-import type { Network } from './networks';
+import { type Network, networks } from './networks';
 
 export function isBitcoinMainnet(network: Network): boolean {
   return (

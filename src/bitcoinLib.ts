@@ -13,13 +13,7 @@
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
 import type { Network } from './networks';
-import type {
-  PsbtInput,
-  Bip32Derivation,
-  TapBip32Derivation,
-  TapLeafScript,
-  PartialSig
-} from 'bip174';
+import type { PsbtInput } from 'bip174';
 
 // ─── Payment ─────────────────────────────────────────────────────────
 
@@ -51,16 +45,10 @@ export interface PsbtTxInput {
   sequence?: number;
 }
 
-export interface PsbtLikeInput extends Partial<PsbtInput> {
-  hash: string | Uint8Array;
-  index: number;
-  sequence?: number;
-}
-
 export type PsbtLikeInputUpdate = Partial<PsbtInput>;
 
 export interface Psbt {
-  addInput(input: PsbtLikeInput): void;
+  addInput(input: PsbtInput): void;
   addOutput(output: { script: Uint8Array; value: bigint }): void;
   readonly inputCount: number;
   readonly data: {
@@ -193,20 +181,7 @@ export interface BitcoinLib {
 
   // ── Raw ECC interface (needed for signature validation: verifySchnorr) ──
   ecc: import('./types').TinySecp256k1Interface;
-
-  // ── ECC initialization (bitcoinjs needs it; scure is a no-op) ──
-  initEccLib(): void;
 }
 
 // Re-export key types so modules can import from one place
-export type {
-  ECPairAPI,
-  ECPairInterface,
-  BIP32API,
-  BIP32Interface,
-  PsbtInput,
-  Bip32Derivation,
-  TapBip32Derivation,
-  TapLeafScript,
-  PartialSig
-};
+export type { ECPairAPI, ECPairInterface, BIP32API, BIP32Interface };

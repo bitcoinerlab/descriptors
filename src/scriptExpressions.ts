@@ -2,8 +2,7 @@ import type { BIP32Interface } from './bitcoinLib';
 import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import { coinTypeFromNetwork } from './networkUtils';
-import { networks } from './networks';
-import type { Network } from './networks';
+import { type Network, networks } from './networks';
 
 function assertStandardKeyPath(keyPath: string) {
   // Regular expression to match "/change/index" or "/change/*" format

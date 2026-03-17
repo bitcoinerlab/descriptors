@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import type { ECPairAPI, BIP32API } from './bitcoinLib';
-import type { Network } from './networks';
+import { type Network, networks } from './networks';
 import type { ECPairInterface } from 'ecpair';
 import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
@@ -54,7 +54,7 @@ export function parseKeyExpression({
   isTaproot,
   ECPair,
   BIP32,
-  network
+  network = networks.bitcoin
 }: {
   keyExpression: string;
   /** @default networks.bitcoin */
