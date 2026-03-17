@@ -10,9 +10,7 @@ import type {
 import type { KeyInfo } from './types';
 import type {
   Network,
-  Payment,
   Psbt,
-  PsbtLikeInput,
   Transaction,
   FinalScriptsFunc,
   BitcoinLib
@@ -61,7 +59,7 @@ export function finalScriptsFuncFactory(
         redeem: {
           input: scriptSatisfaction,
           output: lockingScript
-        } as Payment,
+        },
         network
       });
       if (!payment.witness)
@@ -75,7 +73,7 @@ export function finalScriptsFuncFactory(
           redeem: {
             input: scriptSatisfaction,
             output: lockingScript
-          } as Payment,
+          },
           network
         }),
         network
@@ -91,7 +89,7 @@ export function finalScriptsFuncFactory(
         redeem: {
           input: scriptSatisfaction,
           output: lockingScript
-        } as Payment,
+        },
         network
       }).input;
     }
@@ -286,6 +284,6 @@ export function addPsbtInput({
   if (witnessScript) input.witnessScript = witnessScript;
   if (redeemScript) input.redeemScript = redeemScript;
 
-  psbt.addInput(input as PsbtLikeInput);
+  psbt.addInput(input);
   return psbt.inputCount - 1;
 }
