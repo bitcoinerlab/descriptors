@@ -172,7 +172,7 @@ export interface BitcoinLib {
 
   // ── PSBT factory ──
   Psbt: {
-    new (opts?: { network?: Network }): Psbt;
+    new (opts?: { network?: Network; maximumFeeRate?: number }): Psbt;
   };
 
   // ── Key factories ──

@@ -10,7 +10,7 @@ import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
 import { hash160 } from './crypto';
-import { BitcoinLib } from '../dist';
+import type { BitcoinLib } from './bitcoinLib';
 
 /**
  * Expand a miniscript to a generalized form using variables instead of key
