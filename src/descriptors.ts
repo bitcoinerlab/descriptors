@@ -15,7 +15,7 @@ import {
 } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, fromHex, toHex } from 'uint8array-tools';
-import type { PartialSig } from 'bip174';
+import type { PartialSig } from './bip174';
 
 import type {
   TinySecp256k1Interface,
@@ -2194,11 +2194,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             matchingLeaf.controlBlock
           ];
           const finalScriptWitness = witnessStackToScriptWitness(witness);
-          psbt.finalizeTaprootInput(
-            index,
-            taprootSatisfaction.tapLeafHash,
-            () => ({ finalScriptWitness })
-          );
+          psbt.finalizeTaprootInput(index, undefined, () => ({
+            finalScriptWitness
+          }));
         } else if (!this.#miniscript) {
           //Use standard finalizers
           psbt.finalizeInput(index);

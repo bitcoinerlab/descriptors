@@ -11,7 +11,21 @@
 
 import * as btc from '@scure/btc-signer';
 import { hex } from '@scure/base';
-import { RawTx, RawOldTx } from '@scure/btc-signer/script.js';
+import {
+  RawTx,
+  RawOldTx,
+  RawWitness,
+  type ScriptType
+} from '@scure/btc-signer/script.js';
+import type {
+  P2TR,
+  P2TR_TREE,
+  TaprootScriptTree
+} from '@scure/btc-signer/payment.js';
+import type {
+  TransactionInput as ScureTransactionInput,
+  TransactionInputUpdate as ScureTransactionInputUpdate
+} from '@scure/btc-signer/psbt.js';
 import { BIP32Factory } from 'bip32';
 import type { BIP32API } from 'bip32';
 import { ECPairFactory } from 'ecpair';
@@ -21,15 +35,70 @@ import type {
   BitcoinLib,
   Psbt,
   PsbtLikeInputUpdate,
+  PsbtTxInput,
   Payment,
   FinalScriptsFunc,
   Transaction,
   Taptree
 } from '../bitcoinLib';
-import type { PsbtInput } from 'bip174';
-import { compare } from 'uint8array-tools';
+import type {
+  Bip32Derivation,
+  PartialSig,
+  PsbtInput,
+  TapBip32Derivation,
+  TapLeafScript
+} from '../bip174';
+import { compare, concat } from 'uint8array-tools';
 import { hash160, sha256 } from '../crypto';
 import { type Network, networks } from '../networks';
+
+type BitcoinjsPsbtInput = PsbtInput & Partial<PsbtTxInput>;
+type BitcoinjsTapScriptSig = NonNullable<PsbtInput['tapScriptSig']>[number];
+type ScureTaprootControlBlock = Parameters<
+  typeof btc.TaprootControlBlock.encode
+>[0];
+type ScureTapLeafScript = NonNullable<ScureTransactionInput['tapLeafScript']>;
+type ScureTapScriptSig = NonNullable<ScureTransactionInput['tapScriptSig']>;
+type ScureTapBip32Derivation = NonNullable<
+  ScureTransactionInput['tapBip32Derivation']
+>;
+type ScureBip32Derivation = NonNullable<
+  ScureTransactionInput['bip32Derivation']
+>;
+type ScureTaprootPayment = P2TR | P2TR_TREE;
+type ScureTaprootPaymentLeaf = P2TR_TREE['leaves'][number] & {
+  controlBlock: Uint8Array;
+};
+
+interface SignerWithPrivateKey {
+  publicKey: Uint8Array;
+  sign(hash: Uint8Array): Uint8Array;
+  privateKey?: Uint8Array;
+}
+
+interface DerivableHdSigner {
+  publicKey: Uint8Array;
+  sign(hash: Uint8Array): Uint8Array;
+  derivePath(path: string): DerivableHdSigner;
+  derive(index: number): DerivableHdSigner;
+  fingerprint: Uint8Array | number;
+  privateKey?: Uint8Array;
+}
+
+interface ScureHdKey {
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
+  fingerprint: number;
+  derive(path: string): ScureHdKey;
+  deriveChild(index: number): ScureHdKey;
+  sign(hash: Uint8Array): Uint8Array;
+}
+
+interface ScureMutableGlobalTransaction {
+  global: {
+    fallbackLocktime?: number;
+  };
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -46,6 +115,8 @@ function toBtcSignerNetwork(network: Network) {
 // ─── ASM → Script ───────────────────────────────────────────────────
 
 // Build set of valid btc-signer opcode names
+type ScriptElement = ScriptType[number];
+
 const SIGNER_OP_NAMES = new Set<string>();
 for (const key of Object.keys(btc.OP)) {
   if (isNaN(Number(key))) {
@@ -53,19 +124,19 @@ for (const key of Object.keys(btc.OP)) {
   }
 }
 
-function asmTokenToSignerOp(token: string): string | number | undefined {
+function asmTokenToSignerOp(token: string): ScriptElement | undefined {
   if (token === 'OP_0' || token === 'OP_FALSE') return 'OP_0';
   if (token === 'OP_1' || token === 'OP_TRUE') return 'OP_1';
   for (let i = 2; i <= 16; i++) {
-    if (token === `OP_${i}`) return `OP_${i}`;
+    if (token === `OP_${i}`) return `OP_${i}` as ScriptElement;
   }
   if (token === '1NEGATE' || token === 'OP_1NEGATE') return '1NEGATE';
 
   if (token.startsWith('OP_')) {
     const stripped = token.slice(3);
-    if (SIGNER_OP_NAMES.has(stripped)) return stripped;
+    if (SIGNER_OP_NAMES.has(stripped)) return stripped as ScriptElement;
   }
-  if (SIGNER_OP_NAMES.has(token)) return token;
+  if (SIGNER_OP_NAMES.has(token)) return token as ScriptElement;
 
   return undefined;
 }
@@ -77,8 +148,7 @@ function asmTokenToSignerOp(token: string): string | number | undefined {
  */
 function fromASM(asm: string): Uint8Array {
   const tokens = asm.trim().split(/\s+/);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scriptElements: any[] = [];
+  const scriptElements: ScriptType = [];
 
   for (const token of tokens) {
     if (token === '') continue;
@@ -90,7 +160,7 @@ function fromASM(asm: string): Uint8Array {
       if (data.length === 0) {
         scriptElements.push('OP_0');
       } else if (data.length === 1 && data[0]! >= 1 && data[0]! <= 16) {
-        scriptElements.push(`OP_${data[0]!}`);
+        scriptElements.push(`OP_${data[0]!}` as keyof typeof btc.OP);
       } else if (data.length === 1 && data[0] === 0x81) {
         scriptElements.push('1NEGATE');
       } else {
@@ -112,9 +182,7 @@ function decompileScript(script: Uint8Array): (number | Uint8Array)[] | null {
       if (typeof item === 'number') return item;
       if (item instanceof Uint8Array) return item;
       // String opcode: convert to number
-      const opNum = (btc.OP as unknown as Record<string, number>)[
-        item as string
-      ];
+      const opNum = btc.OP[item];
       if (opNum !== undefined) return opNum;
       return item as unknown as number;
     });
@@ -176,6 +244,222 @@ function numberEncode(n: number): Uint8Array {
   return new Uint8Array(result);
 }
 
+function encodeScriptWitnessStack(stack: Uint8Array[]): Uint8Array {
+  return RawWitness.encode(stack);
+}
+
+function decodeScriptWitnessStack(witness: Uint8Array): Uint8Array[] {
+  return RawWitness.decode(witness);
+}
+
+function paymentInputStack(redeem: Payment): Uint8Array[] {
+  if (!redeem.output) throw new Error('redeem.output is required');
+  if (!redeem.input) return [redeem.output];
+  return [...toStack(redeem.input), redeem.output];
+}
+
+function controlBlockToScure(
+  controlBlock: Uint8Array,
+  leafVersion: number
+): ScureTaprootControlBlock {
+  const decoded = btc.TaprootControlBlock.decode(controlBlock);
+  return { ...decoded, version: (decoded.version & 1) | leafVersion };
+}
+
+function scureTapLeafScriptToBitcoinjs(
+  tapLeafScript: ScureTapLeafScript
+): TapLeafScript[] {
+  return tapLeafScript.map(([controlBlock, scriptWithVersion]) => ({
+    controlBlock: btc.TaprootControlBlock.encode(controlBlock),
+    script: scriptWithVersion.subarray(0, -1),
+    leafVersion: scriptWithVersion[scriptWithVersion.length - 1] ?? 0xc0
+  }));
+}
+
+function bitcoinjsTapLeafScriptToScure(
+  tapLeafScript: TapLeafScript[]
+): ScureTapLeafScript {
+  return tapLeafScript.map(leaf => [
+    controlBlockToScure(leaf.controlBlock, leaf.leafVersion),
+    concat([leaf.script, Uint8Array.from([leaf.leafVersion])])
+  ]);
+}
+
+function scureTapScriptSigToBitcoinjs(
+  tapScriptSig: ScureTapScriptSig
+): BitcoinjsTapScriptSig[] {
+  return tapScriptSig.map(([key, signature]) => ({
+    pubkey: key.pubKey,
+    leafHash: key.leafHash,
+    signature
+  }));
+}
+
+function bitcoinjsTapScriptSigToScure(
+  tapScriptSig: BitcoinjsTapScriptSig[]
+): ScureTapScriptSig {
+  return tapScriptSig.map(sig => [
+    { pubKey: sig.pubkey, leafHash: sig.leafHash },
+    sig.signature
+  ]);
+}
+
+function scureBip32DerivationToBitcoinjs(
+  derivation: ScureBip32Derivation
+): Bip32Derivation[] {
+  return derivation.map(([pubkey, { fingerprint, path }]) => ({
+    pubkey,
+    masterFingerprint: uint32ToBytes(fingerprint),
+    path: pathArrayToString(path)
+  }));
+}
+
+function bitcoinjsBip32DerivationToScure(
+  derivation: Bip32Derivation[]
+): ScureBip32Derivation {
+  return derivation.map(({ pubkey, masterFingerprint, path }) => [
+    pubkey,
+    {
+      fingerprint: readUInt32BE(masterFingerprint),
+      path: btc.bip32Path(path)
+    }
+  ]);
+}
+
+function scureTapBip32DerivationToBitcoinjs(
+  derivation: ScureTapBip32Derivation
+): TapBip32Derivation[] {
+  return derivation.map(([pubkey, { hashes, der }]) => ({
+    pubkey,
+    masterFingerprint: uint32ToBytes(der.fingerprint),
+    path: pathArrayToString(der.path),
+    leafHashes: hashes
+  }));
+}
+
+function bitcoinjsTapBip32DerivationToScure(
+  derivation: TapBip32Derivation[]
+): ScureTapBip32Derivation {
+  return derivation.map(({ pubkey, masterFingerprint, path, leafHashes }) => [
+    pubkey,
+    {
+      hashes: leafHashes,
+      der: {
+        fingerprint: readUInt32BE(masterFingerprint),
+        path: btc.bip32Path(path)
+      }
+    }
+  ]);
+}
+
+function scurePartialSigToBitcoinjs(
+  partialSig: NonNullable<ScureTransactionInput['partialSig']>
+): PartialSig[] {
+  return partialSig.map(([pubkey, signature]) => ({ pubkey, signature }));
+}
+
+function bitcoinjsPartialSigToScure(
+  partialSig: PartialSig[]
+): NonNullable<ScureTransactionInputUpdate['partialSig']> {
+  return partialSig.map(({ pubkey, signature }) => [pubkey, signature]);
+}
+
+function toScureInputUpdate(
+  input: PsbtLikeInputUpdate
+): ScureTransactionInputUpdate {
+  const result: ScureTransactionInputUpdate = {};
+
+  if (input.nonWitnessUtxo) result.nonWitnessUtxo = input.nonWitnessUtxo;
+  if (input.witnessUtxo) {
+    result.witnessUtxo = {
+      script: input.witnessUtxo.script,
+      amount: input.witnessUtxo.value
+    };
+  }
+  if (input.redeemScript) result.redeemScript = input.redeemScript;
+  if (input.witnessScript) result.witnessScript = input.witnessScript;
+  if (input.tapInternalKey) result.tapInternalKey = input.tapInternalKey;
+  if (input.tapMerkleRoot) result.tapMerkleRoot = input.tapMerkleRoot;
+  if (input.tapKeySig) result.tapKeySig = input.tapKeySig;
+  if (input.bip32Derivation)
+    result.bip32Derivation = bitcoinjsBip32DerivationToScure(
+      input.bip32Derivation
+    );
+  if (input.tapBip32Derivation)
+    result.tapBip32Derivation = bitcoinjsTapBip32DerivationToScure(
+      input.tapBip32Derivation
+    );
+  if (input.partialSig)
+    result.partialSig = bitcoinjsPartialSigToScure(input.partialSig);
+  if (input.tapLeafScript)
+    result.tapLeafScript = bitcoinjsTapLeafScriptToScure(input.tapLeafScript);
+  if (input.tapScriptSig)
+    result.tapScriptSig = bitcoinjsTapScriptSigToScure(input.tapScriptSig);
+  if (input.sighashType !== undefined) result.sighashType = input.sighashType;
+  if (input.finalScriptSig) result.finalScriptSig = input.finalScriptSig;
+  if (input.finalScriptWitness)
+    result.finalScriptWitness = decodeScriptWitnessStack(
+      input.finalScriptWitness
+    );
+
+  return result;
+}
+
+function toScureInput(input: BitcoinjsPsbtInput): ScureTransactionInputUpdate {
+  if (!input.hash) throw new Error('PSBT input hash is required');
+  if (input.index === undefined)
+    throw new Error('PSBT input index is required');
+  const result = toScureInputUpdate(input);
+  result.txid = input.hash;
+  result.index = input.index;
+  if (input.sequence !== undefined) result.sequence = input.sequence;
+  return result;
+}
+
+function scureInputToBitcoinjs(raw: ScureTransactionInput): PsbtInput {
+  const input: Partial<PsbtInput> = {};
+
+  if (raw.nonWitnessUtxo)
+    input.nonWitnessUtxo = RawTx.encode(raw.nonWitnessUtxo);
+  if (raw.witnessUtxo) {
+    input.witnessUtxo = {
+      script: raw.witnessUtxo.script,
+      value: raw.witnessUtxo.amount
+    };
+  }
+  if (raw.redeemScript) input.redeemScript = raw.redeemScript;
+  if (raw.witnessScript) input.witnessScript = raw.witnessScript;
+  if (raw.tapInternalKey) input.tapInternalKey = raw.tapInternalKey;
+  if (raw.tapMerkleRoot) input.tapMerkleRoot = raw.tapMerkleRoot;
+  if (raw.tapKeySig) input.tapKeySig = raw.tapKeySig;
+  if (raw.bip32Derivation)
+    input.bip32Derivation = scureBip32DerivationToBitcoinjs(
+      raw.bip32Derivation
+    );
+  if (raw.tapBip32Derivation)
+    input.tapBip32Derivation = scureTapBip32DerivationToBitcoinjs(
+      raw.tapBip32Derivation
+    );
+  if (raw.partialSig)
+    input.partialSig = scurePartialSigToBitcoinjs(raw.partialSig);
+  if (raw.tapLeafScript)
+    input.tapLeafScript = scureTapLeafScriptToBitcoinjs(raw.tapLeafScript);
+  if (raw.tapScriptSig)
+    input.tapScriptSig = scureTapScriptSigToBitcoinjs(raw.tapScriptSig);
+  if (raw.sighashType !== undefined) input.sighashType = raw.sighashType;
+  if (raw.finalScriptSig) input.finalScriptSig = raw.finalScriptSig;
+  if (raw.finalScriptWitness)
+    input.finalScriptWitness = encodeScriptWitnessStack(raw.finalScriptWitness);
+
+  return input;
+}
+
+function requirePrivateKey(signer: SignerWithPrivateKey): Uint8Array {
+  if (!signer.privateKey)
+    throw new Error('Error: signer must expose a privateKey for scure signing');
+  return signer.privateKey;
+}
+
 // ─── Payment wrappers ───────────────────────────────────────────────
 
 /**
@@ -183,19 +467,26 @@ function numberEncode(n: number): Uint8Array {
  * when btc-signer rejects the inner script (e.g. complex miniscript).
  */
 function safeP2wsh(
-  innerScript: Uint8Array,
+  redeem: Payment,
   net?: ReturnType<typeof toBtcSignerNetwork>
 ): Payment {
+  const innerScript = redeem.output;
+  if (!innerScript) throw new Error('p2wsh requires redeem.output');
+  const witness = redeem.input
+    ? [...toStack(redeem.input), innerScript]
+    : undefined;
   try {
     const result = btc.p2wsh(
       { type: 'unknown' as never, script: innerScript },
       net
     );
-    return {
+    const payment: Payment = {
       output: result.script,
       address: result.address,
-      redeem: { output: innerScript }
+      redeem: { ...redeem, output: innerScript }
     };
+    if (witness) payment.witness = witness;
+    return payment;
   } catch {
     const scriptHash = sha256(innerScript);
     const outputScript = btc.OutScript.encode({
@@ -215,9 +506,10 @@ function safeP2wsh(
     }
     const result: Payment = {
       output: outputScript,
-      redeem: { output: innerScript }
+      redeem: { ...redeem, output: innerScript }
     };
     if (address) result.address = address;
+    if (witness) result.witness = witness;
     return result;
   }
 }
@@ -226,19 +518,25 @@ function safeP2wsh(
  * Safe p2sh wrapper: tries btc.p2sh first, falls back to manual computation.
  */
 function safeP2sh(
-  innerScript: Uint8Array,
+  redeem: Payment,
   net?: ReturnType<typeof toBtcSignerNetwork>
 ): Payment {
+  const innerScript = redeem.output;
+  if (!innerScript) throw new Error('p2sh requires redeem.output');
+  const input = btc.Script.encode(paymentInputStack(redeem));
   try {
     const result = btc.p2sh(
       { type: 'unknown' as never, script: innerScript },
       net
     );
-    return {
+    const payment: Payment = {
       output: result.script,
       address: result.address,
-      redeem: { output: innerScript }
+      redeem: { ...redeem, output: innerScript },
+      input
     };
+    if (redeem.witness) payment.witness = redeem.witness;
+    return payment;
   } catch {
     const scriptHash = hash160(innerScript);
     const outputScript = btc.OutScript.encode({
@@ -258,9 +556,11 @@ function safeP2sh(
     }
     const result: Payment = {
       output: outputScript,
-      redeem: { output: innerScript }
+      redeem: { ...redeem, output: innerScript },
+      input
     };
     if (address) result.address = address;
+    if (redeem.witness) result.witness = redeem.witness;
     return result;
   }
 }
@@ -280,76 +580,7 @@ class ScurePsbtAdapter implements Psbt {
   }
 
   #mapInput(index: number): PsbtInput {
-    const raw = this.#tx.getInput(index);
-    // Map scure's input format to bip174 PsbtInput format
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const input: any = {};
-
-    if (raw.nonWitnessUtxo) input.nonWitnessUtxo = raw.nonWitnessUtxo;
-    if (raw.witnessUtxo) {
-      input.witnessUtxo = {
-        script: raw.witnessUtxo.script,
-        value: raw.witnessUtxo.amount
-      };
-    }
-    if (raw.redeemScript) input.redeemScript = raw.redeemScript;
-    if (raw.witnessScript) input.witnessScript = raw.witnessScript;
-    if (raw.tapInternalKey) input.tapInternalKey = raw.tapInternalKey;
-    if (raw.tapMerkleRoot) input.tapMerkleRoot = raw.tapMerkleRoot;
-    if (raw.tapKeySig) input.tapKeySig = raw.tapKeySig;
-
-    // bip32Derivation: scure stores as [pubkey, {fingerprint, path}][]
-    if (raw.bip32Derivation && Array.isArray(raw.bip32Derivation)) {
-      input.bip32Derivation = (
-        raw.bip32Derivation as Array<
-          [Uint8Array, { fingerprint: number; path: number[] }]
-        >
-      ).map(([pubkey, { fingerprint, path }]) => ({
-        pubkey,
-        masterFingerprint: uint32ToBytes(fingerprint),
-        path: pathArrayToString(path)
-      }));
-    }
-
-    // tapBip32Derivation: scure stores as [pubkey, {hashes, der: {fingerprint, path}}][]
-    if (raw.tapBip32Derivation && Array.isArray(raw.tapBip32Derivation)) {
-      input.tapBip32Derivation = (
-        raw.tapBip32Derivation as Array<
-          [
-            Uint8Array,
-            {
-              hashes: Uint8Array[];
-              der: { fingerprint: number; path: number[] };
-            }
-          ]
-        >
-      ).map(([pubkey, { hashes, der }]) => ({
-        pubkey,
-        masterFingerprint: uint32ToBytes(der.fingerprint),
-        path: pathArrayToString(der.path),
-        leafHashes: hashes
-      }));
-    }
-
-    // partialSig: scure stores as [pubkey, signature][]
-    if (raw.partialSig && Array.isArray(raw.partialSig)) {
-      input.partialSig = (
-        raw.partialSig as Array<[Uint8Array, Uint8Array]>
-      ).map(([pubkey, signature]) => ({ pubkey, signature }));
-    }
-
-    if (raw.tapLeafScript && Array.isArray(raw.tapLeafScript)) {
-      input.tapLeafScript = raw.tapLeafScript;
-    }
-    if (raw.tapScriptSig && Array.isArray(raw.tapScriptSig)) {
-      input.tapScriptSig = raw.tapScriptSig;
-    }
-    if (raw.sighashType !== undefined) input.sighashType = raw.sighashType;
-    if (raw.finalScriptSig) input.finalScriptSig = raw.finalScriptSig;
-    if (raw.finalScriptWitness)
-      input.finalScriptWitness = raw.finalScriptWitness;
-
-    return input as PsbtInput;
+    return scureInputToBitcoinjs(this.#tx.getInput(index));
   }
 
   #mapTxInput(index: number): Psbt['txInputs'][number] {
@@ -362,8 +593,7 @@ class ScurePsbtAdapter implements Psbt {
   }
 
   addInput(input: PsbtInput): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.addInput(input as any);
+    this.#tx.addInput(toScureInput(input));
   }
 
   addOutput(output: { script: Uint8Array; value: bigint }): void {
@@ -392,30 +622,20 @@ class ScurePsbtAdapter implements Psbt {
   }
 
   setLocktime(locktime: number): void {
-    // scure uses lockTime property
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this.#tx as any).lockTime = locktime;
+    const tx = this.#tx as unknown as ScureMutableGlobalTransaction;
+    tx.global.fallbackLocktime = locktime;
   }
 
   get locktime(): number {
     return this.#tx.lockTime;
   }
 
-  signInput(
-    index: number,
-    signer: { publicKey: Uint8Array; sign(hash: Uint8Array): Uint8Array }
-  ): void {
-    // scure's signIdx with a signer object
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.signIdx(signer as any, index);
+  signInput(index: number, signer: SignerWithPrivateKey): void {
+    this.#tx.signIdx(requirePrivateKey(signer), index);
   }
 
-  signAllInputs(signer: {
-    publicKey: Uint8Array;
-    sign(hash: Uint8Array): Uint8Array;
-  }): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.sign(signer as any);
+  signAllInputs(signer: SignerWithPrivateKey): void {
+    this.#tx.sign(requirePrivateKey(signer));
   }
 
   signInputHD(
@@ -429,43 +649,22 @@ class ScurePsbtAdapter implements Psbt {
       };
     }
   ): void {
+    const scureHdSigner = hdSigner as DerivableHdSigner;
     // scure's signIdx with HDKey checks bip32Derivation but NOT tapBip32Derivation.
     // We need to handle taproot manually.
     const input = this.#tx.getInput(index);
-    const tapBip32 = input.tapBip32Derivation as
-      | Array<
-          [
-            Uint8Array,
-            {
-              hashes: Uint8Array[];
-              der: { fingerprint: number; path: number[] };
-            }
-          ]
-        >
-      | undefined;
+    const tapBip32 = input.tapBip32Derivation;
 
     if (tapBip32 && tapBip32.length > 0) {
       const fp = readUInt32BE(hdSigner.fingerprint);
       for (const [, { der }] of tapBip32) {
         if (der.fingerprint !== fp) continue;
-        const derivedNode = deriveFromPathArray(hdSigner, der.path);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const privKey = (derivedNode as any).privateKey as
-          | Uint8Array
-          | undefined;
-        if (privKey) {
-          this.#tx.signIdx(privKey, index);
-        } else {
-          this.#tx.signIdx(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            derivedNode as any,
-            index
-          );
-        }
+        const derivedNode = deriveFromPathArray(scureHdSigner, der.path);
+        this.#tx.signIdx(requirePrivateKey(derivedNode), index);
       }
     } else {
       // For non-taproot, convert to scure HDKey format
-      const scureHD = toScureHDKey(hdSigner);
+      const scureHD = toScureHDKey(scureHdSigner);
       this.#tx.signIdx(scureHD, index);
     }
   }
@@ -478,6 +677,7 @@ class ScurePsbtAdapter implements Psbt {
       sign(hash: Uint8Array): Uint8Array;
     };
   }): void {
+    const scureHdSigner = hdSigner as DerivableHdSigner;
     // Handle taproot inputs individually
     let tapSigned = 0;
     for (let i = 0; i < this.#tx.inputsLength; i++) {
@@ -491,7 +691,7 @@ class ScurePsbtAdapter implements Psbt {
 
     // Sign remaining non-taproot inputs
     try {
-      this.#tx.sign(toScureHDKey(hdSigner));
+      this.#tx.sign(toScureHDKey(scureHdSigner));
     } catch {
       // sign() throws when no bip32Derivation matches
       if (tapSigned === 0) throw new Error('No inputs were signed');
@@ -519,9 +719,10 @@ class ScurePsbtAdapter implements Psbt {
       if (result.finalScriptSig)
         updateFields['finalScriptSig'] = result.finalScriptSig;
       if (result.finalScriptWitness)
-        updateFields['finalScriptWitness'] = result.finalScriptWitness;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.#tx.updateInput(index, updateFields as any, true);
+        updateFields['finalScriptWitness'] = decodeScriptWitnessStack(
+          result.finalScriptWitness
+        );
+      this.#tx.updateInput(index, updateFields, true);
     } else {
       this.#tx.finalizeIdx(index);
     }
@@ -529,14 +730,20 @@ class ScurePsbtAdapter implements Psbt {
 
   finalizeTaprootInput(
     index: number,
-    _tapLeafHashToFinalize: Uint8Array | undefined,
+    tapLeafHashToFinalize: Uint8Array | undefined,
     finalizer: () => { finalScriptWitness: Uint8Array }
   ): void {
+    if (tapLeafHashToFinalize !== undefined) {
+      throw new Error(
+        'Error: scure adapter does not implement tapLeafHashToFinalize in finalizeTaprootInput'
+      );
+    }
     const result = finalizer();
     this.#tx.updateInput(
       index,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { finalScriptWitness: result.finalScriptWitness } as any,
+      {
+        finalScriptWitness: decodeScriptWitnessStack(result.finalScriptWitness)
+      },
       true
     );
   }
@@ -584,8 +791,7 @@ class ScurePsbtAdapter implements Psbt {
   }
 
   updateInput(index: number, data: PsbtLikeInputUpdate): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.#tx.updateInput(index, data as any);
+    this.#tx.updateInput(index, toScureInputUpdate(data));
   }
 
   toBase64(): string {
@@ -629,21 +835,19 @@ function pathArrayToString(path: number[]): string {
 }
 
 function deriveFromPathArray(
-  hdSigner: {
-    derivePath(path: string): {
-      publicKey: Uint8Array;
-      sign(hash: Uint8Array): Uint8Array;
-    };
-  },
+  hdSigner: DerivableHdSigner,
   pathArray: number[]
-): { publicKey: Uint8Array; sign(hash: Uint8Array): Uint8Array } {
+): DerivableHdSigner {
   const pathStr = pathArrayToString(pathArray);
   // Remove the 'm/' prefix since derivePath expects relative paths from the node
   return hdSigner.derivePath(pathStr.slice(2));
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toScureHDKey(hdSigner: any): any {
+function toScureHDKey(hdSigner: DerivableHdSigner): ScureHdKey {
+  if (!hdSigner.privateKey)
+    throw new Error(
+      'Error: HD signer must expose a privateKey for scure signing'
+    );
   return {
     publicKey: hdSigner.publicKey,
     privateKey: hdSigner.privateKey,
@@ -762,7 +966,7 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
       p2sh(a) {
         const net = a.network ? toBtcSignerNetwork(a.network) : undefined;
         if (a.redeem?.output) {
-          return safeP2sh(a.redeem.output, net);
+          return safeP2sh(a.redeem, net);
         }
         if (a.output) {
           const decoded = btc.OutScript.decode(a.output);
@@ -834,7 +1038,7 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
       p2wsh(a) {
         const net = a.network ? toBtcSignerNetwork(a.network) : undefined;
         if (a.redeem?.output) {
-          return safeP2wsh(a.redeem.output, net);
+          return safeP2wsh(a.redeem, net);
         }
         if (a.output) {
           const decoded = btc.OutScript.decode(a.output);
@@ -861,27 +1065,29 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
       p2tr(a) {
         const net = a.network ? toBtcSignerNetwork(a.network) : undefined;
         if (a.internalPubkey) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let result: any;
+          let result: ScureTaprootPayment;
           if (a.scriptTree) {
             const scriptTree = convertTaptree(a.scriptTree);
-            result = btc.p2tr(a.internalPubkey, scriptTree, net);
+            result = btc.p2tr(a.internalPubkey, scriptTree, net, true);
           } else {
             result = btc.p2tr(a.internalPubkey, undefined, net);
           }
           const payment: Payment = {
             output: result.script,
             address: result.address,
-            internalPubkey: a.internalPubkey
+            internalPubkey: a.internalPubkey,
+            pubkey: result.tweakedPubkey
           };
           // When redeem is provided, find the matching leaf and build the
           // witness array [tapScript, controlBlock] that bitcoinjs-lib returns.
-          if (a.redeem?.output && result.leaves) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const matchingLeaf = (result.leaves as any[]).find(
-              (leaf: { script: Uint8Array }) =>
-                compare(leaf.script, a.redeem!.output) === 0
-            );
+          if (a.redeem?.output && 'leaves' in result) {
+            const taprootTreeResult = result as P2TR_TREE;
+            const redeemVersion = a.redeem.redeemVersion ?? 0xc0;
+            const matchingLeaf = taprootTreeResult.leaves.find(
+              leaf =>
+                compare(leaf.script, a.redeem!.output) === 0 &&
+                (leaf.version ?? 0xc0) === redeemVersion
+            ) as ScureTaprootPaymentLeaf | undefined;
             if (matchingLeaf) {
               payment.witness = [
                 matchingLeaf.script,
@@ -902,7 +1108,11 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
                 /* ignore */
               }
             }
-            return { output: a.output, address } as Payment;
+            return {
+              output: a.output,
+              address,
+              pubkey: decoded.pubkey
+            } as Payment;
           }
         }
         throw new Error('p2tr requires internalPubkey or output');
@@ -935,18 +1145,13 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
     },
 
     Psbt: class {
-      constructor(opts?: { network?: Network }) {
+      constructor(_opts?: { network?: Network }) {
         const tx = new btc.Transaction({
           allowUnknownOutputs: true,
           disableScriptCheck: true
         });
         const adapter = new ScurePsbtAdapter(tx);
-        if (opts?.network) {
-          // Store network for later use (e.g., address encoding)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (adapter as any)._network = opts.network;
-        }
-        return adapter as unknown as Psbt;
+        return adapter;
       }
     } as unknown as { new (opts?: { network?: Network }): Psbt },
 
@@ -959,7 +1164,7 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
 
 // ─── Taptree conversion ─────────────────────────────────────────────
 
-type ScureTaptree = Parameters<typeof btc.p2tr>[1];
+type ScureTaptree = TaprootScriptTree;
 
 function convertTaptree(tree: Taptree): ScureTaptree {
   if (Array.isArray(tree)) {
@@ -969,5 +1174,5 @@ function convertTaptree(tree: Taptree): ScureTaptree {
   return {
     script: tree.output,
     leafVersion: tree.version ?? 0xc0
-  } as ScureTaptree;
+  };
 }

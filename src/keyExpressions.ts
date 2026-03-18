@@ -199,6 +199,17 @@ export function parseKeyExpression({
   if (originPath || keyPath) {
     path = `m${originPath ?? ''}${keyPath ?? ''}`;
   }
+  if (pubkey !== undefined) {
+    if (isTaproot) {
+      if (pubkey.length !== 33) throw new Error(`Error: invalid pubkey`);
+    } else if (
+      typeof isSegwit === 'boolean' &&
+      isSegwit &&
+      pubkey.length !== 33
+    ) {
+      throw new Error(`Error: invalid pubkey`);
+    }
+  }
   if (pubkey !== undefined && isTaproot && pubkey.length === 33)
     // If we get a 33-byte compressed key, drop the first byte.
     pubkey = pubkey.slice(1, 33);
