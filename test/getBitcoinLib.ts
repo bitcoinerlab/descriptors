@@ -1,4 +1,4 @@
-// Copyright (c) 2027 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
 // Provides the BitcoinLib adapter for tests based on BITCOIN_LIB env var.

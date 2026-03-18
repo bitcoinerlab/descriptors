@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { parseTapTreeExpression } from '../dist/tapTree';
+import { getBitcoinLib } from './getBitcoinLib';
 
-const { Output, ECPair } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
 
 // Use deterministic, distinct private keys across this file to avoid duplicate
 // pubkeys in multisig/taproot tests. `fill(seed)` repeats the byte `seed`

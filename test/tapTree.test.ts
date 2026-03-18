@@ -17,12 +17,11 @@ import {
   buildTaprootLeafPsbtMetadata,
   satisfyTapTree
 } from '../dist/tapMiniscript';
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const bitcoinLib = getBitcoinLib();
 
-const { Psbt } = DescriptorsFactory(ecc);
+const { Psbt } = DescriptorsFactory(bitcoinLib);
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
 
@@ -86,7 +85,7 @@ describe('taproot tree compilation', () => {
   };
 
   test('builds tapTreeInfo via expand for tr(KEY,TREE)', () => {
-    const { expand } = DescriptorsFactory(ecc);
+    const { expand } = DescriptorsFactory(bitcoinLib);
     const { tapTreeInfo } = expand({
       descriptor:
         'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0))'
@@ -104,7 +103,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('builds tapTreeInfo for Output (task 6)', () => {
-    const { Output } = DescriptorsFactory(ecc);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const output = new Output({
       descriptor:
         'tr(a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd,pk(669b8afcec803a0d323e9a17f3ea8e68e8abe5a278020a929adbec52421adbd0))'
@@ -114,7 +113,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('builds PSBT taproot leaf metadata for all leaves', () => {
-    const { expand } = DescriptorsFactory(ecc);
+    const { expand } = DescriptorsFactory(bitcoinLib);
     const descriptor = `tr(${INTERNAL_KEY},{pk(${LEAF_KEY_1}),pk(${LEAF_KEY_2})})`;
     const { tapTreeInfo, expansionMap } = expand({ descriptor });
     if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
@@ -149,7 +148,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('builds tapBip32Derivation entries with leafHashes for script keys', () => {
-    const { expand } = DescriptorsFactory(ecc);
+    const { expand } = DescriptorsFactory(bitcoinLib);
     const internal = `[00000000/111'/222']${XPUB_1}/0`;
     const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
     const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
@@ -190,7 +189,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('updatePsbtAsInput populates taproot script-path PSBT fields', () => {
-    const { Output } = DescriptorsFactory(ecc);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const internal = `[00000000/111'/222']${XPUB_1}/0`;
     const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
     const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
@@ -238,7 +237,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('updatePsbtAsInput in key policy does not add tapLeafScript', () => {
-    const { Output } = DescriptorsFactory(ecc);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const internal = `[00000000/111'/222']${XPUB_1}/0`;
     const leaf1 = `[00000000/111'/222']${XPUB_1}/1`;
     const leaf2 = `[11111111/44'/0'/0']${XPUB_2}/0`;
@@ -261,7 +260,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('script policy signs and finalizes through script-path', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSignerA = nextSigner();
@@ -292,7 +291,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('script policy finalizer requires tapScriptSig', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSigner = nextSigner();
@@ -315,7 +314,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('key-path taproot signs and finalizes without tapLeafScript', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signer = nextSigner();
     const descriptor = `tr(${xOnly(signer.publicKey)})`;
@@ -339,7 +338,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('supports sortedmulti_a() as a taproot leaf expression', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -389,7 +388,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() when nested inside miniscript', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -408,7 +407,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() outside tr()', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signerA = nextSigner();
     const signerB = nextSigner();
@@ -421,7 +420,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('fails fast when script policy is used on key-only taproot', () => {
-    const { Output } = DescriptorsFactory(ecc);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     expect(
       () =>
         new Output({
@@ -432,7 +431,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('fails fast when script policy is used on addr(TR_ADDRESS)', () => {
-    const { Output } = DescriptorsFactory(ecc);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const keyOutput = new Output({ descriptor: `tr(${INTERNAL_KEY})` });
     const trAddress = keyOutput.getAddress();
     expect(
@@ -458,7 +457,7 @@ describe('taproot tree satisfactions', () => {
   const DESCRIPTOR = `tr(${INTERNAL_KEY},${TREE_EXPRESSION})`;
 
   const buildTapTreeInfo = () => {
-    const { expand } = DescriptorsFactory(ecc);
+    const { expand } = DescriptorsFactory(bitcoinLib);
     const { tapTreeInfo } = expand({ descriptor: DESCRIPTOR });
     if (!tapTreeInfo) throw new Error('tapTreeInfo not available');
     return tapTreeInfo;
@@ -519,7 +518,7 @@ describe('taproot tree satisfactions', () => {
   });
 
   test('accepts push-only OP_1 selectors in taproot satisfactions', () => {
-    const { Output, ECPair } = DescriptorsFactory(ecc);
+    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -549,7 +548,7 @@ describe('taproot tree satisfactions', () => {
   });
 
   test('throws when miniscript selector is ambiguous', () => {
-    const { expand } = DescriptorsFactory(ecc);
+    const { expand } = DescriptorsFactory(bitcoinLib);
     const duplicateDescriptor = `tr(${INTERNAL_KEY},{pk(${LEAF_KEY}),pk(${LEAF_KEY})})`;
     const { tapTreeInfo } = expand({ descriptor: duplicateDescriptor });
     if (!tapTreeInfo) throw new Error('tapTreeInfo not available');

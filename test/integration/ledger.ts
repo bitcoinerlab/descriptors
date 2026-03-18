@@ -80,11 +80,13 @@ import {
   DescriptorsFactory,
   ledger
 } from '../../dist/';
+import { getBitcoinLib } from '../getBitcoinLib';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 

@@ -12,10 +12,12 @@ import {
   ledgerPolicyFromPsbtInput
 } from '../dist/ledger';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
+import { getBitcoinLib } from './getBitcoinLib';
 import { toHex } from 'uint8array-tools';
 
 const NETWORK = networks.regtest;
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
 
 function makeMaster(seed: number): BIP32Interface {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);

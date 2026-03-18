@@ -2,13 +2,14 @@
 // Distributed under the MIT software license
 
 import { networks, Psbt } from 'bitcoinjs-lib';
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory } from '../dist';
+import { getBitcoinLib } from './getBitcoinLib';
 
 const PUBKEY_HEX =
   '03c6e26fdf91debe78458853f1ba08d8de71b7672a099e1be5b6204dab83c046e5';
 
-const { Output } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output } = DescriptorsFactory(bitcoinLib);
 
 function buildOutput() {
   return new Output({

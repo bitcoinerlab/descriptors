@@ -26,13 +26,14 @@ console.log(
   `Miniscript integration tests: ${POLICY.toString().match(/`([^`]*)`/)![1]}`
 );
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { getBitcoinLib } from '../getBitcoinLib';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 import { toHex } from 'uint8array-tools';
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();

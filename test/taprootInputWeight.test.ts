@@ -5,10 +5,11 @@ import { encodingLength } from 'varuint-bitcoin';
 import type { PartialSig } from 'bip174';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { selectTapLeafCandidates } from '../dist/tapTree';
-import * as ecc from '@bitcoinerlab/secp256k1';
+import { getBitcoinLib } from './getBitcoinLib';
 import { fromHex, toHex } from 'uint8array-tools';
 
-const { Output, expand } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, expand } = DescriptorsFactory(bitcoinLib);
 
 const INTERNAL_KEY =
   'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';

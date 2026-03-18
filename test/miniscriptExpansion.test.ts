@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory } from '../dist/descriptors';
+import { getBitcoinLib } from './getBitcoinLib';
 import { toHex } from 'uint8array-tools';
 
-const { expand, ECPair } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { expand, ECPair } = DescriptorsFactory(bitcoinLib);
 
 describe('miniscript expansion', () => {
   test('does not treat sha256 digest hex as a key expression', () => {

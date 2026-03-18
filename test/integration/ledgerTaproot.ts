@@ -16,6 +16,7 @@ import {
   scriptExpressions,
   signers
 } from '../../dist/';
+import { getBitcoinLib } from '../getBitcoinLib';
 
 const regtestUtils = new RegtestUtils();
 
@@ -25,7 +26,8 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
 const { signLedger } = signers;
 const { trLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
