@@ -237,36 +237,29 @@ function parseTrExpression(expression: string): {
  * [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
-export function DescriptorsFactory(
-  eccOrLib: TinySecp256k1Interface | BitcoinLib
-) {
+export function DescriptorsFactory<
+  T extends TinySecp256k1Interface | BitcoinLib
+>(eccOrBitcoinLib: T) {
   // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
-  let lib: BitcoinLib;
+  let bitcoinLib: BitcoinLib;
   let ecc: TinySecp256k1Interface;
-  if ('payments' in eccOrLib && 'script' in eccOrLib) {
-    lib = eccOrLib;
-    // BitcoinLib adapters must expose the raw ecc interface for signature
-    // validation (verifySchnorr). We cast to access it.
-    const libWithEcc = eccOrLib as BitcoinLib & { ecc: TinySecp256k1Interface };
-    if (!libWithEcc.ecc)
-      throw new Error(
-        `Error: BitcoinLib must expose an 'ecc' property with TinySecp256k1Interface`
-      );
-    ecc = libWithEcc.ecc;
+  if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
+    bitcoinLib = eccOrBitcoinLib;
+    ecc = bitcoinLib.ecc;
   } else {
-    ecc = eccOrLib;
+    ecc = eccOrBitcoinLib;
     // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createBitcoinjsLib } = require('./adapters/bitcoinjs');
-    lib = createBitcoinjsLib(ecc);
+    bitcoinLib = createBitcoinjsLib(ecc);
   }
-  const { payments, script: scriptLib } = lib;
+  const { payments, script: scriptLib } = bitcoinLib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
-  const address = lib.address;
-  const Transaction = lib.Transaction;
-  const BIP32: BIP32API = lib.BIP32;
-  const ECPair: ECPairAPI = lib.ECPair;
+  const address = bitcoinLib.address;
+  const Transaction = bitcoinLib.Transaction;
+  const BIP32: BIP32API = bitcoinLib.BIP32;
+  const ECPair: ECPairAPI = bitcoinLib.ECPair;
 
   const signatureValidator = (
     pubkey: Uint8Array,
@@ -2312,7 +2305,19 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     expand,
     ECPair,
     BIP32,
-    Psbt: lib.Psbt
+    Psbt: bitcoinLib.Psbt
+  } as unknown as {
+    Output: typeof Output;
+    parseKeyExpression: typeof parseKeyExpression;
+    expand: typeof expand;
+    ECPair: typeof ECPair;
+    BIP32: typeof BIP32;
+    //which type is Psbt?
+    Psbt: T extends BitcoinLib
+      ? //if the param passed for eccOrBitcoinLib === bitcoinLib ->
+        T['Psbt'] //the type of the param itself
+      : //if the parm for eccOrBitcoinLib === ecc ->
+        typeof import('bitcoinjs-lib').Psbt; // the bitcoinjs-lib Psbt type
   };
 }
 
