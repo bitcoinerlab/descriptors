@@ -9,7 +9,7 @@ import {
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation, TapLeafScript } from 'bip174';
 import { Psbt as BitcoinjsPsbt, Transaction } from 'bitcoinjs-lib';
-import { lib } from './getLib';
+import { getBitcoinLib } from './getBitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { signInputECPair } from '../dist/signers';
 import {
@@ -20,13 +20,11 @@ import {
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
+const bitcoinLib = getBitcoinLib();
+
 const { Psbt } = DescriptorsFactory(ecc);
-const payments = lib.payments as NonNullable<
-  Parameters<typeof buildTaprootLeafPsbtMetadata>[0]['payments']
->;
-const scriptLib = lib.script as NonNullable<
-  Parameters<typeof satisfyTapTree>[0]['scriptLib']
->;
+const payments = bitcoinLib.payments;
+const scriptLib = bitcoinLib.script;
 
 function extractTransaction(psbt: { toBase64(): string }) {
   return BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction();
