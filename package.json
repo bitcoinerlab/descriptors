@@ -12,8 +12,8 @@
   "keywords": [
     "bitcoin",
     "descriptors",
-    "bitcoinjs",
     "miniscript",
+    "bitcoinjs",
     "scure",
     "noble"
   ],
@@ -37,7 +37,13 @@
     "extends": "./node_modules/@bitcoinerlab/configs/eslintConfig"
   },
   "jest": {
-    "preset": "@bitcoinerlab/configs"
+    "preset": "@bitcoinerlab/configs",
+    "transform": {
+      "^.+node_modules/(?:@noble|@scure|micro-packed)/.+\\.js$": "<rootDir>/jest-esm-transform.cjs"
+    },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(@noble|@scure|micro-packed)/)"
+    ]
   },
   "scripts": {
     "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
@@ -51,8 +57,8 @@
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
     "test:unit": "jest",
-    "test:unit:scure": "cross-env BITCOIN_LIB=scure jest --config jest.config.scure.js",
-    "test:scure": "node test/scureAdapter.cjs",
+    "test:unit:scure": "cross-env BITCOIN_LIB=scure jest",
+    "test:scure": "node test/scureAdapter.js",
     "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure",
     "test": "npm run lint && npm run build && npm run test:matrix && npm run test:integration:soft",
     "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
