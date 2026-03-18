@@ -7,7 +7,7 @@ import { compare, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type { PartialSig, TapBip32Derivation } from 'bip174';
+import type { PartialSig, TapBip32Derivation } from './bip174';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,

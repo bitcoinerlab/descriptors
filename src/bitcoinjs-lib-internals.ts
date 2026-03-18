@@ -5,7 +5,7 @@
  * CodeSandbox), and React Native/Metro.
  */
 
-import type { PsbtInput } from 'bip174';
+import type { PsbtInput } from './bip174';
 import { encode } from 'varuint-bitcoin';
 import { concat } from 'uint8array-tools';
 import { taggedHash } from './crypto';

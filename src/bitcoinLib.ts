@@ -13,7 +13,7 @@
 import type { ECPairAPI, ECPairInterface } from 'ecpair';
 import type { BIP32API, BIP32Interface } from 'bip32';
 import type { Network } from './networks';
-import type { PsbtInput } from 'bip174';
+import type { PsbtInput } from './bip174';
 
 // ─── Payment ─────────────────────────────────────────────────────────
 

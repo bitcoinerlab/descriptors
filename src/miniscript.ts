@@ -5,7 +5,7 @@ import type { ECPairAPI, BIP32API } from './bitcoinLib';
 import { parseKeyExpression } from './keyExpressions';
 import { type Network, networks } from './networks';
 import * as RE from './re';
-import type { PartialSig } from 'bip174';
+import type { PartialSig } from './bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';

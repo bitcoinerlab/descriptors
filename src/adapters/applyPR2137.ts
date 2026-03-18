@@ -2,9 +2,8 @@
 //The Async functions have not been "fixed"
 //Note that a further fix (look for FIX BITCOINERLAB) was done
 import type { Psbt, Signer } from 'bitcoinjs-lib';
-import { checkForInput } from 'bip174';
 import type { SignerAsync } from 'ecpair';
-import type { PsbtInput } from 'bip174';
+import { checkForInput, type PsbtInput } from '../bip174';
 import { tapTweakHash, isTaprootInput } from '../bitcoinjs-lib-internals';
 import { taggedHash } from '../crypto';
 import { compare, concat } from 'uint8array-tools';

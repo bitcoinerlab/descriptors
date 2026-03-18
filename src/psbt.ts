@@ -6,7 +6,7 @@ import type {
   Bip32Derivation,
   TapBip32Derivation,
   TapLeafScript
-} from 'bip174';
+} from './bip174';
 import type { KeyInfo } from './types';
 import type {
   Psbt,

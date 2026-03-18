@@ -118,7 +118,6 @@
     "@bitcoinerlab/miniscript": "^2.0.0",
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "@noble/hashes": "^2.0.1",
-    "bip174": "^3.0.0",
     "bip32": "^5.0.1",
     "ecpair": "^3.0.1",
     "lodash.memoize": "^4.1.2",
