@@ -239,10 +239,14 @@ const finalizers = [];
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
   //The helper now supports both script and address for both backends
-  psbtAddOutput(psbt, {
-    address: FINAL_ADDRESS,
-    value: BigInt(UTXO_VALUE * 3 - FEE)
-  });
+  psbtAddOutput(
+    psbt,
+    {
+      address: FINAL_ADDRESS,
+      value: BigInt(UTXO_VALUE * 3 - FEE)
+    },
+    NETWORK
+  );
 
   //=============
   //Register Ledger policies of non-standard descriptors.

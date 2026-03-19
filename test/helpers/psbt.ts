@@ -10,6 +10,7 @@
 import { Psbt } from 'bitcoinjs-lib';
 import * as btc from '@scure/btc-signer';
 import { base64 } from '@scure/base';
+import type { Network } from '../../src/networks';
 
 // ─── Type Guards ─────────────────────────────────────────────────────
 
@@ -94,13 +95,19 @@ export function psbtToTxId(psbt: Psbt | btc.Transaction): string {
 
 export function psbtAddOutput(
   psbt: Psbt | btc.Transaction,
-  output: { script?: Uint8Array; address?: string; value: bigint }
+  output: { script?: Uint8Array; address?: string; value: bigint },
+  network?: Network
 ): void {
   if (isScurePsbt(psbt)) {
     // Scure Transaction uses amount instead of value
     // It has separate methods: addOutput (for script) and addOutputAddress (for address)
     if (output.address) {
-      psbt.addOutputAddress(output.address, output.value);
+      if (!network) {
+        throw new Error(
+          'network parameter is required when using address with @scure/btc-signer backend'
+        );
+      }
+      psbt.addOutputAddress(output.address, output.value, network);
     } else if (output.script) {
       psbt.addOutput({ script: output.script, amount: output.value });
     } else {
@@ -152,8 +159,7 @@ export function psbtFromBase64(
 
 export function createPsbt(
   isScure: boolean = false,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  network?: any
+  network?: Network
 ): Psbt | btc.Transaction {
   if (isScure) {
     // Create scure Transaction
@@ -164,5 +170,5 @@ export function createPsbt(
   }
 
   // Create bitcoinjs-lib Psbt
-  return new Psbt({ network });
+  return network ? new Psbt({ network }) : new Psbt();
 }
