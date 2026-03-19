@@ -47,13 +47,15 @@ export interface PsbtTxInput {
 
 export type PsbtLikeInputUpdate = Partial<PsbtInput>;
 
-export interface Psbt {
+/**
+ * Minimal interface compatible with bitcoinjs-lib Psbt.
+ * A structural subset that allows passing raw bitcoinjs-lib Psbt instances.
+ */
+export interface BitcoinjsPsbtLike {
   addInput(input: PsbtInput): void;
   addOutput(output: { script: Uint8Array; value: bigint }): void;
   readonly inputCount: number;
-  readonly data: {
-    inputs: PsbtInput[];
-  };
+  readonly data: { inputs: PsbtInput[] };
   readonly txInputs: PsbtTxInput[];
   setLocktime(locktime: number): void;
   readonly locktime: number;
@@ -90,6 +92,42 @@ export type FinalScriptsFunc = (
   finalScriptSig: Uint8Array | undefined;
   finalScriptWitness: Uint8Array | undefined;
 };
+
+/**
+ * Minimal interface compatible with @scure/btc-signer Transaction.
+ * Detected by the presence of scure-specific methods/properties.
+ */
+export interface ScureTransactionLike {
+  inputsLength: number;
+  outputsLength: number;
+  getInput(index: number): unknown;
+  getOutput(index: number): unknown;
+  addInput(input: unknown): void;
+  addOutput(output: { script: Uint8Array; amount: bigint }): void;
+  sign(signer: unknown): void;
+  signIdx(signer: unknown, index: number): void;
+  finalize(): void;
+  finalizeIdx(index: number): void;
+  toPSBT(): Uint8Array;
+  lockTime: number;
+}
+
+/**
+ * Type guard to detect if a PSBT input is a @scure/btc-signer Transaction.
+ * Checks for scure-specific properties that distinguish it from bitcoinjs-lib Psbt.
+ */
+export function isScureTransaction(
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike
+): psbt is ScureTransactionLike {
+  const candidate = psbt as ScureTransactionLike;
+  return (
+    'inputsLength' in candidate &&
+    'outputsLength' in candidate &&
+    'toPSBT' in candidate &&
+    typeof candidate.toPSBT === 'function' &&
+    'lockTime' in candidate
+  );
+}
 
 // ─── Transaction ─────────────────────────────────────────────────────
 
@@ -168,11 +206,6 @@ export interface BitcoinLib {
   // ── Address ──
   address: {
     toOutputScript(addr: string, network?: Network): Uint8Array;
-  };
-
-  // ── PSBT factory ──
-  Psbt: {
-    new (opts?: { network?: Network; maximumFeeRate?: number }): Psbt;
   };
 
   // ── Key factories ──
