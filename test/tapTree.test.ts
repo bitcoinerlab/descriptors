@@ -8,9 +8,19 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation, TapLeafScript } from 'bip174';
-import { Psbt as BitcoinjsPsbt, Transaction } from 'bitcoinjs-lib';
+import { Psbt, Transaction, initEccLib } from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { getBitcoinLib } from './getBitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
+
+// When using the scure backend (BITCOIN_LIB=scure), the library creates
+// taproot payments using @scure/btc-signer, but the test still uses
+// bitcoinjs-lib's Psbt for signing. bitcoinjs-lib requires its ECC library
+// to be initialized to validate taproot public keys during signing.
+// Without this, checkTaprootHashesForSig() fails with "Can not sign for input".
+if (process.env['BITCOIN_LIB'] === 'scure') {
+  initEccLib(ecc);
+}
 import { signInputECPair } from '../dist/signers';
 import {
   buildTaprootBip32Derivations,
@@ -23,11 +33,6 @@ const bitcoinLib = getBitcoinLib();
 
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
-const Psbt = bitcoinLib.Psbt;
-
-function extractTransaction(psbt: { toBase64(): string }) {
-  return BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction();
-}
 
 function createNextSigner<T>(
   ECPair: {
@@ -282,7 +287,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
     finalize({ psbt });
 
-    const witness = extractTransaction(psbt).ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBeGreaterThanOrEqual(3);
     const controlBlock = witness[witness.length - 1];
@@ -332,7 +337,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: signer });
     finalize({ psbt });
 
-    const witness = extractTransaction(psbt).ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBe(1);
   });
