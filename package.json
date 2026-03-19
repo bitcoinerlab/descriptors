@@ -58,11 +58,13 @@
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
     "test:unit": "jest",
     "test:unit:scure": "cross-env BITCOIN_LIB=scure jest",
-    "test:scure": "node test/scureAdapter.js",
-    "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure",
-    "test": "npm run lint && npm run build && npm run test:matrix && npm run test:integration:soft",
-    "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
-    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger"
+    "test:scure-adapter": "node test/scureAdapter.js",
+    "test:integration:soft:scure": "cross-env-shell BITCOIN_LIB=scure 'npm run test:integration:soft'",
+    "test:integration:ledger:scure": "cross-env-shell BITCOIN_LIB=scure 'npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js'",
+    "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure-adapter && npm run test:integration:soft && npm run test:integration:soft:scure",
+    "test": "npm run lint && npm run build && npm run test:matrix",
+    "testledger": "npm run lint && npm run build && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger",
+    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
   },
   "files": [
     "dist"
@@ -109,6 +111,7 @@
     "bip68": "^1.0.4",
     "bitcoinjs-lib": "^7.0.1",
     "cross-env": "^10.1.0",
+    "cross-env-shell": "^7.0.3",
     "jest": "^30.3.0",
     "regtest-client": "^0.2.1",
     "ts-jest": "^29.4.6",

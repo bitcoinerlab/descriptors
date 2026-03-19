@@ -5,11 +5,17 @@
 
 console.log('Scure integration test: legacy to segwit');
 
+// This test uses the native @scure/btc-signer Transaction object.
+// Exit early if running with bitcoinjs-lib backend (or no backend specified).
+if (process.env['BITCOIN_LIB'] && process.env['BITCOIN_LIB'] !== 'scure') {
+  console.log('SKIP: This test requires scure backend');
+  process.exit(0);
+}
+
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 
-import { toPsbt } from '../../dist/psbt';
 import {
   DescriptorsFactory,
   networks,
@@ -85,12 +91,10 @@ const segwitOutput = new Output({
   const finalValue = INITIAL_VALUE - FEE;
   segwitOutput.updatePsbtAsOutput({ psbt, value: finalValue });
 
-  // Convert scure Transaction to BitcoinjsPsbtLike interface for signing.
-  // This wraps the native scure transaction so it can be used with library signing functions.
-  //FIXME: use the btc.Transaction object for signing too:
-  const wrappedPsbt = toPsbt(psbt);
-  signBIP32({ psbt: wrappedPsbt, masterNode });
-  finalizeLegacyInput({ psbt: wrappedPsbt });
+  // Sign and finalize using the native @scure/btc-signer Transaction object directly.
+  // The signing functions now accept both bitcoinjs-lib Psbt and scure Transaction types.
+  signBIP32({ psbt, masterNode });
+  finalizeLegacyInput({ psbt });
 
   // Access the native @scure/btc-signer transaction methods directly.
   // The psbt has been converted and finalized internally.

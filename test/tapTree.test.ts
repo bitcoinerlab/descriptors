@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// This test inspects bitcoinjs-lib's BIP174 PSBT internals (tapLeafScript,
+// tapBip32Derivation) which are not available in @scure/btc-signer.
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+
 import { createHash } from 'crypto';
 import {
   parseTapTreeExpression,
@@ -10,7 +14,8 @@ import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation, TapLeafScript } from 'bip174';
 import { Psbt, Transaction, initEccLib } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 import { DescriptorsFactory } from '../dist/descriptors';
 
 // When using the scure backend (BITCOIN_LIB=scure), the library creates
@@ -18,7 +23,7 @@ import { DescriptorsFactory } from '../dist/descriptors';
 // bitcoinjs-lib's Psbt for signing. bitcoinjs-lib requires its ECC library
 // to be initialized to validate taproot public keys during signing.
 // Without this, checkTaprootHashesForSig() fails with "Can not sign for input".
-if (process.env['BITCOIN_LIB'] === 'scure') {
+if (isScure) {
   initEccLib(ecc);
 }
 import { signInputECPair } from '../dist/signers';
@@ -29,7 +34,7 @@ import {
 } from '../dist/tapMiniscript';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
-const bitcoinLib = getBitcoinLib();
+const bitcoinLib = isScure ? createScureLib(ecc) : createBitcoinjsLib(ecc);
 
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
@@ -45,7 +50,10 @@ function createNextSigner<T>(
   return () => ECPair.fromPrivateKey(new Uint8Array(32).fill(seed++));
 }
 
-describe('taproot tree parser', () => {
+// Skip all tests when using scure backend (tests PSBT internals)
+const describeIfNotScure = isScure ? describe.skip : describe;
+
+describeIfNotScure('taproot tree parser', () => {
   test('parses a leaf miniscript expression', () => {
     expect(parseTapTreeExpression('pk(@0)')).toEqual({ expression: 'pk(@0)' });
   });
@@ -65,7 +73,7 @@ describe('taproot tree parser', () => {
   });
 });
 
-describe('taproot tree compilation', () => {
+describeIfNotScure('taproot tree compilation', () => {
   const INTERNAL_KEY =
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
   const LEAF_KEY_1 =
@@ -449,7 +457,7 @@ describe('taproot tree compilation', () => {
   });
 });
 
-describe('taproot tree satisfactions', () => {
+describeIfNotScure('taproot tree satisfactions', () => {
   const INTERNAL_KEY =
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
   const LEAF_KEY =

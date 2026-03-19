@@ -531,6 +531,10 @@ function safeP2sh(
 ): Payment {
   const innerScript = redeem.output;
   if (!innerScript) throw new Error('p2sh requires redeem.output');
+  // P2SH redeem scripts are limited to 520 bytes (consensus rule)
+  if (innerScript.length > 520) {
+    throw new Error('Redeem.output unspendable if larger than 520 bytes');
+  }
   const input = btc.Script.encode(paymentInputStack(redeem));
   try {
     const result = btc.p2sh(

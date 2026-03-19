@@ -250,7 +250,7 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void>;
@@ -259,10 +259,11 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
+  psbt = toPsbt(psbt);
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
@@ -324,16 +325,17 @@ export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void>;
 export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void> {
+  psbt = toPsbt(psbt);
   const { ledgerClient } = ledgerManager;
   const { DefaultWalletPolicy, WalletPolicy, AppClient } =
     (await importAndValidateLedgerBitcoin(
