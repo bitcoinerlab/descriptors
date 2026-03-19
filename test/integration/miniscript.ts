@@ -3,14 +3,23 @@
 
 //npm run test:integration
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from '../../dist';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
+import {
+  createPsbt,
+  psbtToHex,
+  psbtToTxId,
+  getPsbtLocktime,
+  getPsbtInputSequence
+} from '../helpers/psbt';
 const regtestUtils = new RegtestUtils();
+
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const BLOCKS = 5;
 const NETWORK = networks.regtest;
@@ -27,13 +36,15 @@ console.log(
 );
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
+import { createScureLib } from '../../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 import { toHex } from 'uint8array-tools';
 const { signBIP32, signECPair } = signers;
 
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
+const { Output, BIP32, ECPair } = DescriptorsFactory(
+  isScure ? createScureLib(ecc) : ecc
+);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 const ecpair = ECPair.makeRandom();
@@ -128,7 +139,7 @@ const keys: {
           INITIAL_VALUE
         );
         const { txHex } = await regtestUtils.fetch(txId);
-        const psbt = new Psbt();
+        const psbt = createPsbt(isScure);
         const inputFinalizer = output.updatePsbtAsInput({ psbt, vout, txHex });
         //There are different ways to add an output:
         //import { address } from 'bitcoinjs-lib';
@@ -142,12 +153,11 @@ const keys: {
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
         else signECPair({ ecpair, psbt });
         inputFinalizer({ psbt });
-        const spendTx = psbt.extractTransaction();
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.
         await regtestUtils.mine(BLOCKS - 1);
         try {
-          await regtestUtils.broadcast(spendTx.toHex());
+          await regtestUtils.broadcast(psbtToHex(psbt));
           throw new Error(`Error: mining BLOCKS - 1 did not fail`);
         } catch (error) {
           const expectedErrorMessage =
@@ -161,28 +171,25 @@ const keys: {
         }
         //Mine the last block needed
         await regtestUtils.mine(1);
-        await regtestUtils.broadcast(spendTx.toHex());
+        await regtestUtils.broadcast(psbtToHex(psbt));
         await regtestUtils.verify({
-          txId: spendTx.getId(),
+          txId: psbtToTxId(psbt),
           address: FINAL_ADDRESS,
           vout: 0,
           value: FINAL_VALUE
         });
         //Verify the final locking and sequence depending on the branch
-        if (spendingBranch === '@afterKey' && spendTx.locktime !== after)
+        const psbtLocktime = getPsbtLocktime(psbt);
+        const psbtInput0Sequence = getPsbtInputSequence(psbt, 0);
+        if (spendingBranch === '@afterKey' && psbtLocktime !== after)
           throw new Error(`Error: final locktime was not correct`);
-        if (
-          spendingBranch === '@olderKey' &&
-          spendTx.ins[0]?.sequence !== older
-        )
+        if (spendingBranch === '@olderKey' && psbtInput0Sequence !== older)
           throw new Error(`Error: final sequence was not correct`);
         console.log(`\nDescriptor: ${descriptor}`);
         console.log(
           `Branch: ${spendingBranch}, ${keyExpressionType} signing, tx locktime: ${
-            psbt.locktime
-          }, input sequence: ${psbt.txInputs?.[0]?.sequence?.toString(
-            16
-          )}, ${output
+            psbtLocktime
+          }, input sequence: ${psbtInput0Sequence?.toString(16)}, ${output
             .expand()
             .expandedExpression?.replace('@0', '@olderKey')
             .replace('@1', '@afterKey')}: OK`

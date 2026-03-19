@@ -44,14 +44,22 @@ console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (co-signed with a software wallet) -> 1 output'
 );
 import Transport from '@ledgerhq/hw-transport-node-hid';
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from '../../dist';
 import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
+import {
+  createPsbt,
+  psbtToHex,
+  psbtToTxId,
+  psbtAddOutput,
+  psbtToBase64
+} from '../helpers/psbt';
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const UTXO_VALUE = 2e4;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
@@ -80,18 +88,19 @@ import {
   DescriptorsFactory,
   ledger
 } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
+import { createScureLib } from '../../dist/scure';
 const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
+const { Output, BIP32 } = DescriptorsFactory(
+  isScure ? createScureLib(ecc) : ecc
+);
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 
 //Create the psbt that will spend the pkh and wsh outputs and send funds to FINAL_ADDRESS:
-const psbt = new Psbt({ network: NETWORK });
+const psbt = createPsbt(isScure, NETWORK);
 
 let txHex: string;
 let txId: string;
@@ -229,7 +238,8 @@ const finalizers = [];
 
   //Now add an ouput. This is where we'll send the funds. We'll send them to
   //some random address that we don't care about in this test.
-  psbt.addOutput({
+  //The helper now supports both script and address for both backends
+  psbtAddOutput(psbt, {
     address: FINAL_ADDRESS,
     value: BigInt(UTXO_VALUE * 3 - FEE)
   });
@@ -270,13 +280,12 @@ const finalizers = [];
   //broadcasting the tx so that it can be accepted by the network
   await regtestUtils.mine(BLOCKS);
   //Broadcast the tx:
-  const spendTx = psbt.extractTransaction();
-  const resultSpend = await regtestUtils.broadcast(spendTx.toHex());
+  const resultSpend = await regtestUtils.broadcast(psbtToHex(psbt));
   //Mine it
   await regtestUtils.mine(1);
   //Verify that the tx was accepted. This will throw if not ok:
   await regtestUtils.verify({
-    txId: spendTx.getId(),
+    txId: psbtToTxId(psbt),
     address: FINAL_ADDRESS,
     vout: 0,
     value: UTXO_VALUE * 3 - FEE
@@ -284,7 +293,7 @@ const finalizers = [];
 
   console.log({
     result: resultSpend === null ? 'success' : resultSpend,
-    psbt: psbt.toBase64(),
-    tx: spendTx.toHex()
+    psbt: psbtToBase64(psbt),
+    tx: psbtToHex(psbt)
   });
 })();

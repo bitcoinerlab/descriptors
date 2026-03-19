@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from '../dist';
 import { DescriptorsFactory } from '../dist';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { createPsbt } from './helpers/psbt';
 
 const PUBKEY_HEX =
   '03c6e26fdf91debe78458853f1ba08d8de71b7672a099e1be5b6204dab83c046e5';
 
-const bitcoinLib = getBitcoinLib();
-const { Output } = DescriptorsFactory(bitcoinLib);
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
 
 function buildOutput() {
   return new Output({
@@ -21,7 +23,7 @@ function buildOutput() {
 describe('Bigint value runtime guards', () => {
   test('updatePsbtAsOutput rejects non-bigint values', () => {
     const output = buildOutput();
-    const psbt = new Psbt({ network: networks.regtest });
+    const psbt = createPsbt(isScure, networks.regtest);
     expect(() =>
       output.updatePsbtAsOutput({
         psbt,
@@ -32,7 +34,7 @@ describe('Bigint value runtime guards', () => {
 
   test('updatePsbtAsOutput rejects negative bigint values', () => {
     const output = buildOutput();
-    const psbt = new Psbt({ network: networks.regtest });
+    const psbt = createPsbt(isScure, networks.regtest);
     expect(() =>
       output.updatePsbtAsOutput({
         psbt,
@@ -43,7 +45,7 @@ describe('Bigint value runtime guards', () => {
 
   test('updatePsbtAsInput rejects non-bigint values', () => {
     const output = buildOutput();
-    const psbt = new Psbt({ network: networks.regtest });
+    const psbt = createPsbt(isScure, networks.regtest);
     expect(() =>
       output.updatePsbtAsInput({
         psbt,
@@ -56,7 +58,7 @@ describe('Bigint value runtime guards', () => {
 
   test('updatePsbtAsInput rejects negative bigint values', () => {
     const output = buildOutput();
-    const psbt = new Psbt({ network: networks.regtest });
+    const psbt = createPsbt(isScure, networks.regtest);
     expect(() =>
       output.updatePsbtAsInput({
         psbt,

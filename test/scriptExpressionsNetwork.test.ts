@@ -2,13 +2,14 @@
 // Distributed under the MIT software license
 
 import { mnemonicToSeedSync } from 'bip39';
-import { networks } from 'bitcoinjs-lib';
-import type { Network } from 'bitcoinjs-lib';
+import { networks } from '../dist';
+import type { Network } from '../dist';
 import { DescriptorsFactory, scriptExpressions } from '../dist/';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 
-const bitcoinLib = getBitcoinLib();
-const { BIP32 } = DescriptorsFactory(bitcoinLib);
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { BIP32 } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
 
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';

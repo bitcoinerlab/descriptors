@@ -5,14 +5,17 @@
 // https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki
 // Read Interesting discussion here: https://github.com/bitcoinjs/bitcoinjs-lib/issues/1871
 
-import { networks } from 'bitcoinjs-lib';
+import { networks } from '../dist';
 import { DescriptorsFactory, scriptExpressions } from '../dist/';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { mnemonicToSeedSync } from 'bip39';
 import { toHex } from 'uint8array-tools';
 const { trBIP32 } = scriptExpressions;
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output, BIP32 } = DescriptorsFactory(
+  isScure ? createScureLib(ecc) : ecc
+);
 const network = networks.bitcoin;
 const masterNode = BIP32.fromSeed(
   mnemonicToSeedSync(

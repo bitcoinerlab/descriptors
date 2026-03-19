@@ -5,16 +5,19 @@
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { networks, Psbt } from 'bitcoinjs-lib';
+import { networks } from '../../dist/';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import { toHex } from 'uint8array-tools';
+import * as ecc from '@bitcoinerlab/secp256k1';
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
+import { createScureLib } from '../../dist/scure';
+import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
 
 const regtestUtils = new RegtestUtils();
 const NETWORK = networks.regtest;
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
@@ -25,8 +28,9 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
+const { Output, BIP32, ECPair } = DescriptorsFactory(
+  isScure ? createScureLib(ecc) : ecc
+);
 const masterNode = BIP32.fromSeed(seed, NETWORK);
 
 // Helpers -----------------------------------------------------
@@ -89,7 +93,7 @@ async function runIntegration(descriptor: string) {
 
   const { txHex } = await regtestUtils.fetch(txId);
 
-  const psbt = new Psbt();
+  const psbt = createPsbt(isScure, NETWORK);
 
   const finalizeInput = output.updatePsbtAsInput({
     psbt,
@@ -124,14 +128,12 @@ async function runIntegration(descriptor: string) {
   // Finalize
   finalizeInput({ psbt });
 
-  const tx = psbt.extractTransaction();
-
   // Broadcast
-  await regtestUtils.broadcast(tx.toHex());
+  await regtestUtils.broadcast(psbtToHex(psbt));
 
   // Verify
   await regtestUtils.verify({
-    txId: tx.getId(),
+    txId: psbtToTxId(psbt),
     address: FINAL_ADDRESS,
     vout: 0,
     value: FINAL_VALUE

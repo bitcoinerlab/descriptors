@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
+// This test inspects bitcoinjs-lib's BIP174 PSBT internals (tapBip32Derivation)
+// which are not available in @scure/btc-signer.
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import type { BIP32Interface } from 'bip32';
@@ -12,12 +16,10 @@ import {
   ledgerPolicyFromPsbtInput
 } from '../dist/ledger';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
-import { getBitcoinLib } from './getBitcoinLib';
 import { toHex } from 'uint8array-tools';
 
 const NETWORK = networks.regtest;
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
+const { Output, BIP32 } = DescriptorsFactory(ecc);
 
 function makeMaster(seed: number): BIP32Interface {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
@@ -95,244 +97,250 @@ function buildWitnessPsbt({
   return psbt;
 }
 
-describe('ledger policy templates preserve sorted expressions', () => {
-  test('preserves sortedmulti(...) in wsh policy templates', async () => {
-    const ledgerMaster = makeMaster(101);
-    const otherMaster = makeMaster(102);
+// Skip all tests when using scure backend (tests PSBT internals)
+const describeIfNotScure = isScure ? describe.skip : describe;
 
-    const ledgerKey = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/*'
-    });
-    const otherKey = keyExpressionNoOrigin(otherMaster);
+describeIfNotScure(
+  'ledger policy templates preserve sorted expressions',
+  () => {
+    test('preserves sortedmulti(...) in wsh policy templates', async () => {
+      const ledgerMaster = makeMaster(101);
+      const otherMaster = makeMaster(102);
 
-    const output = new Output({
-      descriptor: `wsh(sortedmulti(1,${ledgerKey},${otherKey}))`,
-      index: 0,
-      network: NETWORK
-    });
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const otherKey = keyExpressionNoOrigin(otherMaster);
 
-    const result = await ledgerPolicyFromOutput({
-      output,
-      ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
-    });
-    if (!result) throw new Error('expected a ledger policy');
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${ledgerKey},${otherKey}))`,
+        index: 0,
+        network: NETWORK
+      });
 
-    expect(result.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
-    expect(result.keyRoots.length).toBe(2);
-  });
+      const result = await ledgerPolicyFromOutput({
+        output,
+        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+      });
+      if (!result) throw new Error('expected a ledger policy');
 
-  test('preserves sortedmulti_a(...) in tr script-path policy templates', async () => {
-    const ledgerMaster = makeMaster(111);
-    const otherMaster = makeMaster(112);
-    const internalMaster = makeMaster(113);
-
-    const ledgerKey = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/*'
-    });
-    const otherKey = keyExpressionNoOrigin(otherMaster);
-    const internalKey = keyExpressionNoOrigin(internalMaster);
-
-    const output = new Output({
-      descriptor: `tr(${internalKey},sortedmulti_a(1,${otherKey},${ledgerKey}))`,
-      index: 0,
-      network: NETWORK
+      expect(result.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
+      expect(result.keyRoots.length).toBe(2);
     });
 
-    const result = await ledgerPolicyFromOutput({
-      output,
-      ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
-    });
-    if (!result) throw new Error('expected a ledger policy');
+    test('preserves sortedmulti_a(...) in tr script-path policy templates', async () => {
+      const ledgerMaster = makeMaster(111);
+      const otherMaster = makeMaster(112);
+      const internalMaster = makeMaster(113);
 
-    expect(result.ledgerTemplate).toEqual(
-      'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
-    );
-    expect(result.keyRoots.length).toBe(3);
-  });
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const otherKey = keyExpressionNoOrigin(otherMaster);
+      const internalKey = keyExpressionNoOrigin(internalMaster);
 
-  test('handles sortedmulti(...) placeholders with 10+ keys', async () => {
-    const ledgerMaster = makeMaster(201);
-    const ledgerKey = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/*'
-    });
-    const otherKeys = manyExternalKeys(202, 10);
+      const output = new Output({
+        descriptor: `tr(${internalKey},sortedmulti_a(1,${otherKey},${ledgerKey}))`,
+        index: 0,
+        network: NETWORK
+      });
 
-    const output = new Output({
-      descriptor: `wsh(sortedmulti(1,${[ledgerKey, ...otherKeys].join(',')}))`,
-      index: 0,
-      network: NETWORK
-    });
+      const result = await ledgerPolicyFromOutput({
+        output,
+        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+      });
+      if (!result) throw new Error('expected a ledger policy');
 
-    const result = await ledgerPolicyFromOutput({
-      output,
-      ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
-    });
-    if (!result) throw new Error('expected a ledger policy');
-
-    expect(result.ledgerTemplate.startsWith('wsh(sortedmulti(1,')).toBe(true);
-    expect(result.ledgerTemplate).not.toContain('/**/**');
-    expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
-
-    for (let index = 0; index <= 10; index++) {
-      const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
-      const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
-      expect(matches.length).toBe(1);
-    }
-    expect(result.keyRoots.length).toBe(11);
-  });
-
-  test('handles sortedmulti_a(...) placeholders with 10+ keys', async () => {
-    const ledgerMaster = makeMaster(221);
-    const internalMaster = makeMaster(222);
-    const ledgerKey = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/*'
-    });
-    const internalKey = keyExpressionNoOrigin(internalMaster);
-    const otherKeys = manyExternalKeys(223, 10);
-
-    const output = new Output({
-      descriptor: `tr(${internalKey},sortedmulti_a(1,${[
-        ...otherKeys,
-        ledgerKey
-      ].join(',')}))`,
-      index: 0,
-      network: NETWORK
+      expect(result.ledgerTemplate).toEqual(
+        'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
+      );
+      expect(result.keyRoots.length).toBe(3);
     });
 
-    const result = await ledgerPolicyFromOutput({
-      output,
-      ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
-    });
-    if (!result) throw new Error('expected a ledger policy');
+    test('handles sortedmulti(...) placeholders with 10+ keys', async () => {
+      const ledgerMaster = makeMaster(201);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const otherKeys = manyExternalKeys(202, 10);
 
-    expect(result.ledgerTemplate.startsWith('tr(@0/**,sortedmulti_a(1,')).toBe(
-      true
-    );
-    expect(result.ledgerTemplate).not.toContain('/**/**');
-    expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${[ledgerKey, ...otherKeys].join(',')}))`,
+        index: 0,
+        network: NETWORK
+      });
 
-    for (let index = 0; index <= 11; index++) {
-      const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
-      const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
-      expect(matches.length).toBe(1);
-    }
-    expect(result.keyRoots.length).toBe(12);
-  });
+      const result = await ledgerPolicyFromOutput({
+        output,
+        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+      });
+      if (!result) throw new Error('expected a ledger policy');
 
-  test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti', async () => {
-    const ledgerMaster = makeMaster(241);
-    const otherMaster = makeMaster(242);
+      expect(result.ledgerTemplate.startsWith('wsh(sortedmulti(1,')).toBe(true);
+      expect(result.ledgerTemplate).not.toContain('/**/**');
+      expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
 
-    const ledgerKeyAtIndex = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/7'
-    });
-    const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/7');
-
-    const output = new Output({
-      descriptor: `wsh(sortedmulti(1,${ledgerKeyAtIndex},${otherKeyAtIndex}))`,
-      network: NETWORK
-    });
-
-    const psbt = buildWitnessPsbt({
-      scriptPubKey: output.getScriptPubKey(),
-      bip32Derivation: {
-        masterFingerprint: ledgerMaster.fingerprint,
-        path: "m/48'/1'/0'/0/7",
-        pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
+      for (let index = 0; index <= 10; index++) {
+        const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
+        const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
+        expect(matches.length).toBe(1);
       }
+      expect(result.keyRoots.length).toBe(11);
     });
 
-    const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
-    ledgerManager.ledgerState.policies = [
-      {
-        ledgerTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
-        keyRoots: [
-          keyRootWithOrigin(ledgerMaster),
-          keyRootNoOrigin(otherMaster)
-        ]
+    test('handles sortedmulti_a(...) placeholders with 10+ keys', async () => {
+      const ledgerMaster = makeMaster(221);
+      const internalMaster = makeMaster(222);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const internalKey = keyExpressionNoOrigin(internalMaster);
+      const otherKeys = manyExternalKeys(223, 10);
+
+      const output = new Output({
+        descriptor: `tr(${internalKey},sortedmulti_a(1,${[
+          ...otherKeys,
+          ledgerKey
+        ].join(',')}))`,
+        index: 0,
+        network: NETWORK
+      });
+
+      const result = await ledgerPolicyFromOutput({
+        output,
+        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+      });
+      if (!result) throw new Error('expected a ledger policy');
+
+      expect(
+        result.ledgerTemplate.startsWith('tr(@0/**,sortedmulti_a(1,')
+      ).toBe(true);
+      expect(result.ledgerTemplate).not.toContain('/**/**');
+      expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
+
+      for (let index = 0; index <= 11; index++) {
+        const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
+        const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
+        expect(matches.length).toBe(1);
       }
-    ];
-
-    const policy = await ledgerPolicyFromPsbtInput({
-      ledgerManager,
-      psbt,
-      index: 0
+      expect(result.keyRoots.length).toBe(12);
     });
 
-    expect(policy?.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
-    expect(policy?.keyRoots).toEqual([
-      keyRootWithOrigin(ledgerMaster),
-      keyRootNoOrigin(otherMaster)
-    ]);
-  });
+    test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti', async () => {
+      const ledgerMaster = makeMaster(241);
+      const otherMaster = makeMaster(242);
 
-  test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti_a', async () => {
-    const ledgerMaster = makeMaster(251);
-    const otherMaster = makeMaster(252);
-    const internalMaster = makeMaster(253);
+      const ledgerKeyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/7'
+      });
+      const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/7');
 
-    const ledgerKeyAtIndex = keyExpressionBIP32({
-      masterNode: ledgerMaster,
-      originPath: "/48'/1'/0'",
-      keyPath: '/0/5'
-    });
-    const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/5');
-    const internalKeyAtIndex = keyExpressionNoOrigin(internalMaster, '/0/5');
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${ledgerKeyAtIndex},${otherKeyAtIndex}))`,
+        network: NETWORK
+      });
 
-    const output = new Output({
-      descriptor: `tr(${internalKeyAtIndex},sortedmulti_a(1,${otherKeyAtIndex},${ledgerKeyAtIndex}))`,
-      network: NETWORK
-    });
+      const psbt = buildWitnessPsbt({
+        scriptPubKey: output.getScriptPubKey(),
+        bip32Derivation: {
+          masterFingerprint: ledgerMaster.fingerprint,
+          path: "m/48'/1'/0'/0/7",
+          pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
+        }
+      });
 
-    const xonlyLedgerPubkey = ledgerMaster
-      .derivePath("m/48'/1'/0'/0/5")
-      .publicKey.slice(1, 33);
+      const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
+      ledgerManager.ledgerState.policies = [
+        {
+          ledgerTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
+          keyRoots: [
+            keyRootWithOrigin(ledgerMaster),
+            keyRootNoOrigin(otherMaster)
+          ]
+        }
+      ];
 
-    const psbt = buildWitnessPsbt({
-      scriptPubKey: output.getScriptPubKey(),
-      tapBip32Derivation: {
-        masterFingerprint: ledgerMaster.fingerprint,
-        path: "m/48'/1'/0'/0/5",
-        pubkey: xonlyLedgerPubkey,
-        leafHashes: []
-      }
-    });
+      const policy = await ledgerPolicyFromPsbtInput({
+        ledgerManager,
+        psbt,
+        index: 0
+      });
 
-    const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
-    ledgerManager.ledgerState.policies = [
-      {
-        ledgerTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
-        keyRoots: [
-          keyRootNoOrigin(internalMaster),
-          keyRootNoOrigin(otherMaster),
-          keyRootWithOrigin(ledgerMaster)
-        ]
-      }
-    ];
-
-    const policy = await ledgerPolicyFromPsbtInput({
-      ledgerManager,
-      psbt,
-      index: 0
+      expect(policy?.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
+      expect(policy?.keyRoots).toEqual([
+        keyRootWithOrigin(ledgerMaster),
+        keyRootNoOrigin(otherMaster)
+      ]);
     });
 
-    expect(policy?.ledgerTemplate).toEqual(
-      'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
-    );
-    expect(policy?.keyRoots).toEqual([
-      keyRootNoOrigin(internalMaster),
-      keyRootNoOrigin(otherMaster),
-      keyRootWithOrigin(ledgerMaster)
-    ]);
-  });
-});
+    test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti_a', async () => {
+      const ledgerMaster = makeMaster(251);
+      const otherMaster = makeMaster(252);
+      const internalMaster = makeMaster(253);
+
+      const ledgerKeyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/5'
+      });
+      const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/5');
+      const internalKeyAtIndex = keyExpressionNoOrigin(internalMaster, '/0/5');
+
+      const output = new Output({
+        descriptor: `tr(${internalKeyAtIndex},sortedmulti_a(1,${otherKeyAtIndex},${ledgerKeyAtIndex}))`,
+        network: NETWORK
+      });
+
+      const xonlyLedgerPubkey = ledgerMaster
+        .derivePath("m/48'/1'/0'/0/5")
+        .publicKey.slice(1, 33);
+
+      const psbt = buildWitnessPsbt({
+        scriptPubKey: output.getScriptPubKey(),
+        tapBip32Derivation: {
+          masterFingerprint: ledgerMaster.fingerprint,
+          path: "m/48'/1'/0'/0/5",
+          pubkey: xonlyLedgerPubkey,
+          leafHashes: []
+        }
+      });
+
+      const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
+      ledgerManager.ledgerState.policies = [
+        {
+          ledgerTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
+          keyRoots: [
+            keyRootNoOrigin(internalMaster),
+            keyRootNoOrigin(otherMaster),
+            keyRootWithOrigin(ledgerMaster)
+          ]
+        }
+      ];
+
+      const policy = await ledgerPolicyFromPsbtInput({
+        ledgerManager,
+        psbt,
+        index: 0
+      });
+
+      expect(policy?.ledgerTemplate).toEqual(
+        'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
+      );
+      expect(policy?.keyRoots).toEqual([
+        keyRootNoOrigin(internalMaster),
+        keyRootNoOrigin(otherMaster),
+        keyRootWithOrigin(ledgerMaster)
+      ]);
+    });
+  }
+);
