@@ -11,5 +11,13 @@
  *
  *   const lib = createScureLib(ecc);
  *   const { Output } = DescriptorsFactory(lib);
+ *   const psbt = lib.Psbt.fromTransaction(nativeTransaction);
+ *   const scureTx = psbt.raw;
  */
-export { createScureLib } from './adapters/scure';
+export {
+  createScureLib,
+  type ScureBitcoinLib,
+  type ScurePsbt,
+  type ScurePsbtConstructor,
+  type ScureTransaction
+} from './adapters/scure';
