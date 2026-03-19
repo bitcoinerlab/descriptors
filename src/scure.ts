@@ -14,10 +14,4 @@
  *   const psbt = lib.Psbt.fromTransaction(nativeTransaction);
  *   const scureTx = psbt.raw;
  */
-export {
-  createScureLib,
-  type ScureBitcoinLib,
-  type ScurePsbt,
-  type ScurePsbtConstructor,
-  type ScureTransaction
-} from './adapters/scure';
+export { createScureLib } from './adapters/scure';

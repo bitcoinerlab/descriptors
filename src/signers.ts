@@ -1,7 +1,11 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { Psbt, ECPairInterface, BIP32Interface } from './bitcoinLib';
+import type {
+  BitcoinjsPsbtLike,
+  ECPairInterface,
+  BIP32Interface
+} from './bitcoinLib';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 import {
   importAndValidateLedgerBitcoin,
@@ -30,7 +34,7 @@ declare class PartialSignature {
  * This applies a bitcoinjs-lib speciffic patch.
  * This won't be run if using the scure lib
  */
-function ensureBitcoinjsHdPatch(psbt: Psbt): void {
+function ensureBitcoinjsHdPatch(psbt: BitcoinjsPsbtLike): void {
   let BitcoinjsPsbt;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -62,7 +66,7 @@ function range(n: number): number[] {
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {BitcoinjsPsbtLike} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
@@ -71,7 +75,7 @@ export function signInputECPair({
   index,
   ecpair
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   index: number;
   ecpair: ECPairInterface;
 }): void {
@@ -108,14 +112,14 @@ export function signInputECPair({
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {Psbt} params.psbt - The PSBT to sign
+ * @param {BitcoinjsPsbtLike} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
 export function signECPair({
   psbt,
   ecpair
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   ecpair: ECPairInterface;
 }): void {
   //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
@@ -140,7 +144,7 @@ export function signInputBIP32({
   index,
   node
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   index: number;
   node: BIP32Interface;
 }): void {
@@ -152,7 +156,7 @@ export function signBIP32({
   psbt,
   masterNode
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   masterNode: BIP32Interface;
 }): void {
   ensureBitcoinjsHdPatch(psbt);
@@ -174,7 +178,7 @@ function addLedgerSignaturesToInput({
   index,
   ledgerSignatures
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   index: number;
   ledgerSignatures: [number, PartialSignature][];
 }) {
@@ -240,7 +244,7 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void>;
@@ -249,7 +253,7 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
@@ -314,14 +318,14 @@ export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   ledgerManager: LedgerManager;
 }): Promise<void>;
 export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: Psbt;
+  psbt: BitcoinjsPsbtLike;
   ledgerManager: LedgerManager;
 }): Promise<void> {
   const { ledgerClient } = ledgerManager;
