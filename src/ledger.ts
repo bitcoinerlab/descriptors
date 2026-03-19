@@ -25,7 +25,12 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type { BitcoinjsPsbtLike, Transaction } from './bitcoinLib';
+import type {
+  BitcoinjsPsbtLike,
+  ScureTransactionLike,
+  Transaction
+} from './bitcoinLib';
+import { toPsbt } from './psbt';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
 import { coinTypeFromNetwork } from './networkUtils';
@@ -319,9 +324,10 @@ export async function ledgerPolicyFromPsbtInput({
   index
 }: {
   ledgerManager: LedgerManager;
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   index: number;
 }) {
+  psbt = toPsbt(psbt);
   const { ledgerState, ecc, network } = ledgerManager;
   const Transaction = requireBitcoinjsTransaction();
 

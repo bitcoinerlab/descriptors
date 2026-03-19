@@ -2032,7 +2032,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       rbf?: boolean;
     }) {
       // Normalize to Psbt interface
-      const normalizedPsbt = toPsbt(psbt);
+      psbt = toPsbt(psbt);
 
       if (value !== undefined && typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
@@ -2095,7 +2095,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         });
       }
       const index = addPsbtInput({
-        psbt: normalizedPsbt,
+        psbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
@@ -2127,10 +2127,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         validate?: boolean | undefined;
       }) => {
         // Normalize to Psbt interface for finalization
-        const finalizedPsbt = toPsbt(psbt);
+        psbt = toPsbt(psbt);
         if (
           validate &&
-          !finalizedPsbt.validateSignaturesOfInput(index, signatureValidator)
+          !psbt.validateSignaturesOfInput(index, signatureValidator)
         ) {
           throw new Error(`Error: invalid signatures on input ${index}`);
         }
@@ -2152,7 +2152,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             `Error: taprootSpendPath=script requires taproot tree info`
           );
         if (this.#tapTreeInfo && this.#taprootSpendPath === 'script') {
-          const input = finalizedPsbt.data.inputs[index];
+          const input = psbt.data.inputs[index];
           const tapLeafScript = input?.tapLeafScript;
           if (!tapLeafScript || tapLeafScript.length === 0)
             throw new Error(
@@ -2193,18 +2193,18 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             matchingLeaf.controlBlock
           ];
           const finalScriptWitness = witnessStackToScriptWitness(witness);
-          finalizedPsbt.finalizeTaprootInput(index, undefined, () => ({
+          psbt.finalizeTaprootInput(index, undefined, () => ({
             finalScriptWitness
           }));
         } else if (!this.#miniscript) {
           //Use standard finalizers
-          finalizedPsbt.finalizeInput(index);
+          psbt.finalizeInput(index);
         } else {
-          const signatures = finalizedPsbt.data.inputs[index]?.partialSig;
+          const signatures = psbt.data.inputs[index]?.partialSig;
           if (!signatures)
             throw new Error(`Error: cannot finalize without signatures`);
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
-          finalizedPsbt.finalizeInput(
+          psbt.finalizeInput(
             index,
             finalScriptsFuncFactory(scriptSatisfaction, this.#network, payments)
           );
@@ -2231,8 +2231,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         throw new Error(`Error: value must be a bigint`);
       if (value < 0n) throw new Error(`Error: value must be >= 0n`);
       // Normalize to Psbt interface
-      const normalizedPsbt = toPsbt(psbt);
-      normalizedPsbt.addOutput({ script: this.getScriptPubKey(), value });
+      psbt = toPsbt(psbt);
+      psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
     #assertPsbtInput({
@@ -2243,9 +2243,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       index: number;
     }): void {
       // Normalize to Psbt interface
-      const normalizedPsbt = toPsbt(psbt);
-      const input = normalizedPsbt.data.inputs[index];
-      const txInput = normalizedPsbt.txInputs[index];
+      psbt = toPsbt(psbt);
+      const input = psbt.data.inputs[index];
+      const txInput = psbt.txInputs[index];
       if (!input || !txInput)
         throw new Error(`Error: invalid input or txInput`);
       const { sequence: inputSequence, index: vout } = txInput;
@@ -2282,7 +2282,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       if (
         compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
         (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
-        locktime !== normalizedPsbt.locktime ||
+        locktime !== psbt.locktime ||
         !eqBytes(this.getWitnessScript(), input.witnessScript) ||
         !eqBytes(this.getRedeemScript(), input.redeemScript)
       ) {

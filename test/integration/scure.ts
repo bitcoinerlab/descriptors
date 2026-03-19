@@ -87,6 +87,7 @@ const segwitOutput = new Output({
 
   // Convert scure Transaction to BitcoinjsPsbtLike interface for signing.
   // This wraps the native scure transaction so it can be used with library signing functions.
+  //FIXME: use the btc.Transaction object for signing too:
   const wrappedPsbt = toPsbt(psbt);
   signBIP32({ psbt: wrappedPsbt, masterNode });
   finalizeLegacyInput({ psbt: wrappedPsbt });

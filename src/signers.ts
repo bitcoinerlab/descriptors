@@ -3,9 +3,11 @@
 
 import type {
   BitcoinjsPsbtLike,
+  ScureTransactionLike,
   ECPairInterface,
   BIP32Interface
 } from './bitcoinLib';
+import { toPsbt } from './psbt';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 import {
   importAndValidateLedgerBitcoin,
@@ -75,10 +77,11 @@ export function signInputECPair({
   index,
   ecpair
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   index: number;
   ecpair: ECPairInterface;
 }): void {
+  psbt = toPsbt(psbt);
   //psbt.signInput(index, ecpair); <- Replaced for the code below
   //that can handle taproot inputs automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
@@ -119,9 +122,10 @@ export function signECPair({
   psbt,
   ecpair
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   ecpair: ECPairInterface;
 }): void {
+  psbt = toPsbt(psbt);
   //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
   //taptoot automatically.
   //See https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
@@ -144,10 +148,11 @@ export function signInputBIP32({
   index,
   node
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   index: number;
   node: BIP32Interface;
 }): void {
+  psbt = toPsbt(psbt);
   ensureBitcoinjsHdPatch(psbt);
   psbt.signInputHD(index, node);
 }
@@ -156,9 +161,10 @@ export function signBIP32({
   psbt,
   masterNode
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
   masterNode: BIP32Interface;
 }): void {
+  psbt = toPsbt(psbt);
   ensureBitcoinjsHdPatch(psbt);
   psbt.signAllInputsHD(masterNode);
 }
