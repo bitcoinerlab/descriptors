@@ -75,22 +75,10 @@ assert(lib.payments !== undefined, 'lib.payments defined');
 assert(lib.script !== undefined, 'lib.script defined');
 assert(lib.Transaction !== undefined, 'lib.Transaction defined');
 assert(lib.address !== undefined, 'lib.address defined');
-assert(lib.Psbt !== undefined, 'lib.Psbt defined');
+// Note: lib.Psbt is no longer part of the API - users bring their own PSBT
 assert(lib.ECPair !== undefined, 'lib.ECPair defined');
 assert(lib.BIP32 !== undefined, 'lib.BIP32 defined');
 assert(lib.ecc !== undefined, 'lib.ecc defined');
-
-// Psbt interface
-const psbt = new lib.Psbt({ network: networks.regtest });
-assert(psbt.inputCount === 0, 'Psbt inputCount is 0');
-assert(psbt.data.inputs.length === 0, 'Psbt data.inputs is empty');
-assert(psbt.txInputs.length === 0, 'Psbt txInputs is empty');
-assert(typeof psbt.addInput === 'function', 'Psbt.addInput');
-assert(typeof psbt.addOutput === 'function', 'Psbt.addOutput');
-assert(typeof psbt.toBase64 === 'function', 'Psbt.toBase64');
-assert(typeof psbt.signInput === 'function', 'Psbt.signInput');
-assert(typeof psbt.signInputHD === 'function', 'Psbt.signInputHD');
-assert(typeof psbt.finalizeInput === 'function', 'Psbt.finalizeInput');
 
 // Script
 const script1 = lib.script.fromASM('OP_1');

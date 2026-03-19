@@ -9,6 +9,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 
+import { toPsbt } from '../../dist/psbt';
 import {
   DescriptorsFactory,
   networks,
@@ -16,6 +17,8 @@ import {
   signers
 } from '../../dist/';
 import { createScureLib } from '../../dist/scure';
+import * as btc from '@scure/btc-signer';
+import type { ScureTransactionLike } from '../../dist/';
 
 const { pkhBIP32, wpkhBIP32 } = scriptExpressions;
 const { signBIP32 } = signers;
@@ -66,9 +69,12 @@ const segwitOutput = new Output({
   );
   const { txHex } = await regtestUtils.fetch(txId);
 
-  // Scure users construct the PSBT-compatible wrapper from the backend lib
-  // itself, not from `DescriptorsFactory`.
-  const psbt = new scureLib.Psbt();
+  // Scure users construct a Transaction directly from @scure/btc-signer.
+  // The library converts it internally via toPsbt().
+  const psbt: ScureTransactionLike = new btc.Transaction({
+    allowUnknownOutputs: true,
+    disableScriptCheck: true
+  }) as ScureTransactionLike;
 
   const finalizeLegacyInput = legacyOutput.updatePsbtAsInput({
     psbt,
@@ -79,18 +85,22 @@ const segwitOutput = new Output({
   const finalValue = INITIAL_VALUE - FEE;
   segwitOutput.updatePsbtAsOutput({ psbt, value: finalValue });
 
-  signBIP32({ psbt, masterNode });
-  finalizeLegacyInput({ psbt });
+  // Convert scure Transaction to BitcoinjsPsbtLike interface for signing.
+  // This wraps the native scure transaction so it can be used with library signing functions.
+  const wrappedPsbt = toPsbt(psbt);
+  signBIP32({ psbt: wrappedPsbt, masterNode });
+  finalizeLegacyInput({ psbt: wrappedPsbt });
 
-  // `raw` exposes the native @scure/btc-signer transaction. We use its native
-  // `hex`/`id` helpers directly so this test documents the intended scure flow.
-  const spendTx = psbt.raw;
+  // Access the native @scure/btc-signer transaction methods directly.
+  // The psbt has been converted and finalized internally.
   const finalAddress = segwitOutput.getAddress();
   if (!finalAddress) throw new Error('Error: final segwit address not found');
 
-  await regtestUtils.broadcast(spendTx.hex);
+  // Cast to btc.Transaction type to access native scure properties
+  const scureTx = psbt as unknown as btc.Transaction;
+  await regtestUtils.broadcast(scureTx.hex);
   await regtestUtils.verify({
-    txId: spendTx.id,
+    txId: scureTx.id,
     address: finalAddress,
     vout: 0,
     value: Number(finalValue)

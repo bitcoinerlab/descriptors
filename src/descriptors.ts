@@ -4,10 +4,11 @@
 import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
 import type {
   Payment,
-  Psbt,
   BitcoinLib,
   ECPairAPI,
-  BIP32API
+  BIP32API,
+  BitcoinjsPsbtLike,
+  ScureTransactionLike
 } from './bitcoinLib';
 import {
   tapleafHash,
@@ -25,7 +26,7 @@ import type {
   KeyExpressionParser
 } from './types';
 
-import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
+import { finalScriptsFuncFactory, addPsbtInput, toPsbt } from './psbt';
 import { DescriptorChecksum } from './checksum';
 import { type Network, networks } from './networks';
 
@@ -2012,7 +2013,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
-     * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
+     * `( { psbt, validate = true } : { psbt: BitcoinjsPsbtLike | ScureTransactionLike; validate: boolean | undefined } ) => void`
      *
      */
     updatePsbtAsInput({
@@ -2023,13 +2024,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       vout, //vector output index
       rbf = true
     }: {
-      psbt: Psbt;
+      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
       txHex?: string;
       txId?: string;
       value?: bigint;
       vout: number;
       rbf?: boolean;
     }) {
+      // Normalize to Psbt interface
+      const normalizedPsbt = toPsbt(psbt);
+
       if (value !== undefined && typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value !== undefined && value < 0n)
@@ -2091,7 +2095,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         });
       }
       const index = addPsbtInput({
-        psbt,
+        psbt: normalizedPsbt,
         vout,
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
@@ -2115,16 +2119,18 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         psbt,
         validate = true
       }: {
-        psbt: Psbt;
+        psbt: BitcoinjsPsbtLike | ScureTransactionLike;
         /** Runs further test on the validity of the signatures.
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
          * @default true */
         validate?: boolean | undefined;
       }) => {
+        // Normalize to Psbt interface for finalization
+        const finalizedPsbt = toPsbt(psbt);
         if (
           validate &&
-          !psbt.validateSignaturesOfInput(index, signatureValidator)
+          !finalizedPsbt.validateSignaturesOfInput(index, signatureValidator)
         ) {
           throw new Error(`Error: invalid signatures on input ${index}`);
         }
@@ -2146,7 +2152,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             `Error: taprootSpendPath=script requires taproot tree info`
           );
         if (this.#tapTreeInfo && this.#taprootSpendPath === 'script') {
-          const input = psbt.data.inputs[index];
+          const input = finalizedPsbt.data.inputs[index];
           const tapLeafScript = input?.tapLeafScript;
           if (!tapLeafScript || tapLeafScript.length === 0)
             throw new Error(
@@ -2160,7 +2166,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           const taprootSatisfaction =
             this.getTapScriptSatisfaction(tapScriptSig);
           const matchingLeaf = tapLeafScript.find(
-            leafScript =>
+            (leafScript: { script: Uint8Array; leafVersion: number }) =>
               compare(
                 tapleafHash({
                   output: leafScript.script,
@@ -2187,18 +2193,18 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
             matchingLeaf.controlBlock
           ];
           const finalScriptWitness = witnessStackToScriptWitness(witness);
-          psbt.finalizeTaprootInput(index, undefined, () => ({
+          finalizedPsbt.finalizeTaprootInput(index, undefined, () => ({
             finalScriptWitness
           }));
         } else if (!this.#miniscript) {
           //Use standard finalizers
-          psbt.finalizeInput(index);
+          finalizedPsbt.finalizeInput(index);
         } else {
-          const signatures = psbt.data.inputs[index]?.partialSig;
+          const signatures = finalizedPsbt.data.inputs[index]?.partialSig;
           if (!signatures)
             throw new Error(`Error: cannot finalize without signatures`);
           const { scriptSatisfaction } = this.getScriptSatisfaction(signatures);
-          psbt.finalizeInput(
+          finalizedPsbt.finalizeInput(
             index,
             finalScriptsFuncFactory(scriptSatisfaction, this.#network, payments)
           );
@@ -2214,16 +2220,32 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * @param params.psbt - The Partially Signed Bitcoin Transaction.
      * @param params.value - The value for the output in satoshis.
      */
-    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: bigint }) {
+    updatePsbtAsOutput({
+      psbt,
+      value
+    }: {
+      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+      value: bigint;
+    }) {
       if (typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value < 0n) throw new Error(`Error: value must be >= 0n`);
-      psbt.addOutput({ script: this.getScriptPubKey(), value });
+      // Normalize to Psbt interface
+      const normalizedPsbt = toPsbt(psbt);
+      normalizedPsbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
-    #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
-      const input = psbt.data.inputs[index];
-      const txInput = psbt.txInputs[index];
+    #assertPsbtInput({
+      psbt,
+      index
+    }: {
+      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+      index: number;
+    }): void {
+      // Normalize to Psbt interface
+      const normalizedPsbt = toPsbt(psbt);
+      const input = normalizedPsbt.data.inputs[index];
+      const txInput = normalizedPsbt.txInputs[index];
       if (!input || !txInput)
         throw new Error(`Error: invalid input or txInput`);
       const { sequence: inputSequence, index: vout } = txInput;
@@ -2260,7 +2282,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       if (
         compare(scriptPubKey, this.getScriptPubKey()) !== 0 ||
         (sequenceRBF !== inputSequence && sequenceNoRBF !== inputSequence) ||
-        locktime !== psbt.locktime ||
+        locktime !== normalizedPsbt.locktime ||
         !eqBytes(this.getWitnessScript(), input.witnessScript) ||
         !eqBytes(this.getRedeemScript(), input.redeemScript)
       ) {
