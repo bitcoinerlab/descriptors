@@ -233,8 +233,8 @@ function parseTrExpression(expression: string): {
  * public/private key pairs:
  * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}, respectively.
  *
- * @param {Object} ecc - An object with elliptic curve operations, such as
- * [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
+ * @param {Object} eccOrBitcoinLib - An object with elliptic curve operations,
+ * such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
  * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
  */
 export function DescriptorsFactory<
@@ -2304,20 +2304,22 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     parseKeyExpression,
     expand,
     ECPair,
-    BIP32,
-    Psbt: bitcoinLib.Psbt
+    BIP32
+
+    //Psbt: bitcoinLib.Psbt // -> already returned by createScureLib
   } as unknown as {
     Output: typeof Output;
     parseKeyExpression: typeof parseKeyExpression;
     expand: typeof expand;
     ECPair: typeof ECPair;
     BIP32: typeof BIP32;
-    //which type is Psbt?
-    Psbt: T extends BitcoinLib
-      ? //if the param passed for eccOrBitcoinLib === bitcoinLib ->
-        T['Psbt'] //the type of the param itself
-      : //if the parm for eccOrBitcoinLib === ecc ->
-        typeof import('bitcoinjs-lib').Psbt; // the bitcoinjs-lib Psbt type
+
+    ////which type is Psbt?
+    //Psbt: T extends BitcoinLib
+    //  ? //if the param passed for eccOrBitcoinLib === bitcoinLib ->
+    //    T['Psbt'] //the type of the param itself
+    //  : //if the parm for eccOrBitcoinLib === ecc ->
+    //    typeof import('bitcoinjs-lib').Psbt; // the bitcoinjs-lib Psbt type
   };
 }
 

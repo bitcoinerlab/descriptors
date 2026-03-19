@@ -21,9 +21,9 @@ import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const bitcoinLib = getBitcoinLib();
 
-const { Psbt } = DescriptorsFactory(bitcoinLib);
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
+const Psbt = bitcoinLib.Psbt;
 
 function extractTransaction(psbt: { toBase64(): string }) {
   return BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction();
