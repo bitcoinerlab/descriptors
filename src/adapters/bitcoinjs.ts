@@ -13,7 +13,6 @@ import {
   address,
   payments,
   Transaction,
-  Psbt,
   initEccLib,
   script
 } from 'bitcoinjs-lib';
@@ -40,7 +39,6 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
     script,
     Transaction,
     address,
-    Psbt,
     ECPair,
     BIP32,
     ecc

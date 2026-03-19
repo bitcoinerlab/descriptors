@@ -33,7 +33,7 @@ import type { ECPairAPI } from 'ecpair';
 import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
-  Psbt,
+  BitcoinjsPsbtLike,
   PsbtLikeInputUpdate,
   PsbtTxInput,
   Payment,
@@ -51,54 +51,6 @@ import type {
 import { compare, concat } from 'uint8array-tools';
 import { hash160, sha256 } from '../crypto';
 import { type Network, networks } from '../networks';
-
-/**
- * Native `@scure/btc-signer` transaction type used by the scure adapter.
- *
- * Exposed so users opting into the scure backend can round-trip between the
- * generic `Psbt` wrapper and the underlying native transaction object.
- */
-export type ScureTransaction = InstanceType<typeof btc.Transaction>;
-
-/**
- * Scure-specific refinement of the generic `Psbt` interface.
- *
- * The core library only relies on the base `Psbt` surface from `BitcoinLib`.
- * Users who explicitly choose the scure backend can additionally access the
- * wrapped native `@scure/btc-signer` transaction through `raw`.
- */
-export interface ScurePsbt extends Psbt {
-  /** The underlying native `@scure/btc-signer` transaction. */
-  readonly raw: ScureTransaction;
-}
-
-/**
- * Scure-specific refinement of the generic `Psbt` constructor.
- *
- * The base `BitcoinLib['Psbt']` constructor returns the backend-agnostic
- * `Psbt` interface. For the scure entrypoint we intentionally refine that
- * constructor so `new lib.Psbt()` is typed as `ScurePsbt`, making `.raw`
- * available without casts.
- */
-export interface ScurePsbtConstructor {
-  /** Create a new empty scure-backed `Psbt` wrapper. */
-  new (opts?: { network?: Network; maximumFeeRate?: number }): ScurePsbt;
-
-  /**
-   * Wrap an existing native scure transaction in a `Psbt`-compatible adapter.
-   */
-  fromTransaction(transaction: ScureTransaction): ScurePsbt;
-}
-
-/**
- * Scure-specific refinement of `BitcoinLib`.
- *
- * We intentionally replace only the `Psbt` constructor type from the generic
- * adapter contract. Everything else keeps the shared `BitcoinLib` surface.
- */
-export type ScureBitcoinLib = Omit<BitcoinLib, 'Psbt'> & {
-  Psbt: ScurePsbtConstructor;
-};
 
 type BitcoinjsPsbtInput = PsbtInput & Partial<PsbtTxInput>;
 type BitcoinjsTapScriptSig = NonNullable<PsbtInput['tapScriptSig']>[number];
@@ -627,15 +579,15 @@ function safeP2sh(
  * Internal wrapper that maps a native scure transaction onto the generic
  * `Psbt` interface consumed by the rest of the library.
  */
-class ScurePsbtAdapter implements ScurePsbt {
-  readonly #tx: ScureTransaction;
+class ScurePsbtAdapter implements BitcoinjsPsbtLike {
+  readonly #tx: btc.Transaction;
 
-  constructor(tx: ScureTransaction) {
+  constructor(tx: btc.Transaction) {
     this.#tx = tx;
   }
 
   /** Access the wrapped native scure transaction. */
-  get raw(): ScureTransaction {
+  get raw(): btc.Transaction {
     return this.#tx;
   }
 
@@ -643,7 +595,7 @@ class ScurePsbtAdapter implements ScurePsbt {
     return scureInputToBitcoinjs(this.#tx.getInput(index));
   }
 
-  #mapTxInput(index: number): Psbt['txInputs'][number] {
+  #mapTxInput(index: number): BitcoinjsPsbtLike['txInputs'][number] {
     const raw = this.#tx.getInput(index);
     return {
       hash: raw.txid ? reverseBytes(raw.txid) : new Uint8Array(32),
@@ -667,7 +619,7 @@ class ScurePsbtAdapter implements ScurePsbt {
     return this.#tx.inputsLength;
   }
 
-  get data(): Psbt['data'] {
+  get data(): BitcoinjsPsbtLike['data'] {
     return {
       inputs: Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
         this.#mapInput(index)
@@ -675,7 +627,7 @@ class ScurePsbtAdapter implements ScurePsbt {
     };
   }
 
-  get txInputs(): Psbt['txInputs'] {
+  get txInputs(): BitcoinjsPsbtLike['txInputs'] {
     return Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
       this.#mapTxInput(index)
     );
@@ -946,6 +898,22 @@ function parseRawTx(rawBytes: Uint8Array): Transaction {
   };
 }
 
+// ─── Taptree conversion ─────────────────────────────────────────────
+
+function convertTaptree(tree: Taptree): TaprootScriptTree {
+  if (Array.isArray(tree)) {
+    return [
+      convertTaptree(tree[0]),
+      convertTaptree(tree[1])
+    ] as TaprootScriptTree;
+  }
+  // Leaf: { output, version? }
+  return {
+    script: tree.output,
+    leafVersion: tree.version ?? 0xc0
+  };
+}
+
 // ─── Factory ────────────────────────────────────────────────────────
 
 /**
@@ -953,47 +921,9 @@ function parseRawTx(rawBytes: Uint8Array): Transaction {
  *
  * @param ecc  A TinySecp256k1Interface (e.g. `@bitcoinerlab/secp256k1`).
  */
-export function createScureLib(
-  ecc: TinySecp256k1Interface
-): ScureBitcoinLib {
+export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
   const ECPair: ECPairAPI = ECPairFactory(ecc);
   const BIP32: BIP32API = BIP32Factory(ecc);
-
-  /**
-   * Constructor exposed as `createScureLib(...).Psbt`.
-   *
-   * The constructor mirrors the common `BitcoinLib['Psbt']` surface so shared
-   * code can keep using `new lib.Psbt(...)`, while the static
-   * `fromTransaction(...)` helper lets advanced scure callers wrap an existing
-   * native transaction into a `Psbt`-compatible adapter object.
-   */
-  class ScurePsbtFactory {
-    /**
-     * Create a new empty scure-backed `Psbt` wrapper.
-     *
-     * `network` and `maximumFeeRate` are accepted for interface parity with the
-     * generic adapter contract, but scure transactions themselves are network
-     * agnostic and do not use either setting at construction time.
-     */
-    constructor(_opts?: {
-      network?: Network;
-      maximumFeeRate?: number;
-    }) {
-      const tx = new btc.Transaction({
-        allowUnknownOutputs: true,
-        disableScriptCheck: true
-      });
-      return new ScurePsbtAdapter(tx);
-    }
-
-    /**
-     * Wrap an existing native `@scure/btc-signer` transaction so it can be
-     * passed anywhere the library expects a generic `Psbt` object.
-     */
-    static fromTransaction(transaction: ScureTransaction): ScurePsbt {
-      return new ScurePsbtAdapter(transaction);
-    }
-  }
 
   return {
     payments: {
@@ -1242,8 +1172,6 @@ export function createScureLib(
       }
     },
 
-    Psbt: ScurePsbtFactory as unknown as ScurePsbtConstructor,
-
     ECPair,
     BIP32,
 
@@ -1251,17 +1179,15 @@ export function createScureLib(
   };
 }
 
-// ─── Taptree conversion ─────────────────────────────────────────────
-
-type ScureTaptree = TaprootScriptTree;
-
-function convertTaptree(tree: Taptree): ScureTaptree {
-  if (Array.isArray(tree)) {
-    return [convertTaptree(tree[0]), convertTaptree(tree[1])] as ScureTaptree;
-  }
-  // Leaf: { output, version? }
-  return {
-    script: tree.output,
-    leafVersion: tree.version ?? 0xc0
-  };
+/**
+ * Wrap a raw @scure/btc-signer Transaction into a BitcoinjsPsbtLike.
+ * This is a convenience export for internal use by the library.
+ *
+ * @param transaction - A raw @scure/btc-signer Transaction instance
+ * @returns A BitcoinjsPsbtLike wrapping the transaction
+ */
+export function wrapScureTransaction(
+  transaction: btc.Transaction
+): BitcoinjsPsbtLike {
+  return new ScurePsbtAdapter(transaction);
 }
