@@ -10,7 +10,7 @@
 import { Psbt } from 'bitcoinjs-lib';
 import * as btc from '@scure/btc-signer';
 import { base64 } from '@scure/base';
-import type { Network } from '../../src/networks';
+import type { Network } from '../../dist/networks';
 
 // ─── Type Guards ─────────────────────────────────────────────────────
 
