@@ -1,9 +1,11 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
-import type { Payment } from './bitcoinLib';
+import type {
+  Payment,
+  ECPairInterfaceLike,
+  BIP32InterfaceLike
+} from './bitcoinLib';
 import type { Network } from './networks';
 import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
@@ -36,8 +38,11 @@ export type TimeConstraints = {
 export type KeyInfo = {
   keyExpression: string;
   pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
-  ecpair?: ECPairInterface;
-  bip32?: BIP32Interface;
+  ecpair?: ECPairInterfaceLike;
+  bip32?: BIP32InterfaceLike;
+  privkey?: Uint8Array;
+  xPub?: string;
+  xPrv?: string;
   masterFingerprint?: Uint8Array;
   originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
   keyPath?: string; //The path from the xpub/xprv root

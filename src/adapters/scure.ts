@@ -10,7 +10,7 @@
  */
 
 import * as btc from '@scure/btc-signer';
-import { hex } from '@scure/base';
+import { hex, base58 } from '@scure/base';
 import {
   RawTx,
   RawOldTx,
@@ -26,20 +26,21 @@ import type {
   TransactionInput as ScureTransactionInput,
   TransactionInputUpdate as ScureTransactionInputUpdate
 } from '@scure/btc-signer/psbt.js';
-import { BIP32Factory } from 'bip32';
-import type { BIP32API } from 'bip32';
-import { ECPairFactory } from 'ecpair';
-import type { ECPairAPI } from 'ecpair';
+import { HDKey } from '@scure/bip32';
 import type { TinySecp256k1Interface } from '../types';
 import type {
   BitcoinLib,
-  BitcoinjsPsbtLike,
+  PsbtLike,
   PsbtLikeInputUpdate,
   PsbtTxInput,
   Payment,
   FinalScriptsFunc,
   Transaction,
-  Taptree
+  Taptree,
+  ECPairAPILike,
+  BIP32APILike,
+  ECPairInterfaceLike,
+  BIP32InterfaceLike
 } from '../bitcoinLib';
 import type {
   Bip32Derivation,
@@ -583,7 +584,7 @@ function safeP2sh(
  * Internal wrapper that maps a native scure transaction onto the generic
  * `Psbt` interface consumed by the rest of the library.
  */
-class ScurePsbtAdapter implements BitcoinjsPsbtLike {
+class ScurePsbtAdapter implements PsbtLike {
   readonly #tx: btc.Transaction;
 
   constructor(tx: btc.Transaction) {
@@ -599,7 +600,7 @@ class ScurePsbtAdapter implements BitcoinjsPsbtLike {
     return scureInputToBitcoinjs(this.#tx.getInput(index));
   }
 
-  #mapTxInput(index: number): BitcoinjsPsbtLike['txInputs'][number] {
+  #mapTxInput(index: number): PsbtLike['txInputs'][number] {
     const raw = this.#tx.getInput(index);
     return {
       hash: raw.txid ? reverseBytes(raw.txid) : new Uint8Array(32),
@@ -623,7 +624,7 @@ class ScurePsbtAdapter implements BitcoinjsPsbtLike {
     return this.#tx.inputsLength;
   }
 
-  get data(): BitcoinjsPsbtLike['data'] {
+  get data(): PsbtLike['data'] {
     return {
       inputs: Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
         this.#mapInput(index)
@@ -631,7 +632,7 @@ class ScurePsbtAdapter implements BitcoinjsPsbtLike {
     };
   }
 
-  get txInputs(): BitcoinjsPsbtLike['txInputs'] {
+  get txInputs(): PsbtLike['txInputs'] {
     return Array.from({ length: this.#tx.inputsLength }, (_value, index) =>
       this.#mapTxInput(index)
     );
@@ -918,6 +919,177 @@ function convertTaptree(tree: Taptree): TaprootScriptTree {
   };
 }
 
+function decodeWIF(
+  wifString: string,
+  network?: Network | Network[]
+): { privateKey: Uint8Array; compressed: boolean } {
+  const raw = base58.decode(wifString);
+  if (!(raw.length === 37 || raw.length === 38)) {
+    throw new Error('Wrong WIF length');
+  }
+
+  const payload = raw.slice(0, raw.length - 4);
+  const checksum = raw.slice(raw.length - 4);
+  const expected = sha256(sha256(payload)).slice(0, 4);
+  if (compare(checksum, expected) !== 0) {
+    throw new Error('Invalid WIF checksum');
+  }
+
+  const version = payload[0];
+  if (version === undefined) throw new Error('Invalid WIF payload');
+
+  if (Array.isArray(network)) {
+    if (!network.some(net => net.wif === version)) {
+      throw new Error('Invalid network version');
+    }
+  } else if (network && network.wif !== version) {
+    throw new Error('Invalid network version');
+  }
+
+  if (!(payload.length === 33 || payload.length === 34)) {
+    throw new Error('Wrong WIF length');
+  }
+  if (payload.length === 34 && payload[33] !== 0x01) {
+    throw new Error('Invalid WIF compression flag');
+  }
+
+  return {
+    privateKey: payload.slice(1, 33),
+    compressed: payload.length === 34
+  };
+}
+
+function makeScureECPairFromPublicKey(
+  publicKey: Uint8Array,
+  ecc: TinySecp256k1Interface
+): ECPairInterfaceLike {
+  if (!ecc.isPoint(publicKey))
+    throw new Error('Error: invalid public key point');
+  const xOnlyPubkey =
+    publicKey.length === 33 ? publicKey.slice(1, 33) : publicKey;
+  return {
+    publicKey,
+    sign(): Uint8Array {
+      throw new Error('Error: private key is required for signing');
+    },
+    verify(hash: Uint8Array, signature: Uint8Array): boolean {
+      return ecc.verify(hash, publicKey, signature);
+    },
+    tweak(): ECPairInterfaceLike {
+      throw new Error('Error: private key is required for tweak');
+    },
+    ...(ecc.verifySchnorr
+      ? {
+          verifySchnorr(hash: Uint8Array, signature: Uint8Array): boolean {
+            return ecc.verifySchnorr!(hash, xOnlyPubkey, signature);
+          }
+        }
+      : {})
+  };
+}
+
+function makeScureECPairFromPrivateKey(
+  privateKey: Uint8Array,
+  ecc: TinySecp256k1Interface,
+  compressed = true
+): ECPairInterfaceLike {
+  if (!ecc.isPrivate(privateKey)) throw new Error('Error: invalid private key');
+  const publicKey = ecc.pointFromScalar(privateKey, compressed);
+  if (!publicKey) throw new Error('Error: could not derive public key');
+  const compressedPubkey =
+    publicKey.length === 33 ? publicKey : ecc.pointCompress(publicKey, true);
+  const xOnlyPubkey = compressedPubkey.slice(1, 33);
+  return {
+    publicKey,
+    privateKey,
+    sign(hash: Uint8Array): Uint8Array {
+      return ecc.sign(hash, privateKey);
+    },
+    verify(hash: Uint8Array, signature: Uint8Array): boolean {
+      return ecc.verify(hash, publicKey, signature);
+    },
+    tweak(t: Uint8Array): ECPairInterfaceLike {
+      let d = privateKey;
+      if (compressedPubkey[0] === 0x03) d = ecc.privateNegate(d);
+      const tweaked = ecc.privateAdd(d, t);
+      if (!tweaked) throw new Error('Error: invalid tweak value');
+      return makeScureECPairFromPrivateKey(tweaked, ecc, compressed);
+    },
+    ...(ecc.signSchnorr
+      ? {
+          signSchnorr(hash: Uint8Array): Uint8Array {
+            return ecc.signSchnorr!(hash, privateKey);
+          }
+        }
+      : {}),
+    ...(ecc.verifySchnorr
+      ? {
+          verifySchnorr(hash: Uint8Array, signature: Uint8Array): boolean {
+            return ecc.verifySchnorr!(hash, xOnlyPubkey, signature);
+          }
+        }
+      : {})
+  };
+}
+
+function normalizeBip32Path(path: string): string {
+  const p = path.replaceAll('H', "'").replaceAll('h', "'");
+  if (p === 'm' || p === "m'") return 'm';
+  if (p.startsWith('m/')) return p;
+  if (p.startsWith('/')) return `m${p}`;
+  return `m/${p}`;
+}
+
+function scureVersions(network?: Network): { public: number; private: number } {
+  const net = network ?? networks.bitcoin;
+  return {
+    public: net.bip32.public,
+    private: net.bip32.private
+  };
+}
+
+function wrapScureBIP32Node(
+  hd: HDKey,
+  ecc: TinySecp256k1Interface
+): BIP32InterfaceLike {
+  if (!hd.publicKey)
+    throw new Error('Error: scure HDKey is missing publicKey for BIP32 usage');
+
+  return {
+    publicKey: hd.publicKey,
+    ...(hd.privateKey ? { privateKey: hd.privateKey } : {}),
+    fingerprint: uint32ToBytes(hd.fingerprint),
+    derive(index: number): BIP32InterfaceLike {
+      return wrapScureBIP32Node(hd.deriveChild(index), ecc);
+    },
+    deriveHardened(index: number): BIP32InterfaceLike {
+      return wrapScureBIP32Node(hd.deriveChild(0x80000000 + index), ecc);
+    },
+    derivePath(path: string): BIP32InterfaceLike {
+      return wrapScureBIP32Node(hd.derive(normalizeBip32Path(path)), ecc);
+    },
+    neutered(): BIP32InterfaceLike {
+      return wrapScureBIP32Node(
+        HDKey.fromExtendedKey(hd.publicExtendedKey, hd.versions),
+        ecc
+      );
+    },
+    toBase58(): string {
+      return hd.privateKey ? hd.privateExtendedKey : hd.publicExtendedKey;
+    },
+    sign(hash: Uint8Array): Uint8Array {
+      if (!hd.privateKey)
+        throw new Error('Error: cannot sign with neutered ScureHDKeyLike');
+      return hd.sign(hash);
+    },
+    tweak(t: Uint8Array): ECPairInterfaceLike {
+      if (!hd.privateKey)
+        throw new Error('Error: cannot tweak a neutered ScureHDKeyLike');
+      return makeScureECPairFromPrivateKey(hd.privateKey, ecc).tweak(t);
+    }
+  };
+}
+
 // ─── Factory ────────────────────────────────────────────────────────
 
 /**
@@ -926,8 +1098,81 @@ function convertTaptree(tree: Taptree): TaprootScriptTree {
  * @param ecc  A TinySecp256k1Interface (e.g. `@bitcoinerlab/secp256k1`).
  */
 export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
-  const ECPair: ECPairAPI = ECPairFactory(ecc);
-  const BIP32: BIP32API = BIP32Factory(ecc);
+  const ECPair: ECPairAPILike = {
+    isPoint(maybePoint: unknown): boolean {
+      return maybePoint instanceof Uint8Array && ecc.isPoint(maybePoint);
+    },
+    fromPrivateKey(
+      buffer: Uint8Array,
+      options?: { compressed?: boolean; network?: Network }
+    ): ECPairInterfaceLike {
+      return makeScureECPairFromPrivateKey(
+        buffer,
+        ecc,
+        options?.compressed !== false
+      );
+    },
+    fromPublicKey(
+      buffer: Uint8Array,
+      _options?: { compressed?: boolean; network?: Network }
+    ): ECPairInterfaceLike {
+      return makeScureECPairFromPublicKey(buffer, ecc);
+    },
+    fromWIF(wifString: string, network?: Network | Network[]) {
+      const { privateKey, compressed } = decodeWIF(wifString, network);
+      return makeScureECPairFromPrivateKey(privateKey, ecc, compressed);
+    },
+    makeRandom(options?: {
+      compressed?: boolean;
+      network?: Network;
+      rng?: (arg?: number) => Uint8Array;
+    }): ECPairInterfaceLike {
+      const rng = options?.rng;
+      let privateKey = rng ? rng(32) : btc.utils.randomPrivateKeyBytes();
+      while (!ecc.isPrivate(privateKey)) {
+        privateKey = rng ? rng(32) : btc.utils.randomPrivateKeyBytes();
+      }
+      return makeScureECPairFromPrivateKey(
+        privateKey,
+        ecc,
+        options?.compressed !== false
+      );
+    }
+  };
+  const BIP32: BIP32APILike = {
+    fromSeed(seed: Uint8Array, network?: Network): BIP32InterfaceLike {
+      const hd = HDKey.fromMasterSeed(seed, scureVersions(network));
+      return wrapScureBIP32Node(hd, ecc);
+    },
+    fromBase58(inString: string, network?: Network): BIP32InterfaceLike {
+      const hd = HDKey.fromExtendedKey(inString, scureVersions(network));
+      return wrapScureBIP32Node(hd, ecc);
+    },
+    fromPublicKey(
+      publicKey: Uint8Array,
+      chainCode: Uint8Array,
+      network?: Network
+    ): BIP32InterfaceLike {
+      const hd = new HDKey({
+        publicKey,
+        chainCode,
+        versions: scureVersions(network)
+      });
+      return wrapScureBIP32Node(hd, ecc);
+    },
+    fromPrivateKey(
+      privateKey: Uint8Array,
+      chainCode: Uint8Array,
+      network?: Network
+    ): BIP32InterfaceLike {
+      const hd = new HDKey({
+        privateKey,
+        chainCode,
+        versions: scureVersions(network)
+      });
+      return wrapScureBIP32Node(hd, ecc);
+    }
+  };
 
   return {
     payments: {
@@ -1184,14 +1429,12 @@ export function createScureLib(ecc: TinySecp256k1Interface): BitcoinLib {
 }
 
 /**
- * Wrap a raw @scure/btc-signer Transaction into a BitcoinjsPsbtLike.
+ * Wrap a raw @scure/btc-signer Transaction into a PsbtLike.
  * This is a convenience export for internal use by the library.
  *
  * @param transaction - A raw @scure/btc-signer Transaction instance
- * @returns A BitcoinjsPsbtLike wrapping the transaction
+ * @returns A PsbtLike wrapping the transaction
  */
-export function wrapScureTransaction(
-  transaction: btc.Transaction
-): BitcoinjsPsbtLike {
+export function wrapScureTransaction(transaction: btc.Transaction): PsbtLike {
   return new ScurePsbtAdapter(transaction);
 }

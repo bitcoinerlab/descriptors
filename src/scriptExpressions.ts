@@ -1,4 +1,4 @@
-import type { BIP32Interface } from './bitcoinLib';
+import type { BIP32InterfaceLike, ScureHDKeyLike } from './bitcoinLib';
 import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import { coinTypeFromNetwork } from './networkUtils';
@@ -40,7 +40,7 @@ function standardExpressionsBIP32Maker(
     index,
     isPublic = true
   }: {
-    masterNode: BIP32Interface;
+    masterNode: BIP32InterfaceLike | ScureHDKeyLike;
     /** @default networks.bitcoin */
     network?: Network;
     account: number;

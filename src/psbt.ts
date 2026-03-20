@@ -12,7 +12,7 @@ import type {
   FinalScriptsFunc,
   BitcoinLib,
   PsbtTxInput,
-  BitcoinjsPsbtLike,
+  PsbtLike,
   ScureTransactionLike
 } from './bitcoinLib';
 import { isScureTransaction } from './bitcoinLib';
@@ -117,7 +117,7 @@ export function addPsbtInput({
   rbf,
   Transaction
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: PsbtLike;
   vout: number;
   txHex?: string;
   txId?: string;
@@ -290,9 +290,7 @@ export function addPsbtInput({
  * @param psbt - Either a bitcoinjs-lib Psbt-like object or @scure/btc-signer Transaction
  * @returns A Psbt interface implementation
  */
-export function toPsbt(
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike
-): BitcoinjsPsbtLike {
+export function toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike {
   if (isScureTransaction(psbt)) {
     // Dynamically import scure adapter only when needed
     try {
@@ -310,5 +308,5 @@ export function toPsbt(
   }
 
   // Already a bitcoinjs-lib compatible Psbt
-  return psbt as BitcoinjsPsbtLike;
+  return psbt;
 }

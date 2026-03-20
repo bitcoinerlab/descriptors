@@ -25,11 +25,7 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type {
-  BitcoinjsPsbtLike,
-  ScureTransactionLike,
-  Transaction
-} from './bitcoinLib';
+import type { PsbtLike, ScureTransactionLike, Transaction } from './bitcoinLib';
 import { toPsbt } from './psbt';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
@@ -37,6 +33,7 @@ import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
+import { toBIP32Interface } from './keyInterfaces';
 
 /**
  * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
@@ -324,7 +321,7 @@ export async function ledgerPolicyFromPsbtInput({
   index
 }: {
   ledgerManager: LedgerManager;
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
 }) {
   psbt = toPsbt(psbt);
@@ -612,7 +609,8 @@ export async function ledgerPolicyFromOutput({
   const masterFingerprint = expansionMap[ledgerKey]!.masterFingerprint;
   const originPath = expansionMap[ledgerKey]!.originPath;
   const keyPath = expansionMap[ledgerKey]!.keyPath;
-  const bip32 = expansionMap[ledgerKey]!.bip32;
+  const bip32Like = expansionMap[ledgerKey]!.bip32;
+  const bip32 = bip32Like ? toBIP32Interface(bip32Like) : undefined;
   if (!masterFingerprint || !originPath || !keyPath || !bip32) {
     throw new Error(
       `Error: Ledger key expression must have a valid masterFingerprint: ${masterFingerprint}, originPath: ${originPath}, keyPath: ${keyPath} and a valid bip32 node`
@@ -648,13 +646,14 @@ export async function ledgerPolicyFromOutput({
     }
     placeholderToLedgerPlaceholder.set(key, `@${index}/**`);
     const keyInfo = expansionMap[key]!;
+    const keyBip32 = keyInfo.bip32 ? toBIP32Interface(keyInfo.bip32) : null;
     if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
         `[${toHex(keyInfo.masterFingerprint)}${
           keyInfo.originPath
-        }]${keyInfo?.bip32?.neutered().toBase58()}`
+        }]${keyBip32?.neutered().toBase58()}`
       );
-    else keyRoots.push(`${keyInfo?.bip32?.neutered().toBase58()}`);
+    else keyRoots.push(`${keyBip32?.neutered().toBase58()}`);
   });
 
   const ledgerTemplate = expandedExpression.replace(

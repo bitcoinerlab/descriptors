@@ -2,12 +2,14 @@
 // Distributed under the MIT software license
 
 import type {
-  BitcoinjsPsbtLike,
+  PsbtLike,
   ScureTransactionLike,
-  ECPairInterface,
-  BIP32Interface
+  ECPairInterfaceLike,
+  BIP32InterfaceLike,
+  ScureHDKeyLike
 } from './bitcoinLib';
 import { toPsbt } from './psbt';
+import { toBIP32Interface, toECPairInterface } from './keyInterfaces';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
 import {
   importAndValidateLedgerBitcoin,
@@ -36,7 +38,7 @@ declare class PartialSignature {
  * This applies a bitcoinjs-lib speciffic patch.
  * This won't be run if using the scure lib
  */
-function ensureBitcoinjsHdPatch(psbt: BitcoinjsPsbtLike): void {
+function ensureBitcoinjsHdPatch(psbt: PsbtLike): void {
   let BitcoinjsPsbt;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -68,7 +70,7 @@ function range(n: number): number[] {
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {BitcoinjsPsbtLike} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {number} params.index - The input index to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
@@ -77,10 +79,11 @@ export function signInputECPair({
   index,
   ecpair
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
-  ecpair: ECPairInterface;
+  ecpair: ECPairInterfaceLike | Uint8Array;
 }): void {
+  ecpair = toECPairInterface(ecpair);
   psbt = toPsbt(psbt);
   //psbt.signInput(index, ecpair); <- Replaced for the code below
   //that can handle taproot inputs automatically.
@@ -115,16 +118,17 @@ export function signInputECPair({
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {BitcoinjsPsbtLike} params.psbt - The PSBT to sign
+ * @param {PsbtLike} params.psbt - The PSBT to sign
  * @param {ECPairInterface} params.ecpair - The ECPair to sign with
  */
 export function signECPair({
   psbt,
   ecpair
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
-  ecpair: ECPairInterface;
+  psbt: PsbtLike | ScureTransactionLike;
+  ecpair: ECPairInterfaceLike | Uint8Array;
 }): void {
+  ecpair = toECPairInterface(ecpair);
   psbt = toPsbt(psbt);
   //psbt.signAllInputs(ecpair); <- replaced for the code below that handles
   //taptoot automatically.
@@ -148,10 +152,11 @@ export function signInputBIP32({
   index,
   node
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
-  node: BIP32Interface;
+  node: BIP32InterfaceLike | ScureHDKeyLike;
 }): void {
+  node = toBIP32Interface(node);
   psbt = toPsbt(psbt);
   ensureBitcoinjsHdPatch(psbt);
   psbt.signInputHD(index, node);
@@ -161,9 +166,10 @@ export function signBIP32({
   psbt,
   masterNode
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
-  masterNode: BIP32Interface;
+  psbt: PsbtLike | ScureTransactionLike;
+  masterNode: BIP32InterfaceLike | ScureHDKeyLike;
 }): void {
+  masterNode = toBIP32Interface(masterNode);
   psbt = toPsbt(psbt);
   ensureBitcoinjsHdPatch(psbt);
   psbt.signAllInputsHD(masterNode);
@@ -184,7 +190,7 @@ function addLedgerSignaturesToInput({
   index,
   ledgerSignatures
 }: {
-  psbt: BitcoinjsPsbtLike;
+  psbt: PsbtLike;
   index: number;
   ledgerSignatures: [number, PartialSignature][];
 }) {
@@ -250,7 +256,7 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void>;
@@ -259,7 +265,7 @@ export async function signInputLedger({
   index,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
@@ -325,14 +331,14 @@ export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void>;
 export async function signLedger({
   psbt,
   ledgerManager
 }: {
-  psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+  psbt: PsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void> {
   psbt = toPsbt(psbt);

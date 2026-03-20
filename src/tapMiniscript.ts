@@ -5,8 +5,7 @@ import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
-import type { BIP32API } from 'bip32';
-import type { ECPairAPI } from 'ecpair';
+import type { BIP32APILike, ECPairAPILike } from './bitcoinLib';
 import type { PartialSig, TapBip32Derivation } from './bip174';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
@@ -60,8 +59,8 @@ function expandTaprootMiniscript({
 }: {
   miniscript: string;
   network?: Network;
-  BIP32: BIP32API;
-  ECPair: ECPairAPI;
+  BIP32: BIP32APILike;
+  ECPair: ECPairAPILike;
 }): {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
@@ -99,8 +98,8 @@ export function buildTapTreeInfo({
 }: {
   tapTree: TapTreeNode;
   network?: Network;
-  BIP32: BIP32API;
-  ECPair: ECPairAPI;
+  BIP32: BIP32APILike;
+  ECPair: ECPairAPILike;
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;

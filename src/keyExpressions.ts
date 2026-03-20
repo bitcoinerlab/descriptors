@@ -1,21 +1,26 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairAPI, BIP32API } from './bitcoinLib';
+import type {
+  ECPairAPILike,
+  BIP32APILike,
+  ECPairInterfaceLike,
+  BIP32InterfaceLike,
+  ScureHDKeyLike
+} from './bitcoinLib';
 import { type Network, networks } from './networks';
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
   LedgerManager,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
+import { toBIP32Interface } from './keyInterfaces';
 import { concat, fromHex, toHex } from 'uint8array-tools';
 
 import * as RE from './re';
 
-const derivePath = (node: BIP32Interface, path: string) => {
+const derivePath = (node: BIP32InterfaceLike, path: string) => {
   if (typeof path !== 'string') {
     throw new Error(`Error: invalid derivation path ${path}`);
   }
@@ -72,14 +77,17 @@ export function parseKeyExpression({
    * representation.
    */
   isTaproot?: boolean;
-  ECPair: ECPairAPI;
-  BIP32: BIP32API;
+  ECPair: ECPairAPILike;
+  BIP32: BIP32APILike;
 }): KeyInfo {
   if (isTaproot && isSegwit !== true)
     throw new Error(`Error: taproot key expressions require isSegwit`);
   let pubkey: Uint8Array | undefined; //won't be computed for ranged keyExpressions
-  let ecpair: ECPairInterface | undefined;
-  let bip32: BIP32Interface | undefined;
+  let ecpair: ECPairInterfaceLike | undefined;
+  let bip32: BIP32InterfaceLike | undefined;
+  let privkey: Uint8Array | undefined;
+  let xPub: string | undefined;
+  let xPrv: string | undefined;
   let masterFingerprint: Uint8Array | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
@@ -157,12 +165,13 @@ export function parseKeyExpression({
     ecpair = ECPair.fromWIF(mWIF[0], network);
     //fromWIF will throw if the wif is not valid
     pubkey = ecpair.publicKey;
+    privkey = ecpair.privateKey;
     //match xpub:
   } else if (
     (mXpubKey = actualKey.match(RE.anchorStartAndEnd(RE.reXpubKey))) !== null
   ) {
     const xPubKey = mXpubKey[0];
-    const xPub = xPubKey.match(RE.reXpub)?.[0];
+    xPub = xPubKey.match(RE.reXpub)?.[0];
     if (!xPub) throw new Error(`Error: xpub could not be matched`);
     bip32 = BIP32.fromBase58(xPub, network);
     const mPath = xPubKey.match(RE.rePath);
@@ -179,9 +188,10 @@ export function parseKeyExpression({
     (mXprvKey = actualKey.match(RE.anchorStartAndEnd(RE.reXprvKey))) !== null
   ) {
     const xPrvKey = mXprvKey[0];
-    const xPrv = xPrvKey.match(RE.reXprv)?.[0];
+    xPrv = xPrvKey.match(RE.reXprv)?.[0];
     if (!xPrv) throw new Error(`Error: xprv could not be matched`);
     bip32 = BIP32.fromBase58(xPrv, network);
+    xPub = bip32.neutered().toBase58();
     const mPath = xPrvKey.match(RE.rePath);
     if (mPath !== null) {
       keyPath = xPrvKey.match(RE.rePath)?.[0];
@@ -219,6 +229,9 @@ export function parseKeyExpression({
     ...(pubkey !== undefined ? { pubkey } : {}),
     ...(ecpair !== undefined ? { ecpair } : {}),
     ...(bip32 !== undefined ? { bip32 } : {}),
+    ...(privkey !== undefined ? { privkey } : {}),
+    ...(xPub !== undefined ? { xPub } : {}),
+    ...(xPrv !== undefined ? { xPrv } : {}),
     ...(masterFingerprint !== undefined ? { masterFingerprint } : {}),
     ...(originPath !== undefined && originPath !== '' ? { originPath } : {}),
     ...(keyPath !== undefined && keyPath !== '' ? { keyPath } : {}),
@@ -316,7 +329,7 @@ export function keyExpressionBIP32({
   index,
   isPublic = true
 }: {
-  masterNode: BIP32Interface;
+  masterNode: BIP32InterfaceLike | ScureHDKeyLike;
   originPath: string;
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
@@ -327,6 +340,7 @@ export function keyExpressionBIP32({
    */
   isPublic?: boolean;
 }) {
+  masterNode = toBIP32Interface(masterNode);
   assertChangeIndexKeyPath({ change, index, keyPath });
   const masterFingerprint = masterNode.fingerprint;
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;
