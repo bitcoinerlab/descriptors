@@ -2166,7 +2166,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           const taprootSatisfaction =
             this.getTapScriptSatisfaction(tapScriptSig);
           const matchingLeaf = tapLeafScript.find(
-            (leafScript: { script: Uint8Array; leafVersion: number }) =>
+            leafScript =>
               compare(
                 tapleafHash({
                   output: leafScript.script,
@@ -2327,21 +2327,6 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     expand,
     ECPair,
     BIP32
-
-    //Psbt: bitcoinLib.Psbt // -> already returned by createScureLib
-  } as unknown as {
-    Output: typeof Output;
-    parseKeyExpression: typeof parseKeyExpression;
-    expand: typeof expand;
-    ECPair: typeof ECPair;
-    BIP32: typeof BIP32;
-
-    ////which type is Psbt?
-    //Psbt: T extends BitcoinLib
-    //  ? //if the param passed for eccOrBitcoinLib === bitcoinLib ->
-    //    T['Psbt'] //the type of the param itself
-    //  : //if the parm for eccOrBitcoinLib === ecc ->
-    //    typeof import('bitcoinjs-lib').Psbt; // the bitcoinjs-lib Psbt type
   };
 }
 
