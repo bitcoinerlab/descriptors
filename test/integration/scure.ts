@@ -23,8 +23,8 @@ import {
   signers
 } from '../../dist/';
 import { createScureLib } from '../../dist/scure';
+import { createKeyFactories } from '../helpers/keyFactories';
 import * as btc from '@scure/btc-signer';
-import type { ScureTransactionLike } from '../../dist/';
 
 const { pkhBIP32, wpkhBIP32 } = scriptExpressions;
 const { signBIP32 } = signers;
@@ -42,7 +42,8 @@ const MNEMONIC =
   'slice illness sniff distance carbon elder';
 
 const scureLib = createScureLib(ecc);
-const { Output, BIP32 } = DescriptorsFactory(scureLib);
+const { Output } = DescriptorsFactory(scureLib);
+const { BIP32 } = createKeyFactories();
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(MNEMONIC), NETWORK);
 
@@ -77,10 +78,10 @@ const segwitOutput = new Output({
 
   // Scure users construct a Transaction directly from @scure/btc-signer.
   // The library converts it internally via toPsbt().
-  const psbt: ScureTransactionLike = new btc.Transaction({
+  const psbt = new btc.Transaction({
     allowUnknownOutputs: true,
     disableScriptCheck: true
-  }) as ScureTransactionLike;
+  });
 
   const finalizeLegacyInput = legacyOutput.updatePsbtAsInput({
     psbt,

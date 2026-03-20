@@ -6,11 +6,11 @@ import { DescriptorsFactory } from '../dist/descriptors';
 import { parseTapTreeExpression } from '../dist/tapTree';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { createKeyFactories } from './helpers/keyFactories';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output, ECPair } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { ECPair } = createKeyFactories();
 
 // Use deterministic, distinct private keys across this file to avoid duplicate
 // pubkeys in multisig/taproot tests. `fill(seed)` repeats the byte `seed`

@@ -5,11 +5,11 @@ import { DescriptorsFactory } from '../dist/descriptors';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
+import { createKeyFactories } from './helpers/keyFactories';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { expand, ECPair } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { expand } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { ECPair } = createKeyFactories();
 
 describe('miniscript expansion', () => {
   test('does not treat sha256 digest hex as a key expression', () => {

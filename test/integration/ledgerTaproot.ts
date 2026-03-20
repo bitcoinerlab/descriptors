@@ -23,6 +23,7 @@ import {
   scriptExpressions,
   signers
 } from '../../dist/';
+import { createKeyFactories } from '../helpers/keyFactories';
 
 const regtestUtils = new RegtestUtils();
 
@@ -32,7 +33,8 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const { Output } = DescriptorsFactory(ecc);
+const { BIP32 } = createKeyFactories();
 const { signLedger } = signers;
 const { trLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;

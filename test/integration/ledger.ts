@@ -56,6 +56,7 @@ import {
   psbtAddOutput,
   psbtToBase64
 } from '../helpers/psbt';
+import { createKeyFactories } from '../helpers/keyFactories';
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
@@ -93,9 +94,8 @@ const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const { Output, BIP32 } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { BIP32 } = createKeyFactories();
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 

@@ -14,6 +14,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
 import { createScureLib } from '../../dist/scure';
 import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
+import { createKeyFactories } from '../helpers/keyFactories';
 
 const regtestUtils = new RegtestUtils();
 const NETWORK = networks.regtest;
@@ -28,9 +29,8 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
-const { Output, BIP32, ECPair } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { BIP32, ECPair } = createKeyFactories();
 const masterNode = BIP32.fromSeed(seed, NETWORK);
 
 // Helpers -----------------------------------------------------

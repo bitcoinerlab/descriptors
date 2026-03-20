@@ -4,12 +4,10 @@
 import { mnemonicToSeedSync } from 'bip39';
 import { networks } from '../dist';
 import type { Network } from '../dist';
-import { DescriptorsFactory, scriptExpressions } from '../dist/';
-import { createScureLib } from '../dist/scure';
-import * as ecc from '@bitcoinerlab/secp256k1';
+import { scriptExpressions } from '../dist/';
+import { createKeyFactories } from './helpers/keyFactories';
 
-const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { BIP32 } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { BIP32 } = createKeyFactories();
 
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';

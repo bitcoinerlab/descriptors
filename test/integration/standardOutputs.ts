@@ -28,12 +28,12 @@ import {
 import { createScureLib } from '../../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
+import { createKeyFactories } from '../helpers/keyFactories';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { BIP32, ECPair } = createKeyFactories();
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:

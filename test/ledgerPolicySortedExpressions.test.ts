@@ -7,7 +7,7 @@ const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks, Psbt } from 'bitcoinjs-lib';
-import type { BIP32Interface } from 'bip32';
+import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
 import type { LedgerManager } from '../dist/ledger';
@@ -17,20 +17,22 @@ import {
 } from '../dist/ledger';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { toHex } from 'uint8array-tools';
+import { createKeyFactories } from './helpers/keyFactories';
 
 const NETWORK = networks.regtest;
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const { Output } = DescriptorsFactory(ecc);
+const { BIP32 } = createKeyFactories();
 
-function makeMaster(seed: number): BIP32Interface {
+function makeMaster(seed: number): BIP32InterfaceLike {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
 }
 
-function keyRootNoOrigin(masterNode: BIP32Interface): string {
+function keyRootNoOrigin(masterNode: BIP32InterfaceLike): string {
   return masterNode.derivePath("m/48'/1'/0'").neutered().toBase58();
 }
 
 function keyExpressionNoOrigin(
-  masterNode: BIP32Interface,
+  masterNode: BIP32InterfaceLike,
   keyPath = '/0/*'
 ): string {
   return `${keyRootNoOrigin(masterNode)}${keyPath}`;
@@ -54,7 +56,7 @@ function mockLedgerManager(masterFingerprint: Uint8Array): LedgerManager {
   };
 }
 
-function keyRootWithOrigin(masterNode: BIP32Interface): string {
+function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
   return `[${toHex(masterNode.fingerprint)}/48'/1'/0']${keyRootNoOrigin(
     masterNode
   )}`;

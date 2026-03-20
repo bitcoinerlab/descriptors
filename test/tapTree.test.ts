@@ -33,8 +33,10 @@ import {
   satisfyTapTree
 } from '../dist/tapMiniscript';
 import { compare, fromHex, toHex } from 'uint8array-tools';
+import { createKeyFactories } from './helpers/keyFactories';
 
 const bitcoinLib = isScure ? createScureLib(ecc) : createBitcoinjsLib(ecc);
+const { ECPair } = createKeyFactories();
 
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
@@ -273,7 +275,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('script policy signs and finalizes through script-path', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSignerA = nextSigner();
@@ -304,7 +306,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('script policy finalizer requires tapScriptSig', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSigner = nextSigner();
@@ -327,7 +329,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('key-path taproot signs and finalizes without tapLeafScript', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signer = nextSigner();
     const descriptor = `tr(${xOnly(signer.publicKey)})`;
@@ -351,7 +353,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('supports sortedmulti_a() as a taproot leaf expression', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -401,7 +403,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() when nested inside miniscript', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -420,7 +422,7 @@ describeIfNotScure('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() outside tr()', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signerA = nextSigner();
     const signerB = nextSigner();
@@ -531,7 +533,7 @@ describeIfNotScure('taproot tree satisfactions', () => {
   });
 
   test('accepts push-only OP_1 selectors in taproot satisfactions', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
