@@ -7,7 +7,7 @@ import type {
   BitcoinLib,
   ECPairAPI,
   BIP32API,
-  BitcoinjsPsbtLike,
+  PsbtLike,
   ScureTransactionLike
 } from './bitcoinLib';
 import {
@@ -64,6 +64,44 @@ import {
 
 const ECDSA_FAKE_SIGNATURE_SIZE = 72;
 const TAPROOT_FAKE_SIGNATURE_SIZE = 64;
+
+/** Detect if the adapter was created with native bitcoinjs key factories. */
+function isBitcoinJsLib(lib: BitcoinLib): boolean {
+  const BITCOINJS_KEY_PROBE_PRIVKEY = Uint8Array.from([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1
+  ]);
+  const BITCOINJS_KEY_PROBE_SEED = new Uint8Array(32).fill(1);
+  try {
+    const ecpair = lib.ECPair.fromPrivateKey(BITCOINJS_KEY_PROBE_PRIVKEY);
+    const bip32 = lib.BIP32.fromSeed(
+      BITCOINJS_KEY_PROBE_SEED,
+      networks.regtest
+    );
+    const looksLikeNativeECPair =
+      typeof (ecpair as { toWIF?: unknown }).toWIF === 'function' &&
+      typeof (ecpair as { compressed?: unknown }).compressed === 'boolean';
+    const looksLikeNativeBIP32 =
+      (bip32 as { chainCode?: unknown }).chainCode instanceof Uint8Array &&
+      typeof (bip32 as { toWIF?: unknown }).toWIF === 'function' &&
+      typeof (bip32 as { depth?: unknown }).depth === 'number';
+    return looksLikeNativeECPair && looksLikeNativeBIP32;
+  } catch {
+    return false;
+  }
+}
+
+function unsupportedKeyApi<T extends object>(apiName: 'ECPair' | 'BIP32'): T {
+  const msg =
+    `Error: ${apiName} is unavailable with this backend. ` +
+    `You initialized @bitcoinerlab/descriptors with a non-bitcoinjs lib. ` +
+    `Use DescriptorsFactory(ecc) or createBitcoinjsLib(ecc) for full bitcoinjs ${apiName} APIs.`;
+  return new Proxy({} as T, {
+    get(_target, prop) {
+      throw new Error(`${msg} Tried to access ${apiName}.${String(prop)}.`);
+    }
+  });
+}
 
 function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
@@ -259,8 +297,8 @@ export function DescriptorsFactory<
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const address = bitcoinLib.address;
   const Transaction = bitcoinLib.Transaction;
-  const BIP32: BIP32API = bitcoinLib.BIP32;
-  const ECPair: ECPairAPI = bitcoinLib.ECPair;
+  const BIP32 = bitcoinLib.BIP32; //This is in fact BIP32APILike
+  const ECPair = bitcoinLib.ECPair; //This is in fact ECPairAPILike
 
   const signatureValidator = (
     pubkey: Uint8Array,
@@ -2013,7 +2051,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
-     * `( { psbt, validate = true } : { psbt: BitcoinjsPsbtLike | ScureTransactionLike; validate: boolean | undefined } ) => void`
+     * `( { psbt, validate = true } : { psbt: PsbtLike | ScureTransactionLike; validate: boolean | undefined } ) => void`
      *
      */
     updatePsbtAsInput({
@@ -2024,7 +2062,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       vout, //vector output index
       rbf = true
     }: {
-      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+      psbt: PsbtLike | ScureTransactionLike;
       txHex?: string;
       txId?: string;
       value?: bigint;
@@ -2119,7 +2157,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         psbt,
         validate = true
       }: {
-        psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+        psbt: PsbtLike | ScureTransactionLike;
         /** Runs further test on the validity of the signatures.
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
@@ -2224,7 +2262,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt,
       value
     }: {
-      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+      psbt: PsbtLike | ScureTransactionLike;
       value: bigint;
     }) {
       if (typeof value !== 'bigint')
@@ -2239,7 +2277,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       psbt,
       index
     }: {
-      psbt: BitcoinjsPsbtLike | ScureTransactionLike;
+      psbt: PsbtLike | ScureTransactionLike;
       index: number;
     }): void {
       // Normalize to Psbt interface
@@ -2321,12 +2359,23 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
   }
 
+  const nativeKeys = isBitcoinJsLib(bitcoinLib);
+
   return {
     Output,
     parseKeyExpression,
     expand,
-    ECPair,
-    BIP32
+    ECPair: nativeKeys
+      ? // Expose full ECPairAPI typing only with native bitcoinjs adapter.
+        // In this branch ECPair comes from the real 'ecpair' package.
+        (ECPair as ECPairAPI)
+      : // Non-bitcoinjs adapters only implement the subset used internally.
+        // Expose a throwing proxy to prevent accidental external usage.
+        unsupportedKeyApi<ECPairAPI>('ECPair'),
+    // Same behavior for BIP32: full API only for native bitcoinjs adapter.
+    BIP32: nativeKeys
+      ? (BIP32 as BIP32API)
+      : unsupportedKeyApi<BIP32API>('BIP32')
   };
 }
 
