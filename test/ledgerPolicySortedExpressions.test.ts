@@ -17,11 +17,9 @@ import {
 } from '../dist/ledger';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { toHex } from 'uint8array-tools';
-import { createKeyFactories } from './helpers/keyFactories';
 
 const NETWORK = networks.regtest;
-const { Output } = DescriptorsFactory(ecc);
-const { BIP32 } = createKeyFactories();
+const { Output, BIP32 } = DescriptorsFactory(ecc);
 
 function makeMaster(seed: number): BIP32InterfaceLike {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);

@@ -9,19 +9,16 @@ import { networks } from '../dist';
 import { DescriptorsFactory, scriptExpressions } from '../dist/';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { createKeyFactories } from './helpers/keyFactories';
-import { mnemonicToSeedSync } from 'bip39';
+import { createMasterNode } from './helpers/keys';
 import { toHex } from 'uint8array-tools';
 const { trBIP32 } = scriptExpressions;
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
 const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
-const { BIP32 } = createKeyFactories();
 const network = networks.bitcoin;
-const masterNode = BIP32.fromSeed(
-  mnemonicToSeedSync(
-    'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
-  ),
-  network
+const masterNode = createMasterNode(
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+  network,
+  isScure
 );
 
 describe('BIP86 Taproot Derivation Path Tests', () => {

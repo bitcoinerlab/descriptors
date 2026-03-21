@@ -45,7 +45,6 @@ console.log(
 );
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks } from '../../dist';
-import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
@@ -56,7 +55,7 @@ import {
   psbtAddOutput,
   psbtToBase64
 } from '../helpers/psbt';
-import { createKeyFactories } from '../helpers/keyFactories';
+import { createMasterNode } from '../helpers/keys';
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
@@ -95,7 +94,6 @@ const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
-const { BIP32 } = createKeyFactories();
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 
@@ -181,7 +179,7 @@ const finalizers = [];
   finalizers.push(pkhChangeOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Here we create the BIP32 software wallet that will be used to co-sign the 3rd utxo of this test:
-  const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
+  const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 
   //Let's prepare the wsh utxo. First create the Ledger and Soft key expressions
   //that will be used to co-sign the wsh output.

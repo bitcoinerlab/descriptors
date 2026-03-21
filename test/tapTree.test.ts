@@ -12,20 +12,10 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation, TapLeafScript } from 'bip174';
-import { Psbt, Transaction, initEccLib } from 'bitcoinjs-lib';
+import { Psbt, Transaction } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { createScureLib } from '../dist/scure';
 import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 import { DescriptorsFactory } from '../dist/descriptors';
-
-// When using the scure backend (BITCOIN_LIB=scure), the library creates
-// taproot payments using @scure/btc-signer, but the test still uses
-// bitcoinjs-lib's Psbt for signing. bitcoinjs-lib requires its ECC library
-// to be initialized to validate taproot public keys during signing.
-// Without this, checkTaprootHashesForSig() fails with "Can not sign for input".
-if (isScure) {
-  initEccLib(ecc);
-}
 import { signInputECPair } from '../dist/signers';
 import {
   buildTaprootBip32Derivations,
@@ -33,10 +23,9 @@ import {
   satisfyTapTree
 } from '../dist/tapMiniscript';
 import { compare, fromHex, toHex } from 'uint8array-tools';
-import { createKeyFactories } from './helpers/keyFactories';
 
-const bitcoinLib = isScure ? createScureLib(ecc) : createBitcoinjsLib(ecc);
-const { ECPair } = createKeyFactories();
+const bitcoinLib = createBitcoinjsLib(ecc);
+const { ECPair } = DescriptorsFactory(ecc);
 
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;

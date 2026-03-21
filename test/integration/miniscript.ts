@@ -4,7 +4,6 @@
 //npm run test:integration
 
 import { networks } from '../../dist';
-import { mnemonicToSeedSync } from 'bip39';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: afterEncode } = require('bip65');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -40,14 +39,17 @@ import { createScureLib } from '../../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 import { toHex } from 'uint8array-tools';
-import { createKeyFactories } from '../helpers/keyFactories';
+import {
+  createMasterNode,
+  createRandomSingleKeySigner,
+  deriveNodePubKey,
+  getPubKey
+} from '../helpers/keys';
 const { signBIP32, signECPair } = signers;
 
 const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
-const { BIP32, ECPair } = createKeyFactories();
-
-const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
-const ecpair = ECPair.makeRandom();
+const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
+const ecpair = createRandomSingleKeySigner(isScure);
 
 const keys: {
   [key: string]: {
@@ -99,8 +101,10 @@ const keys: {
             originPath,
             keyPath
           });
-          const node = masterNode.derivePath(`m${originPath}${keyPath}`);
-          const pubkey = node.publicKey;
+          const pubkey = deriveNodePubKey(
+            masterNode,
+            `m${originPath}${keyPath}`
+          );
           if (key === spendingBranch) {
             if (keyExpressionType === 'BIP32') {
               miniscript = miniscript.replace(
@@ -111,10 +115,10 @@ const keys: {
             } else {
               miniscript = miniscript.replace(
                 new RegExp(key, 'g'),
-                toHex(ecpair.publicKey)
+                toHex(getPubKey(ecpair))
               );
 
-              signersPubKeys.push(ecpair.publicKey);
+              signersPubKeys.push(getPubKey(ecpair));
             }
           } else {
             //For the non spending branch we can simply use the pubKey as key expressions

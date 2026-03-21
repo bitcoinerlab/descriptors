@@ -5,7 +5,6 @@
 
 console.log('Standard output integration tests');
 import { networks } from '../../dist';
-import { mnemonicToSeedSync } from 'bip39';
 import { RegtestUtils } from 'regtest-client';
 import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
 const regtestUtils = new RegtestUtils();
@@ -28,14 +27,18 @@ import {
 import { createScureLib } from '../../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
-import { createKeyFactories } from '../helpers/keyFactories';
+import {
+  createMasterNode,
+  createRandomSingleKeySigner,
+  getPubKey,
+  getXOnlyPubKey
+} from '../helpers/keys';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
 const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
-const { BIP32, ECPair } = createKeyFactories();
 
-const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
+const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 //masterNode will be able to sign all the expressions below:
 const expressionsBIP32 = [
   `pk(${keyExpressionBIP32({
@@ -61,9 +64,9 @@ if (
 )
   throw new Error(`Error: cannot use keyPath <-> change, index, indistinctly`);
 
-const ecpair = ECPair.makeRandom();
-const ecpairPubkeyHex = toHex(ecpair.publicKey);
-const ecpairXOnlyHex = toHex(ecpair.publicKey.slice(1, 33));
+const ecpair = createRandomSingleKeySigner(isScure);
+const ecpairPubkeyHex = toHex(getPubKey(ecpair));
+const ecpairXOnlyHex = toHex(getXOnlyPubKey(ecpair));
 //The same ecpair will be able to sign all the expressions below:
 const expressionsECPair = [
   `pk(${ecpairPubkeyHex})`,

@@ -6,11 +6,10 @@ import { DescriptorsFactory } from '../dist/descriptors';
 import { parseTapTreeExpression } from '../dist/tapTree';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { createKeyFactories } from './helpers/keyFactories';
+import { createPrivKeySigner, getPubKey, getXOnlyPubKey } from './helpers/keys';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
 const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
-const { ECPair } = createKeyFactories();
 
 // Use deterministic, distinct private keys across this file to avoid duplicate
 // pubkeys in multisig/taproot tests. `fill(seed)` repeats the byte `seed`
@@ -19,7 +18,7 @@ let seedBase = 1;
 function nextSigner() {
   const seed = seedBase;
   seedBase += 1;
-  return ECPair.fromPrivateKey(new Uint8Array(32).fill(seed));
+  return createPrivKeySigner(new Uint8Array(32).fill(seed), isScure);
 }
 
 function buildNestedTapTree({
@@ -49,8 +48,8 @@ describe('resource limits', () => {
   test('Output fails fast for taproot trees deeper than 128', () => {
     const internalSigner = nextSigner();
     const leafSigner = nextSigner();
-    const internalKey = toHex(internalSigner.publicKey.slice(1, 33));
-    const leafKey = toHex(leafSigner.publicKey.slice(1, 33));
+    const internalKey = toHex(getXOnlyPubKey(internalSigner));
+    const leafKey = toHex(getXOnlyPubKey(leafSigner));
     const tree = buildNestedTapTree({
       leafExpression: `pk(${leafKey})`,
       depth: 129
@@ -63,13 +62,13 @@ describe('resource limits', () => {
 
   test('wsh miniscript rejects witness stack items over 80 bytes', () => {
     const signer = nextSigner();
-    const pubkey = toHex(signer.publicKey);
+    const pubkey = toHex(getPubKey(signer));
     const output = new Output({ descriptor: `wsh(pk(${pubkey}))` });
 
     expect(() =>
       output.getScriptSatisfaction([
         {
-          pubkey: signer.publicKey,
+          pubkey: getPubKey(signer),
           signature: new Uint8Array(81)
         }
       ])
@@ -79,14 +78,14 @@ describe('resource limits', () => {
   test('sh miniscript rejects scriptSig over 1650 bytes', () => {
     const signers = [nextSigner(), nextSigner(), nextSigner(), nextSigner()];
     const descriptor = `sh(multi(4,${signers
-      .map(signer => toHex(signer.publicKey))
+      .map(signer => toHex(getPubKey(signer)))
       .join(',')}))`;
     const output = new Output({ descriptor });
 
     expect(() =>
       output.getScriptSatisfaction(
         signers.map(signer => ({
-          pubkey: signer.publicKey,
+          pubkey: getPubKey(signer),
           signature: new Uint8Array(500)
         }))
       )
@@ -96,13 +95,13 @@ describe('resource limits', () => {
   test('sh miniscript rejects stack items over 520 bytes', () => {
     const signer = nextSigner();
     const output = new Output({
-      descriptor: `sh(pk(${toHex(signer.publicKey)}))`
+      descriptor: `sh(pk(${toHex(getPubKey(signer))}))`
     });
 
     expect(() =>
       output.getScriptSatisfaction([
         {
-          pubkey: signer.publicKey,
+          pubkey: getPubKey(signer),
           signature: new Uint8Array(521)
         }
       ])
@@ -112,8 +111,8 @@ describe('resource limits', () => {
   test('taproot script-path rejects stack items over 80 bytes', () => {
     const internalSigner = nextSigner();
     const leafSigner = nextSigner();
-    const internalKey = toHex(internalSigner.publicKey.slice(1, 33));
-    const leafKey = toHex(leafSigner.publicKey.slice(1, 33));
+    const internalKey = toHex(getXOnlyPubKey(internalSigner));
+    const leafKey = toHex(getXOnlyPubKey(leafSigner));
     const output = new Output({
       descriptor: `tr(${internalKey},pk(${leafKey}))`,
       taprootSpendPath: 'script'
@@ -122,7 +121,7 @@ describe('resource limits', () => {
     expect(() =>
       output.getTapScriptSatisfaction([
         {
-          pubkey: leafSigner.publicKey.slice(1, 33),
+          pubkey: getXOnlyPubKey(leafSigner),
           signature: new Uint8Array(81)
         }
       ])
