@@ -103,6 +103,7 @@
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
     "@types/lodash.memoize": "^4.1.9",
     "babel-jest": "^30.3.0",

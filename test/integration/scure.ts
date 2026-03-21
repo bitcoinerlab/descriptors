@@ -13,8 +13,11 @@ if (process.env['BITCOIN_LIB'] && process.env['BITCOIN_LIB'] !== 'scure') {
 }
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { mnemonicToSeedSync } from 'bip39';
+import { mnemonicToSeedSync } from '@scure/bip39';
 import { RegtestUtils } from 'regtest-client';
+import { HDKey } from '@scure/bip32';
+import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { toHex } from 'uint8array-tools';
 
 import {
   DescriptorsFactory,
@@ -23,11 +26,10 @@ import {
   signers
 } from '../../dist/';
 import { createScureLib } from '../../dist/scure';
-import { createKeyFactories } from '../helpers/keyFactories';
 import * as btc from '@scure/btc-signer';
 
 const { pkhBIP32, wpkhBIP32 } = scriptExpressions;
-const { signBIP32 } = signers;
+const { signBIP32, signPrivKey, signInputPrivKey } = signers;
 
 const regtestUtils = new RegtestUtils();
 
@@ -35,82 +37,141 @@ const NETWORK = networks.regtest;
 const INITIAL_VALUE = 30_000n;
 const FEE = 500n;
 
-// This mnemonic mirrors the playground example so users can recognize the flow
-// immediately, while the test itself still uses the local regtest faucet.
 const MNEMONIC =
   'drum turtle globe inherit autumn flavor ' +
   'slice illness sniff distance carbon elder';
 
-const scureLib = createScureLib(ecc);
-const { Output } = DescriptorsFactory(scureLib);
-const { BIP32 } = createKeyFactories();
+const { Output } = DescriptorsFactory(createScureLib(ecc));
 
-const masterNode = BIP32.fromSeed(mnemonicToSeedSync(MNEMONIC), NETWORK);
-
-// Start with a legacy descriptor and move the funds to a segwit one, matching
-// the educational playground flow but using the native scure-backed `Psbt`.
-const legacyOutput = new Output({
-  descriptor: pkhBIP32({
-    masterNode,
-    network: NETWORK,
-    account: 0,
-    keyPath: '/0/1'
-  }),
-  network: NETWORK
-});
-
-const segwitOutput = new Output({
-  descriptor: wpkhBIP32({
-    masterNode,
-    network: NETWORK,
-    account: 0,
-    keyPath: '/1/0'
-  }),
-  network: NETWORK
+const masterNode = HDKey.fromMasterSeed(mnemonicToSeedSync(MNEMONIC), {
+  public: NETWORK.bip32.public,
+  private: NETWORK.bip32.private
 });
 
 (async () => {
-  const { txId, vout } = await regtestUtils.faucetComplex(
-    Buffer.from(legacyOutput.getScriptPubKey()),
-    Number(INITIAL_VALUE)
-  );
-  const { txHex } = await regtestUtils.fetch(txId);
-
-  // Scure users construct a Transaction directly from @scure/btc-signer.
-  // The library converts it internally via toPsbt().
-  const psbt = new btc.Transaction({
-    allowUnknownOutputs: true,
-    disableScriptCheck: true
+  const singleInputFinalValue = INITIAL_VALUE - FEE;
+  const twoInputFinalValue = INITIAL_VALUE * 2n - FEE;
+  const segwitOutput = new Output({
+    descriptor: wpkhBIP32({
+      masterNode,
+      network: NETWORK,
+      account: 0,
+      keyPath: '/1/0'
+    }),
+    network: NETWORK
   });
-
-  const finalizeLegacyInput = legacyOutput.updatePsbtAsInput({
-    psbt,
-    txHex,
-    vout
-  });
-
-  const finalValue = INITIAL_VALUE - FEE;
-  segwitOutput.updatePsbtAsOutput({ psbt, value: finalValue });
-
-  // Sign and finalize using the native @scure/btc-signer Transaction object directly.
-  // The signing functions now accept both bitcoinjs-lib Psbt and scure Transaction types.
-  signBIP32({ psbt, masterNode });
-  finalizeLegacyInput({ psbt });
-
-  // Access the native @scure/btc-signer transaction methods directly.
-  // The psbt has been converted and finalized internally.
   const finalAddress = segwitOutput.getAddress();
   if (!finalAddress) throw new Error('Error: final segwit address not found');
 
-  // Cast to btc.Transaction type to access native scure properties
-  const scureTx = psbt as unknown as btc.Transaction;
-  await regtestUtils.broadcast(scureTx.hex);
-  await regtestUtils.verify({
-    txId: scureTx.id,
-    address: finalAddress,
-    vout: 0,
-    value: Number(finalValue)
+  // 1) BIP32 signer flow
+  {
+    const legacyOutput = new Output({
+      descriptor: pkhBIP32({
+        masterNode,
+        network: NETWORK,
+        account: 0,
+        keyPath: '/0/1'
+      }),
+      network: NETWORK
+    });
+    const { txId, vout } = await regtestUtils.faucetComplex(
+      Buffer.from(legacyOutput.getScriptPubKey()),
+      Number(INITIAL_VALUE)
+    );
+    const { txHex } = await regtestUtils.fetch(txId);
+
+    const psbt = new btc.Transaction();
+    const finalizeInput = legacyOutput.updatePsbtAsInput({ psbt, txHex, vout });
+    segwitOutput.updatePsbtAsOutput({ psbt, value: singleInputFinalValue });
+
+    signBIP32({ psbt, masterNode });
+    finalizeInput({ psbt });
+
+    await regtestUtils.broadcast(psbt.hex);
+    await regtestUtils.verify({
+      txId: psbt.id,
+      address: finalAddress,
+      vout: 0,
+      value: Number(singleInputFinalValue)
+    });
+  }
+
+  // Also demonstrate the raw-private-key signers for scure-only users.
+  const singlePrivKey = btc.utils.randomPrivateKeyBytes();
+  const singlePubKeyHex = toHex(secp256k1.getPublicKey(singlePrivKey, true));
+  const singleKeyLegacyOutput = new Output({
+    descriptor: `pkh(${singlePubKeyHex})`,
+    network: NETWORK
   });
+
+  // 2) Raw private-key signer (all inputs)
+  {
+    const { txId: txIdA, vout: voutA } = await regtestUtils.faucetComplex(
+      Buffer.from(singleKeyLegacyOutput.getScriptPubKey()),
+      Number(INITIAL_VALUE)
+    );
+    const { txHex: txHexA } = await regtestUtils.fetch(txIdA);
+
+    const { txId: txIdB, vout: voutB } = await regtestUtils.faucetComplex(
+      Buffer.from(singleKeyLegacyOutput.getScriptPubKey()),
+      Number(INITIAL_VALUE)
+    );
+    const { txHex: txHexB } = await regtestUtils.fetch(txIdB);
+
+    const psbt = new btc.Transaction();
+    const finalizeInputA = singleKeyLegacyOutput.updatePsbtAsInput({
+      psbt,
+      txHex: txHexA,
+      vout: voutA
+    });
+    const finalizeInputB = singleKeyLegacyOutput.updatePsbtAsInput({
+      psbt,
+      txHex: txHexB,
+      vout: voutB
+    });
+    segwitOutput.updatePsbtAsOutput({ psbt, value: twoInputFinalValue });
+
+    signPrivKey({ psbt, privKey: singlePrivKey });
+    finalizeInputA({ psbt });
+    finalizeInputB({ psbt });
+
+    await regtestUtils.broadcast(psbt.hex);
+    await regtestUtils.verify({
+      txId: psbt.id,
+      address: finalAddress,
+      vout: 0,
+      value: Number(twoInputFinalValue)
+    });
+  }
+
+  // 3) Raw private-key signer (single input)
+  {
+    const { txId, vout } = await regtestUtils.faucetComplex(
+      Buffer.from(singleKeyLegacyOutput.getScriptPubKey()),
+      Number(INITIAL_VALUE)
+    );
+    const { txHex } = await regtestUtils.fetch(txId);
+
+    const psbt = new btc.Transaction();
+    const finalizeInput = singleKeyLegacyOutput.updatePsbtAsInput({
+      psbt,
+      txHex,
+      vout
+    });
+    segwitOutput.updatePsbtAsOutput({ psbt, value: singleInputFinalValue });
+
+    signInputPrivKey({ psbt, index: 0, privKey: singlePrivKey });
+    //signPrivKey({ psbt, privKey: singlePrivKey }); //this would also work
+    finalizeInput({ psbt });
+
+    await regtestUtils.broadcast(psbt.hex);
+    await regtestUtils.verify({
+      txId: psbt.id,
+      address: finalAddress,
+      vout: 0,
+      value: Number(singleInputFinalValue)
+    });
+  }
 
   console.log('Scure integration test: OK');
 })();

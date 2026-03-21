@@ -145,10 +145,7 @@ export function psbtFromBase64(
   if (isScure) {
     // This is scure - parse PSBT bytes
     const bytes = base64.decode(base64String);
-    return btc.Transaction.fromPSBT(bytes, {
-      allowUnknownOutputs: true,
-      disableScriptCheck: true
-    });
+    return btc.Transaction.fromPSBT(bytes);
   }
 
   // This is bitcoinjs-lib
@@ -163,10 +160,7 @@ export function createPsbt(
 ): Psbt | btc.Transaction {
   if (isScure) {
     // Create scure Transaction
-    return new btc.Transaction({
-      allowUnknownOutputs: true,
-      disableScriptCheck: true
-    });
+    return new btc.Transaction();
   }
 
   // Create bitcoinjs-lib Psbt
