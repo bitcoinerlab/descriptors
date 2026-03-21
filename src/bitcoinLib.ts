@@ -84,6 +84,7 @@ export interface ScureHDKeyLike {
   publicKey: Uint8Array | null;
   privateKey: Uint8Array | null;
   fingerprint: number;
+  versions?: { public: number; private: number };
   derive(path: string): ScureHDKeyLike;
   deriveChild(index: number): ScureHDKeyLike;
   sign(hash: Uint8Array): Uint8Array;

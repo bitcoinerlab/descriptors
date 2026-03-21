@@ -2,8 +2,8 @@
 // Distributed under the MIT software license
 
 import { HDKey } from '@scure/bip32';
-import { secp256k1, schnorr } from '@noble/curves/secp256k1';
-import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils';
+import { secp256k1, schnorr } from '@noble/curves/secp256k1.js';
+import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
 import type {
   BIP32InterfaceLike,
   ECPairInterfaceLike,
@@ -110,7 +110,10 @@ export function wrapScureHDKey(node: ScureHDKeyLike): BIP32InterfaceLike {
     },
     neutered(): BIP32InterfaceLike {
       return wrapScureHDKey(
-        HDKey.fromExtendedKey(node.publicExtendedKey) as ScureHDKeyLike
+        HDKey.fromExtendedKey(
+          node.publicExtendedKey,
+          node.versions
+        ) as ScureHDKeyLike
       );
     },
     toBase58(): string {
