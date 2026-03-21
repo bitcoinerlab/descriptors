@@ -285,10 +285,13 @@ export function addPsbtInput({
 // ─── Type Guards and Converters ─────────────────────────────────────
 
 /**
- * Convert either a bitcoinjs-lib Psbt or @scure/btc-signer Transaction to the Psbt interface.
+ * Converts a concrete transaction object to this library's internal `PsbtLike`
+ * surface.
  *
- * @param psbt - Either a bitcoinjs-lib Psbt-like object or @scure/btc-signer Transaction
- * @returns A Psbt interface implementation
+ * @param psbt - Either a
+ * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+ * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @returns A `PsbtLike` implementation consumed by internal code.
  */
 export function toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike {
   if (isScureTransaction(psbt)) {

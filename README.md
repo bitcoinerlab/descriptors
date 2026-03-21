@@ -1,6 +1,6 @@
 # Bitcoin Descriptors Library
 
-This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-signature, BIP32 and Hardware Wallets.
+This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-key, BIP32 and Hardware Wallets.
 
 ## TL;DR (quick start)
 

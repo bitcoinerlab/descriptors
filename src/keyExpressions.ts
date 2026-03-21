@@ -49,7 +49,8 @@ const derivePath = (node: BIP32InterfaceLike, path: string) => {
  *    keyPath: '/1/2/3/4/*',
  *    originPath: "/49'/0'/0'",
  *    path: "m/49'/0'/0'/1/2/3/4/*",
- *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *    // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *    // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *  }
  * ```
  */

@@ -13,6 +13,12 @@
 import type { Network } from './networks';
 import type { PsbtInput } from './bip174';
 
+/**
+ * Internal signer shape used by this library.
+ *
+ * In user code, this usually corresponds to a
+ * {@link https://github.com/bitcoinjs/ecpair | bitcoinjs `ECPairInterface`}.
+ */
 export interface ECPairInterfaceLike {
   publicKey: Uint8Array;
   privateKey?: Uint8Array;
@@ -30,7 +36,7 @@ export interface ECPairInterfaceLike {
  * native bitcoinjs stack. Internal code should continue using
  * `ECPairInterfaceLike`.
  */
-export interface ECPairInterface extends ECPairInterfaceLike {
+interface ECPairInterface extends ECPairInterfaceLike {
   compressed: boolean;
   network: Network;
   lowR: boolean;
@@ -40,6 +46,12 @@ export interface ECPairInterface extends ECPairInterfaceLike {
   tweak(t: Uint8Array): ECPairInterface;
 }
 
+/**
+ * Internal HD node shape used by this library.
+ *
+ * In user code, this usually corresponds to a
+ * {@link https://github.com/bitcoinjs/bip32 | bitcoinjs `BIP32Interface`}.
+ */
 export interface BIP32InterfaceLike {
   publicKey: Uint8Array;
   privateKey?: Uint8Array;
@@ -60,7 +72,7 @@ export interface BIP32InterfaceLike {
  * native bitcoinjs stack. Internal code should continue using
  * `BIP32InterfaceLike`.
  */
-export interface BIP32Interface extends BIP32InterfaceLike {
+interface BIP32Interface extends BIP32InterfaceLike {
   chainCode: Uint8Array;
   network: Network;
   depth: number;
@@ -80,6 +92,10 @@ export interface BIP32Interface extends BIP32InterfaceLike {
   verifySchnorr(hash: Uint8Array, signature: Uint8Array): boolean;
 }
 
+/**
+ * Structural subset of
+ * {@link https://github.com/paulmillr/scure-bip32 | `@scure/bip32` `HDKey`}.
+ */
 export interface ScureHDKeyLike {
   publicKey: Uint8Array | null;
   privateKey: Uint8Array | null;
@@ -105,6 +121,12 @@ export function isScureHDKey(
   );
 }
 
+/**
+ * Internal key-factory shape used by this library.
+ *
+ * In user code, this usually corresponds to
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPairFactory` output}.
+ */
 export interface ECPairAPILike {
   isPoint(maybePoint: unknown): boolean;
   fromPrivateKey(
@@ -145,6 +167,12 @@ export interface ECPairAPI {
   fromWIF(wifString: string, network?: Network | Network[]): ECPairInterface;
 }
 
+/**
+ * Internal HD-factory shape used by this library.
+ *
+ * In user code, this usually corresponds to
+ * {@link https://github.com/bitcoinjs/bip32 | `BIP32Factory` output}.
+ */
 export interface BIP32APILike {
   fromSeed(seed: Uint8Array, network?: Network): BIP32InterfaceLike;
   fromBase58(inString: string, network?: Network): BIP32InterfaceLike;
@@ -210,7 +238,9 @@ export type PsbtLikeInputUpdate = Partial<PsbtInput>;
 
 /**
  * Minimal interface compatible with bitcoinjs-lib Psbt.
- * A structural subset that allows passing raw bitcoinjs-lib Psbt instances.
+ *
+ * This is an internal structural type. User code can pass concrete
+ * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}.
  */
 export interface PsbtLike {
   addInput(input: PsbtInput): void;
@@ -256,7 +286,9 @@ export type FinalScriptsFunc = (
 
 /**
  * Minimal interface compatible with @scure/btc-signer Transaction.
- * Detected by the presence of scure-specific methods/properties.
+ *
+ * This is an internal structural type. User code can pass concrete
+ * {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
  */
 export interface ScureTransactionLike {
   inputsLength: number;
@@ -274,7 +306,8 @@ export interface ScureTransactionLike {
 }
 
 /**
- * Type guard to detect if a PSBT input is a @scure/btc-signer Transaction.
+ * Type guard to detect if a transaction object is a
+ * `@scure/btc-signer` `Transaction`.
  * Checks for scure-specific properties that distinguish it from bitcoinjs-lib Psbt.
  */
 export function isScureTransaction(

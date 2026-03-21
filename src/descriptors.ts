@@ -256,29 +256,60 @@ function parseTrExpression(expression: string): {
 }
 
 /**
- * Constructs the necessary functions and classes for working with descriptors
- * using an external elliptic curve (ecc) library.
+ * Constructs the necessary functions and classes for working with descriptors,
+ * using either an external elliptic curve (`ecc`) library or a core Bitcoin
+ * library (e.g.
+ * [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) or
+ * [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer)).
  *
  * Notably, it returns the {@link _Internal_.Output | `Output`} class, which
- * provides methods to create, sign, and finalize PSBTs based on descriptor
+ * provides methods to create, sign, and finalize transactions from descriptor
  * expressions.
  *
- * The Factory also returns utility methods like `expand` (detailed below)
+ * The factory also returns utility methods like `expand` (detailed below)
  * and `parseKeyExpression` (see {@link KeyExpressionParser}).
  *
- * Additionally, for convenience, the function returns `BIP32` and `ECPair`.
- * These are {@link https://github.com/bitcoinjs bitcoinjs-lib} classes designed
- * for managing {@link https://github.com/bitcoinjs/bip32 | `BIP32`} keys and
- * public/private key pairs:
- * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}, respectively.
+ * Additionally, for convenience, the factory returns
+ * {@link https://github.com/bitcoinjs/bip32 | `BIP32`} and
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}.
+ * In bitcoinjs mode, these are the already initialized bitcoinjs factories,
+ * equivalent to `BIP32 = BIP32Factory(ecc)` and `ECPair = ECPairFactory(ecc)`.
+ * When using scure, prefer scure-native key types
+ * ({@link https://github.com/paulmillr/scure-bip32 | `HDKey`} and
+ * `Uint8Array` for private keys), which do not require key-factory initialization.
  *
- * @param {Object} eccOrBitcoinLib - An object with elliptic curve operations,
- * such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
- * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
+ * @param {TinySecp256k1Interface | BitcoinLib} eccOrBitcoinLib - The core
+ * Bitcoin library input used by the factory.
+ *
+ * You can pass this parameter in three common ways:
+ *
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+ * import { createScureLib } from '@bitcoinerlab/descriptors/scure';
+ *
+ * const { Output } = DescriptorsFactory(createScureLib(ecc));
+ * ```
+ *
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+ * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors/bitcoinjs';
+ *
+ * const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
+ * ```
+ *
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+ *
+ * // Equivalent to `DescriptorsFactory(createBitcoinjsLib(ecc))`, but implicit.
+ * const { Output } = DescriptorsFactory(ecc);
+ * ```
  */
-export function DescriptorsFactory<
-  T extends TinySecp256k1Interface | BitcoinLib
->(eccOrBitcoinLib: T) {
+export function DescriptorsFactory(
+  eccOrBitcoinLib: TinySecp256k1Interface | BitcoinLib
+) {
   // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let bitcoinLib: BitcoinLib;
@@ -2053,6 +2084,10 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      *
      * `( { psbt, validate = true } : { psbt: PsbtLike | ScureTransactionLike; validate: boolean | undefined } ) => void`
      *
+     * where `psbt` can be either a
+     * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+     * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+     *
      */
     updatePsbtAsInput({
       psbt,
@@ -2255,7 +2290,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * Adds this output as an output of the provided `psbt` with the given
      * value.
      * @param params - The parameters for the method.
-     * @param params.psbt - The Partially Signed Bitcoin Transaction.
+     * @param params.psbt - Either a
+     * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+     * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
      * @param params.value - The value for the output in satoshis.
      */
     updatePsbtAsOutput({
@@ -2385,7 +2422,7 @@ type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
  * creates and returns the {@link _Internal_.Output | `Output`} class.
  * This class is specialized for the provided `TinySecp256k1Interface`.
  * Use `OutputInstance` to declare instances for this class:
- * `const: OutputInstance = new Output();`
+ * `const output: OutputInstance = new Output();`
  *
  * See the {@link _Internal_.Output | documentation for the internal `Output`
  * class} for a complete list of available methods.

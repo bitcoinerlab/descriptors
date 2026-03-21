@@ -33,20 +33,47 @@ export type TimeConstraints = {
 };
 
 /**
+ * Parsed key-expression metadata.
+ *
  * See {@link KeyExpressionParser}.
  */
 export type KeyInfo = {
+  /** Original key expression string. */
   keyExpression: string;
-  pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
+  /**
+   * Concrete public key when derivable.
+   *
+   * This is usually set unless the key expression is ranged (`*`).
+   * For taproot keys this is x-only (32 bytes).
+   */
+  pubkey?: Uint8Array;
+  /**
+   * bitcoinjs-compatible single-key signer (when derivable from the expression).
+   */
   ecpair?: ECPairInterfaceLike;
+  /**
+   * bitcoinjs-compatible HD node (when derivable from the expression).
+   */
   bip32?: BIP32InterfaceLike;
+  /** Raw private key bytes, when available. */
   privkey?: Uint8Array;
+  /** Parsed extended public key, when present in the expression. */
   xPub?: string;
+  /** Parsed extended private key, when present in the expression. */
   xPrv?: string;
+  /** BIP32 master fingerprint, when available. */
   masterFingerprint?: Uint8Array;
-  originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
-  keyPath?: string; //The path from the xpub/xprv root
-  path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
+  /** Path from `masterFingerprint` to the xpub/xprv root. */
+  originPath?: string;
+  /** Path from the xpub/xprv root. */
+  keyPath?: string;
+  /**
+   * Full path from the master.
+   *
+   * Format: `m/val/val/...`, where `val` is an integer and hardened elements
+   * use `'`.
+   */
+  path?: string;
 };
 
 /**
@@ -71,7 +98,8 @@ export type KeyInfo = {
  *      keyPath: '/1/2/3/4/*',
  *      originPath: "/49'/0'/0'",
  *      path: "m/49'/0'/0'/1/2/3/4/*",
- *      // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *      // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *      // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *    }
  *  }
  *```
@@ -252,7 +280,8 @@ export type Expansion = {
  *    keyPath: '/1/2/3/4/*',
  *    originPath: "/49'/0'/0'",
  *    path: "m/49'/0'/0'/1/2/3/4/*",
- *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *    // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *    // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *  }
  * ```
  *
