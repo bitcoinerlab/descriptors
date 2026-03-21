@@ -41,6 +41,13 @@ export type {
   Preimage,
   TimeConstraints
 } from './types';
+export type {
+  TreeNode,
+  TapTreeNode,
+  TapTreeInfoNode,
+  TapLeaf,
+  TapLeafInfo
+} from './tapTree';
 export { networks, type Network } from './networks';
 export {
   DescriptorsFactory,

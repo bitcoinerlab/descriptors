@@ -27,6 +27,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./bitcoinjs": {
+      "types": "./dist/bitcoinjs.d.ts",
+      "default": "./dist/bitcoinjs.js"
+    },
     "./scure": {
       "types": "./dist/scure.d.ts",
       "default": "./dist/scure.js"
