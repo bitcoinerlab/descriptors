@@ -2,13 +2,17 @@
 // Distributed under the MIT software license
 
 import { networks, signers } from '../dist';
+import type { ScureTransactionLike } from '../dist/bitcoinLib';
 import { createPsbt } from './helpers/psbt';
 
 const { signPrivKey, signInputPrivKey } = signers;
 
 describe('signPrivKey', () => {
   test('throws for bitcoinjs-lib PSBTs', () => {
-    const psbt = createPsbt(false, networks.regtest);
+    const psbt = createPsbt(
+      false,
+      networks.regtest
+    ) as unknown as ScureTransactionLike;
 
     expect(() =>
       signPrivKey({
@@ -19,7 +23,7 @@ describe('signPrivKey', () => {
   });
 
   test('accepts scure transactions (then fails only if no inputs exist)', () => {
-    const psbt = createPsbt(true, networks.regtest);
+    const psbt = createPsbt(true, networks.regtest) as ScureTransactionLike;
 
     expect(() =>
       signPrivKey({
@@ -32,7 +36,10 @@ describe('signPrivKey', () => {
 
 describe('signInputPrivKey', () => {
   test('throws for bitcoinjs-lib PSBTs', () => {
-    const psbt = createPsbt(false, networks.regtest);
+    const psbt = createPsbt(
+      false,
+      networks.regtest
+    ) as unknown as ScureTransactionLike;
 
     expect(() =>
       signInputPrivKey({
@@ -44,7 +51,7 @@ describe('signInputPrivKey', () => {
   });
 
   test('accepts scure transactions (then fails only if index is invalid)', () => {
-    const psbt = createPsbt(true, networks.regtest);
+    const psbt = createPsbt(true, networks.regtest) as ScureTransactionLike;
 
     expect(() =>
       signInputPrivKey({
