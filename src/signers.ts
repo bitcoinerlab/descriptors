@@ -1,12 +1,13 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type {
-  PsbtLike,
-  ScureTransactionLike,
-  ECPairInterfaceLike,
-  BIP32InterfaceLike,
-  ScureHDKeyLike
+import {
+  isScureTransaction,
+  type ScureTransactionLike,
+  type ECPairInterfaceLike,
+  type BIP32InterfaceLike,
+  type ScureHDKeyLike,
+  type PsbtLike
 } from './bitcoinLib';
 import { toPsbt } from './psbt';
 import { toBIP32Interface, toECPairInterface } from './keyInterfaces';
@@ -147,6 +148,70 @@ export function signECPair({
     throw new Error('No inputs were signed');
   }
 }
+
+/**
+ * Signs one input of a `@scure/btc-signer` transaction with a raw private key.
+ *
+ * This helper is intended for scure users that work directly with a `Uint8Array`
+ * private key and may not use bitcoinjs-lib `ECPair` types.
+ *
+ * If you are signing a bitcoinjs-lib PSBT input, use {@link signInputECPair}
+ * and pass a bitcoinjs-lib `ECPair` signer.
+ *
+ * @param {Object} params - The parameters object
+ * @param {ScureTransactionLike} params.psbt - The scure transaction to sign
+ * @param {number} params.index - The input index to sign
+ * @param {Uint8Array} params.privKey - The secp256k1 private key (32 bytes)
+ * @throws If `psbt` is not a scure transaction
+ */
+export function signInputPrivKey({
+  psbt,
+  index,
+  privKey
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  index: number;
+  privKey: Uint8Array;
+}): void {
+  if (!isScureTransaction(psbt)) {
+    throw new Error(
+      'Error: signInputPrivKey is only supported with @scure/btc-signer transactions. ' +
+        'Use signInputECPair for bitcoinjs-lib PSBTs.'
+    );
+  }
+  signInputECPair({ psbt, index, ecpair: privKey });
+}
+
+/**
+ * Signs all inputs of a `@scure/btc-signer` transaction with a raw private key.
+ *
+ * This helper is intended for scure users that work directly with a `Uint8Array`
+ * private key and may not use bitcoinjs-lib `ECPair` types.
+ *
+ * If you are signing a bitcoinjs-lib PSBT, use {@link signECPair} and pass a
+ * bitcoinjs-lib `ECPair` signer.
+ *
+ * @param {Object} params - The parameters object
+ * @param {ScureTransactionLike} params.psbt - The scure transaction to sign
+ * @param {Uint8Array} params.privKey - The secp256k1 private key (32 bytes)
+ * @throws If `psbt` is not a scure transaction
+ */
+export function signPrivKey({
+  psbt,
+  privKey
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  privKey: Uint8Array;
+}): void {
+  if (!isScureTransaction(psbt)) {
+    throw new Error(
+      'Error: signPrivKey is only supported with @scure/btc-signer transactions. ' +
+        'Use signECPair for bitcoinjs-lib PSBTs.'
+    );
+  }
+  signECPair({ psbt, ecpair: privKey });
+}
+
 export function signInputBIP32({
   psbt,
   index,

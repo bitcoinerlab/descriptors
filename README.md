@@ -328,6 +328,10 @@ signers.signBIP32({ psbt, masterNode });
 
 // For ECPair - https://github.com/bitcoinjs/ecpair
 signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is an instance of the bitcoinjs-lib ECPairInterface
+
+// For @scure/btc-signer users with a raw Uint8Array private key
+signers.signPrivKey({ psbt, privKey }); // scure transactions only
+signers.signInputPrivKey({ psbt, index: 0, privKey }); // scure transactions only
 ```
 
 Detailed information on Ledger integration will be provided in subsequent sections.
