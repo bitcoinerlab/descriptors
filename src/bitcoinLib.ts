@@ -107,19 +107,6 @@ export interface ScureHDKeyLike {
   privateExtendedKey: string;
 }
 
-export function isScureHDKey(
-  node: BIP32InterfaceLike | ScureHDKeyLike
-): node is ScureHDKeyLike {
-  const candidate = node as ScureHDKeyLike;
-  return (
-    typeof candidate.fingerprint === 'number' &&
-    typeof candidate.derive === 'function' &&
-    typeof candidate.deriveChild === 'function' &&
-    typeof candidate.publicExtendedKey === 'string' &&
-    typeof candidate.privateExtendedKey === 'string'
-  );
-}
-
 /**
  * Internal key-factory shape used by this library.
  *
@@ -276,8 +263,8 @@ export interface ScureTransactionLike {
   getOutput(index: number): unknown;
   addInput(input: unknown): void;
   addOutput(output: { script: Uint8Array; amount: bigint }): void;
-  sign(signer: unknown): void;
-  signIdx(signer: unknown, index: number): void;
+  sign(signer: unknown): number;
+  signIdx(signer: unknown, index: number): boolean;
   finalize(): void;
   finalizeIdx(index: number): void;
   toPSBT(): Uint8Array;

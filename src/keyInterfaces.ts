@@ -4,9 +4,21 @@
 import {
   type ECPairInterfaceLike,
   type BIP32InterfaceLike,
-  type ScureHDKeyLike,
-  isScureHDKey
+  type ScureHDKeyLike
 } from './bitcoinLib';
+
+function isScureHDKey(
+  node: BIP32InterfaceLike | ScureHDKeyLike
+): node is ScureHDKeyLike {
+  const candidate = node as ScureHDKeyLike;
+  return (
+    typeof candidate.fingerprint === 'number' &&
+    typeof candidate.derive === 'function' &&
+    typeof candidate.deriveChild === 'function' &&
+    typeof candidate.publicExtendedKey === 'string' &&
+    typeof candidate.privateExtendedKey === 'string'
+  );
+}
 
 export function toECPairInterface(
   ecpair: ECPairInterfaceLike | Uint8Array
