@@ -35,7 +35,7 @@ const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 
 // Helpers -----------------------------------------------------
-const { signBIP32, signECPair } = signers;
+const { signBIP32, signECPair, signInputPrivKey } = signers;
 
 // Create ECPairs for multisigs (will be reused everywhere)
 const manyKeys = Array.from({ length: 25 }, () =>
@@ -123,7 +123,17 @@ async function runIntegration(descriptor: string) {
   // Sign with ECPair ONLY if it matches one of the required pubkeys
   for (const k of manyKeys) {
     if (required.includes(hex(k)) && signed < m) {
-      signECPair({ psbt, ecpair: k });
+      if (isScure)
+        signInputPrivKey({
+          psbt: psbt as Parameters<typeof signInputPrivKey>[0]['psbt'],
+          index: 0,
+          privKey: k as Parameters<typeof signInputPrivKey>[0]['privKey']
+        });
+      else
+        signECPair({
+          psbt: psbt as Parameters<typeof signECPair>[0]['psbt'],
+          ecpair: k as Parameters<typeof signECPair>[0]['ecpair']
+        });
       signed++;
     }
   }

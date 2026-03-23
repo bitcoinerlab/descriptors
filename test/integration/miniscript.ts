@@ -45,7 +45,7 @@ import {
   deriveNodePubKey,
   getPubKey
 } from '../helpers/keys';
-const { signBIP32, signECPair } = signers;
+const { signBIP32, signECPair, signPrivKey } = signers;
 
 const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
@@ -155,7 +155,16 @@ const keys: {
           network: NETWORK
         }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
         if (keyExpressionType === 'BIP32') signBIP32({ masterNode, psbt });
-        else signECPair({ ecpair, psbt });
+        else if (isScure)
+          signPrivKey({
+            psbt: psbt as Parameters<typeof signPrivKey>[0]['psbt'],
+            privKey: ecpair as Parameters<typeof signPrivKey>[0]['privKey']
+          });
+        else
+          signECPair({
+            psbt: psbt as Parameters<typeof signECPair>[0]['psbt'],
+            ecpair: ecpair as Parameters<typeof signECPair>[0]['ecpair']
+          });
         inputFinalizer({ psbt });
         //Now let's mine BLOCKS - 1 and see how the node complains about
         //trying to broadcast it now.

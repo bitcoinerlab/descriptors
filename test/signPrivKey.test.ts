@@ -5,7 +5,14 @@ import { networks, signers } from '../dist';
 import type { ScureTransactionLike } from '../dist/bitcoinLib';
 import { createPsbt } from './helpers/psbt';
 
-const { signPrivKey, signInputPrivKey } = signers;
+const { signPrivKey, signInputPrivKey, signECPair, signInputECPair } = signers;
+
+const testECPair = {
+  publicKey: new Uint8Array(33).fill(2),
+  sign: (_hash: Uint8Array, _lowR?: boolean) => new Uint8Array(64),
+  verify: (_hash: Uint8Array, _signature: Uint8Array) => true,
+  tweak: (_tweak: Uint8Array) => testECPair
+};
 
 describe('signPrivKey', () => {
   test('throws for bitcoinjs-lib PSBTs', () => {
@@ -60,5 +67,36 @@ describe('signInputPrivKey', () => {
         privKey: new Uint8Array(32).fill(1)
       })
     ).toThrow('Invalid index');
+  });
+});
+
+describe('signECPair', () => {
+  test('throws for scure transactions', () => {
+    const psbt = createPsbt(true, networks.regtest) as unknown as Parameters<
+      typeof signECPair
+    >[0]['psbt'];
+
+    expect(() =>
+      signECPair({
+        psbt,
+        ecpair: testECPair
+      })
+    ).toThrow('only supported with bitcoinjs-lib PSBTs');
+  });
+});
+
+describe('signInputECPair', () => {
+  test('throws for scure transactions', () => {
+    const psbt = createPsbt(true, networks.regtest) as unknown as Parameters<
+      typeof signInputECPair
+    >[0]['psbt'];
+
+    expect(() =>
+      signInputECPair({
+        psbt,
+        index: 0,
+        ecpair: testECPair
+      })
+    ).toThrow('only supported with bitcoinjs-lib PSBTs');
   });
 });

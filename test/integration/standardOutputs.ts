@@ -34,7 +34,7 @@ import {
   getXOnlyPubKey
 } from '../helpers/keys';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
-const { signBIP32, signECPair } = signers;
+const { signBIP32, signECPair, signPrivKey } = signers;
 
 const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
@@ -172,7 +172,16 @@ const expressionsECPair = [
       psbt: psbtECPair,
       value: BigInt(FINAL_VALUE)
     });
-    signECPair({ psbt: psbtECPair, ecpair });
+    if (isScure)
+      signPrivKey({
+        psbt: psbtECPair as Parameters<typeof signPrivKey>[0]['psbt'],
+        privKey: ecpair as Parameters<typeof signPrivKey>[0]['privKey']
+      });
+    else
+      signECPair({
+        psbt: psbtECPair as Parameters<typeof signECPair>[0]['psbt'],
+        ecpair: ecpair as Parameters<typeof signECPair>[0]['ecpair']
+      });
     inputFinalizer({ psbt: psbtECPair });
     await regtestUtils.broadcast(psbtToHex(psbtECPair));
     await regtestUtils.verify({
@@ -209,7 +218,16 @@ const expressionsECPair = [
     value: BigInt(FINAL_VALUE)
   });
   //Sign and finish psbtMultiInputs
-  signECPair({ psbt: psbtMultiInputs, ecpair });
+  if (isScure)
+    signPrivKey({
+      psbt: psbtMultiInputs as Parameters<typeof signPrivKey>[0]['psbt'],
+      privKey: ecpair as Parameters<typeof signPrivKey>[0]['privKey']
+    });
+  else
+    signECPair({
+      psbt: psbtMultiInputs as Parameters<typeof signECPair>[0]['psbt'],
+      ecpair: ecpair as Parameters<typeof signECPair>[0]['ecpair']
+    });
   signBIP32({ psbt: psbtMultiInputs, masterNode });
   finalizers.forEach(finalizer => finalizer({ psbt: psbtMultiInputs }));
 
