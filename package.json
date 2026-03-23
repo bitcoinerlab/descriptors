@@ -50,8 +50,8 @@
     ]
   },
   "scripts": {
-    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
-    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
+    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json --excludeInternal true --validation.notExported false",
+    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json --excludeInternal true --validation.notExported false",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",

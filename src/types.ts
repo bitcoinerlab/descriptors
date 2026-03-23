@@ -198,13 +198,18 @@ export type Expansion = {
   tapTreeExpression?: string;
 
   /**
-   * The parsed taproot tree, if any. Only defined for `tr(KEY, TREE)`.
+   * Parsed taproot leaf tree for `tr(KEY, TREE)`, if any.
+   *
+   * Shape:
+   * - Branch nodes: `{ left, right }`
+   * - Leaf nodes: `{ expression: string }`
+   *
    * Example:
-   * ```
+   * ```ts
    * {
    *   left: { expression: 'pk(02aa...)' },
    *   right: {
-   *     left: { expression: 'pk(03bb...)' },
+   *     left: { expression: 'and_v(v:pk(03bb...),older(12960))' },
    *     right: { expression: 'pk(02cc...)' }
    *   }
    * }
@@ -213,29 +218,49 @@ export type Expansion = {
   tapTree?: TapTreeNode;
 
   /**
-   * The compiled taproot tree metadata, if any. Only defined for `tr(KEY, TREE)`.
-   * Same as tapTree, but each leaf includes:
+   * Compiled taproot leaf metadata tree for `tr(KEY, TREE)`, if any.
+   *
+   * Same branch/leaf tree shape as `tapTree`, but each leaf is enriched with:
    * - `expandedExpression`: descriptor-level expanded leaf expression
-   * - optional `expandedMiniscript`: miniscript-expanded leaf (when applicable)
-   * - key expansion map
-   * - compiled tapscript (`tapScript`)
-   * - leaf version.
+   * - optional `expandedMiniscript`: miniscript-expanded leaf
+   * - `expansionMap`: resolved keys for that leaf (`@0`, `@1`, ...)
+   * - `tapScript`: compiled tapscript bytes
+   * - `version`: leaf version (typically tapscript `0xc0`)
    *
    * Note: `@i` placeholders are scoped per leaf, since each leaf is expanded
    * and satisfied independently.
    *
    * Example:
-   * ```
+   * ```ts
    * {
    *   left: {
    *     expression: 'pk(02aa...)',
    *     expandedExpression: 'pk(@0)',
    *     expandedMiniscript: 'pk(@0)',
-   *     expansionMap: ExpansionMap;
-   *     tapScript: Uint8Array;
-   *     version: number;
+   *     expansionMap: {
+   *       '@0': { pubkey: Uint8Array(32), ... }
+   *     },
+   *     tapScript: Uint8Array(...),
+   *     version: 0xc0
    *   },
-   *   right: ....
+   *   right: {
+   *     left: {
+   *       expression: 'and_v(v:pk(03bb...),older(12960))',
+   *       expandedExpression: 'and_v(v:pk(@0),older(12960))',
+   *       expansionMap: { '@0': { pubkey: Uint8Array(32), ... } },
+   *       tapScript: Uint8Array(...),
+   *       version: 0xc0
+   *     },
+   *     right: {
+   *       expression: 'pk(02cc...)',
+   *       expandedExpression: 'pk(@0)',
+   *       expansionMap: { '@0': { pubkey: Uint8Array(32), ... } },
+   *       tapScript: Uint8Array(...),
+   *       version: 0xc0
+   *     }
+   *   }
+   * }
+   * ```
    */
   tapTreeInfo?: TapTreeInfoNode;
 

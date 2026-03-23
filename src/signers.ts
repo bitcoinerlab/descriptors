@@ -71,15 +71,13 @@ function range(n: number): number[] {
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {PsbtLike | ScureTransactionLike} params.psbt - Either a
- * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
- * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a
+ * bitcoinjs-lib {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
  * @param {number} params.index - The input index to sign
- * @param {ECPairInterfaceLike | Uint8Array} params.ecpair - Usually a
- * {@link https://github.com/bitcoinjs/ecpair | bitcoinjs-lib `ECPair`} signer.
- *
- * For scure compatibility, this also accepts a raw `Uint8Array` private key,
- * but scure users should prefer {@link signInputPrivKey} for clearer naming.
+ * @param {ECPairInterfaceLike | Uint8Array} params.ecpair - Pass a bitcoinjs
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPair`} signer or a 32-byte
+ * private key (`Uint8Array`) for scure compatibility.
  */
 export function signInputECPair({
   psbt,
@@ -125,14 +123,12 @@ export function signInputECPair({
  * @see https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137#issuecomment-2713264848
  *
  * @param {Object} params - The parameters object
- * @param {PsbtLike | ScureTransactionLike} params.psbt - Either a
- * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
- * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
- * @param {ECPairInterfaceLike | Uint8Array} params.ecpair - Usually a
- * {@link https://github.com/bitcoinjs/ecpair | bitcoinjs-lib `ECPair`} signer.
- *
- * For scure compatibility, this also accepts a raw `Uint8Array` private key,
- * but scure users should prefer {@link signPrivKey} for clearer naming.
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a
+ * bitcoinjs-lib {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
+ * @param {ECPairInterfaceLike | Uint8Array} params.ecpair - Pass a bitcoinjs
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPair`} signer or a 32-byte
+ * private key (`Uint8Array`) for scure compatibility.
  */
 export function signECPair({
   psbt,
@@ -171,8 +167,8 @@ export function signECPair({
  * and pass a bitcoinjs-lib `ECPair` signer.
  *
  * @param {Object} params - The parameters object
- * @param {ScureTransactionLike} params.psbt - Must be a
- * {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @param {ScureTransactionLike} params.psbt - A scure
+ * {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
  * @param {number} params.index - The input index to sign
  * @param {Uint8Array} params.privKey - The secp256k1 private key (32 bytes)
  * @throws If `psbt` is not a scure transaction
@@ -205,8 +201,8 @@ export function signInputPrivKey({
  * bitcoinjs-lib `ECPair` signer.
  *
  * @param {Object} params - The parameters object
- * @param {ScureTransactionLike} params.psbt - Must be a
- * {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @param {ScureTransactionLike} params.psbt - A scure
+ * {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
  * @param {Uint8Array} params.privKey - The secp256k1 private key (32 bytes)
  * @throws If `psbt` is not a scure transaction
  */
@@ -230,13 +226,13 @@ export function signPrivKey({
  * Signs one input of a transaction using an HD node.
  *
  * @param {Object} params - The parameters object
- * @param {PsbtLike | ScureTransactionLike} params.psbt - Either a
- * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
- * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a
+ * bitcoinjs-lib {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
  * @param {number} params.index - The input index to sign
- * @param {BIP32InterfaceLike | ScureHDKeyLike} params.node - Either a
- * bitcoinjs-lib-compatible `BIP32` node or a scure
- * {@link https://github.com/paulmillr/scure-bip32 | `HDKey`}.
+ * @param {BIP32InterfaceLike | ScureHDKeyLike} params.node - Pass a bitcoinjs
+ * {@link https://github.com/bitcoinjs/bip32 | `BIP32`} node or a scure
+ * {@link https://github.com/paulmillr/scure-bip32 | `HDKey`} node.
  */
 export function signInputBIP32({
   psbt,
@@ -257,12 +253,12 @@ export function signInputBIP32({
  * Signs all signable inputs of a transaction using an HD node.
  *
  * @param {Object} params - The parameters object
- * @param {PsbtLike | ScureTransactionLike} params.psbt - Either a
- * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
- * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
- * @param {BIP32InterfaceLike | ScureHDKeyLike} params.masterNode - Either a
- * bitcoinjs-lib-compatible `BIP32` node or a scure
- * {@link https://github.com/paulmillr/scure-bip32 | `HDKey`}.
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a
+ * bitcoinjs-lib {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
+ * @param {BIP32InterfaceLike | ScureHDKeyLike} params.masterNode - Pass a
+ * bitcoinjs {@link https://github.com/bitcoinjs/bip32 | `BIP32`} node or a
+ * scure {@link https://github.com/paulmillr/scure-bip32 | `HDKey`} node.
  */
 export function signBIP32({
   psbt,
@@ -352,6 +348,13 @@ function addLedgerSignaturesToInput({
  * device.
  *
  * The function will throw an error if it's unable to sign the input.
+ *
+ * @param {Object} params - The parameters object
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a bitcoinjs-lib
+ * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
+ * @param {number} params.index - The input index to sign.
+ * @param {LedgerManager} params.ledgerManager - Ledger client/state manager.
  */
 export async function signInputLedger({
   psbt,
@@ -428,6 +431,12 @@ export async function signInputLedger({
  * process.
  *
  * The function will throw an error if it's unable to sign any input.
+ *
+ * @param {Object} params - The parameters object
+ * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a bitcoinjs-lib
+ * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | `Psbt`}
+ * or a scure {@link https://github.com/paulmillr/scure-btc-signer | `Transaction`}.
+ * @param {LedgerManager} params.ledgerManager - Ledger client/state manager.
  */
 export async function signLedger({
   psbt,

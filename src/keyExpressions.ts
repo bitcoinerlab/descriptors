@@ -315,12 +315,53 @@ export async function keyExpressionLedger({
 }
 
 /**
- * Constructs a key expression string from its constituent components.
+ * Constructs a BIP32 key expression string from its constituent components.
  *
  * This function essentially performs the reverse operation of
  * {@link KeyExpressionParser}. For detailed
  * explanations and examples of the terms used here, refer to
  * {@link KeyExpressionParser}.
+ *
+ * @param {Object} params - The parameters object.
+ * @param {BIP32InterfaceLike | ScureHDKeyLike} params.masterNode - Root HD node.
+ * Pass either:
+ * - a bitcoinjs {@link https://github.com/bitcoinjs/bip32 | `BIP32`} node, or
+ * - a scure {@link https://github.com/paulmillr/scure-bip32 | `HDKey`}.
+ * @param {string} params.originPath - Origin path from master, e.g. `"/84'/0'/0'"`.
+ * @param {number} [params.change] - Branch index (`0` receive, `1` change).
+ * @param {number | '*'} [params.index] - Address index or `*` for ranged descriptors.
+ * @param {string} [params.keyPath] - Full suffix path (`/change/index`) alternative to
+ * `change` + `index`.
+ * @returns {string} Descriptor key expression (e.g. `[f23f9fd2/84'/0'/0']xpub.../0/5`).
+ *
+ * @example
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { BIP32Factory } from 'bip32';
+ * import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
+ *
+ * const BIP32 = BIP32Factory(ecc);
+ * const masterNode = BIP32.fromSeed(seedBytes);
+ * const keyExp = keyExpressionBIP32({
+ *   masterNode,
+ *   originPath: "/84'/0'/0'",
+ *   change: 0,
+ *   index: 5
+ * });
+ * ```
+ *
+ * @example
+ * ```ts
+ * import { HDKey } from '@scure/bip32';
+ * import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
+ *
+ * const masterNode = HDKey.fromMasterSeed(seedBytes);
+ * const keyExp = keyExpressionBIP32({
+ *   masterNode,
+ *   originPath: "/84'/0'/0'",
+ *   keyPath: '/0/*'
+ * });
+ * ```
  */
 export function keyExpressionBIP32({
   masterNode,

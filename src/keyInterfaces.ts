@@ -20,6 +20,7 @@ function isScureHDKey(
   );
 }
 
+/** @internal */
 export function toECPairInterface(
   ecpair: ECPairInterfaceLike | Uint8Array
 ): ECPairInterfaceLike {
@@ -42,6 +43,7 @@ export function toECPairInterface(
   return ecpair;
 }
 
+/** @internal */
 export function toBIP32Interface(
   node: BIP32InterfaceLike | ScureHDKeyLike
 ): BIP32InterfaceLike {

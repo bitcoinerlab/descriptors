@@ -3,17 +3,21 @@ import { compare } from 'uint8array-tools';
 import { splitTopLevelComma } from './parseUtils';
 import type { ExpansionMap } from './types';
 
+/** @internal */
 export type TreeNode<TLeaf> =
   | TLeaf
   | { left: TreeNode<TLeaf>; right: TreeNode<TLeaf> };
 
+/** @internal */
 export type TapLeaf = {
   /** Raw leaf expression as written in tr(KEY,TREE). */
   expression: string;
 };
 
+/** @internal */
 export type TapTreeNode = TreeNode<TapLeaf>;
 
+/** @internal */
 export type TapLeafInfo = {
   /** Raw leaf expression as written in tr(KEY,TREE). */
   expression: string;
@@ -31,6 +35,7 @@ export type TapLeafInfo = {
   version: number;
 };
 
+/** @internal */
 export type TapTreeInfoNode = TreeNode<TapLeafInfo>;
 
 export type TapLeafSelection = {

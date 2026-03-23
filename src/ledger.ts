@@ -215,6 +215,7 @@ function isLedgerStandard({
 }
 
 //Standard key expressions don't have name, id or hmac:
+/** @internal */
 export type LedgerPolicy = {
   policyName?: string;
   ledgerTemplate: string;
