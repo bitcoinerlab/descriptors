@@ -102,6 +102,7 @@
     "@babel/preset-env": "^7.29.0",
     "@bitcoinerlab/configs": "^2.0.0",
     "@bitcoinerlab/miniscript-policies": "^1.0.0",
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.0",
     "@noble/curves": "^2.0.1",
@@ -123,7 +124,6 @@
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@noble/hashes": "^2.0.1",
     "bip32": "^5.0.1",
     "ecpair": "^3.0.1",

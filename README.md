@@ -120,15 +120,14 @@ This is the traditional backend and the one used throughout most of this README.
 #### Option B: @scure/btc-signer
 
 ```bash
-npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @scure/btc-signer@2 @noble/curves@2 @scure/base@2
+npm install @bitcoinerlab/descriptors @scure/btc-signer@2 @noble/curves@2 @scure/base@2
 ```
 
 ```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
 import { createScureLib } from '@bitcoinerlab/descriptors/scure';
 
-const lib = createScureLib(ecc);
+const lib = createScureLib();
 const { Output, expand } = DescriptorsFactory(lib);
 const psbt = new lib.Psbt();
 const tx = psbt.raw; // access the native @scure/btc-signer Transaction
