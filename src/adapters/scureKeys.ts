@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import { HDKey } from '@scure/bip32';
+import { hex } from '@scure/base';
 import { secp256k1, schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/utils.js';
 import type {
@@ -9,6 +10,7 @@ import type {
   ECPairInterfaceLike,
   ScureHDKeyLike
 } from '../bitcoinLib';
+import { uint32ToBytesBE } from './scure/common';
 
 const CURVE_N = BigInt(
   '0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'
@@ -37,13 +39,17 @@ function tweakPrivateKey(
 }
 
 export function wrapScurePrivateKey(
-  privateKey: Uint8Array
+  privateKey: Uint8Array,
+  compressed = true
 ): ECPairInterfaceLike {
   if (!secp256k1.utils.isValidSecretKey(privateKey))
     throw new Error('Error: invalid private key');
 
-  const publicKey = secp256k1.getPublicKey(privateKey, true);
-  const xOnlyPubkey = publicKey.slice(1, 33);
+  const compressedPublicKey = secp256k1.getPublicKey(privateKey, true);
+  const publicKey = compressed
+    ? compressedPublicKey
+    : secp256k1.getPublicKey(privateKey, false);
+  const xOnlyPubkey = compressedPublicKey.slice(1, 33);
 
   return {
     publicKey,
@@ -63,10 +69,44 @@ export function wrapScurePrivateKey(
       });
     },
     tweak(t: Uint8Array): ECPairInterfaceLike {
-      return wrapScurePrivateKey(tweakPrivateKey(privateKey, t, publicKey));
+      return wrapScurePrivateKey(
+        tweakPrivateKey(privateKey, t, compressedPublicKey),
+        compressed
+      );
     },
     signSchnorr(hash: Uint8Array): Uint8Array {
       return schnorr.sign(hash, privateKey);
+    },
+    verifySchnorr(hash: Uint8Array, signature: Uint8Array): boolean {
+      return schnorr.verify(signature, hash, xOnlyPubkey);
+    }
+  };
+}
+
+export function wrapScurePublicKey(publicKey: Uint8Array): ECPairInterfaceLike {
+  if (!secp256k1.utils.isValidPublicKey(publicKey))
+    throw new Error('Error: invalid public key point');
+
+  const compressedPubkey =
+    publicKey.length === 33
+      ? publicKey
+      : secp256k1.Point.fromHex(hex.encode(publicKey)).toBytes(true);
+  const xOnlyPubkey = compressedPubkey.slice(1, 33);
+
+  return {
+    publicKey,
+    sign(): Uint8Array {
+      throw new Error('Error: private key is required for signing');
+    },
+    verify(hash: Uint8Array, signature: Uint8Array): boolean {
+      return secp256k1.verify(signature, hash, publicKey, {
+        prehash: false,
+        lowS: true,
+        format: 'compact'
+      });
+    },
+    tweak(): ECPairInterfaceLike {
+      throw new Error('Error: private key is required for tweak');
     },
     verifySchnorr(hash: Uint8Array, signature: Uint8Array): boolean {
       return schnorr.verify(signature, hash, xOnlyPubkey);
@@ -82,15 +122,6 @@ function normalizePath(path: string): string {
   return `m/${p}`;
 }
 
-function uint32ToBytes(n: number): Uint8Array {
-  return new Uint8Array([
-    (n >>> 24) & 0xff,
-    (n >>> 16) & 0xff,
-    (n >>> 8) & 0xff,
-    n & 0xff
-  ]);
-}
-
 export function wrapScureHDKey(node: ScureHDKeyLike): BIP32InterfaceLike {
   if (!node.publicKey)
     throw new Error('Error: scure HDKey is missing publicKey for BIP32 usage');
@@ -98,22 +129,16 @@ export function wrapScureHDKey(node: ScureHDKeyLike): BIP32InterfaceLike {
   return {
     publicKey: node.publicKey,
     ...(node.privateKey ? { privateKey: node.privateKey } : {}),
-    fingerprint: uint32ToBytes(node.fingerprint),
+    fingerprint: uint32ToBytesBE(node.fingerprint),
     derive(index: number): BIP32InterfaceLike {
       return wrapScureHDKey(node.deriveChild(index));
-    },
-    deriveHardened(index: number): BIP32InterfaceLike {
-      return wrapScureHDKey(node.deriveChild(0x80000000 + index));
     },
     derivePath(path: string): BIP32InterfaceLike {
       return wrapScureHDKey(node.derive(normalizePath(path)));
     },
     neutered(): BIP32InterfaceLike {
       return wrapScureHDKey(
-        HDKey.fromExtendedKey(
-          node.publicExtendedKey,
-          node.versions
-        ) as ScureHDKeyLike
+        HDKey.fromExtendedKey(node.publicExtendedKey, node.versions)
       );
     },
     toBase58(): string {

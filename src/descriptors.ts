@@ -6,7 +6,9 @@ import type {
   Payment,
   BitcoinLib,
   ECPairAPI,
+  ECPairAPILike,
   BIP32API,
+  BIP32APILike,
   PsbtLike,
   ScureTransactionLike
 } from './bitcoinLib';
@@ -73,18 +75,30 @@ function isBitcoinJsLib(lib: BitcoinLib): boolean {
   ]);
   const BITCOINJS_KEY_PROBE_SEED = new Uint8Array(32).fill(1);
   try {
-    const ecpair = lib.ECPair.fromPrivateKey(BITCOINJS_KEY_PROBE_PRIVKEY);
-    const bip32 = lib.BIP32.fromSeed(
+    const maybeECPairWithFromPrivateKey = lib.ECPair as ECPairAPILike & {
+      fromPrivateKey?: (privateKey: Uint8Array) => unknown;
+    };
+    const maybeBIP32WithFromSeed = lib.BIP32 as BIP32APILike & {
+      fromSeed?: (seed: Uint8Array, network?: Network) => unknown;
+    };
+    if (typeof maybeECPairWithFromPrivateKey.fromPrivateKey !== 'function')
+      return false;
+    if (typeof maybeBIP32WithFromSeed.fromSeed !== 'function') return false;
+
+    const ecpair = maybeECPairWithFromPrivateKey.fromPrivateKey(
+      BITCOINJS_KEY_PROBE_PRIVKEY
+    ) as { toWIF?: unknown; compressed?: unknown };
+    const bip32 = maybeBIP32WithFromSeed.fromSeed(
       BITCOINJS_KEY_PROBE_SEED,
       networks.regtest
-    );
+    ) as { chainCode?: unknown; toWIF?: unknown; depth?: unknown };
     const looksLikeNativeECPair =
-      typeof (ecpair as { toWIF?: unknown }).toWIF === 'function' &&
-      typeof (ecpair as { compressed?: unknown }).compressed === 'boolean';
+      typeof ecpair.toWIF === 'function' &&
+      typeof ecpair.compressed === 'boolean';
     const looksLikeNativeBIP32 =
-      (bip32 as { chainCode?: unknown }).chainCode instanceof Uint8Array &&
-      typeof (bip32 as { toWIF?: unknown }).toWIF === 'function' &&
-      typeof (bip32 as { depth?: unknown }).depth === 'number';
+      bip32.chainCode instanceof Uint8Array &&
+      typeof bip32.toWIF === 'function' &&
+      typeof bip32.depth === 'number';
     return looksLikeNativeECPair && looksLikeNativeBIP32;
   } catch {
     return false;
@@ -284,11 +298,10 @@ function parseTrExpression(expression: string): {
  * You can pass this parameter in three common ways:
  *
  * ```ts
- * import * as ecc from '@bitcoinerlab/secp256k1';
  * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
  * import { createScureLib } from '@bitcoinerlab/descriptors/scure';
  *
- * const { Output } = DescriptorsFactory(createScureLib(ecc));
+ * const { Output } = DescriptorsFactory(createScureLib());
  * ```
  *
  * ```ts
@@ -313,16 +326,13 @@ export function DescriptorsFactory(
   // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let bitcoinLib: BitcoinLib;
-  let ecc: TinySecp256k1Interface;
   if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
     bitcoinLib = eccOrBitcoinLib;
-    ecc = bitcoinLib.ecc;
   } else {
-    ecc = eccOrBitcoinLib;
     // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createBitcoinjsLib } = require('./adapters/bitcoinjs');
-    bitcoinLib = createBitcoinjsLib(ecc);
+    bitcoinLib = createBitcoinjsLib(eccOrBitcoinLib);
   }
   const { payments, script: scriptLib } = bitcoinLib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
@@ -338,12 +348,7 @@ export function DescriptorsFactory(
   ): boolean => {
     if (pubkey.length === 32) {
       //x-only
-      if (!ecc.verifySchnorr) {
-        throw new Error(
-          'TinySecp256k1Interface is not initialized properly: verifySchnorr is missing.'
-        );
-      }
-      return ecc.verifySchnorr(msghash, pubkey, signature);
+      return bitcoinLib.verifySchnorr(msghash, pubkey, signature);
     } else {
       return ECPair.fromPublicKey(pubkey).verify(msghash, signature);
     }

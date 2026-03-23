@@ -14,9 +14,7 @@ export function toECPairInterface(
   if (ecpair instanceof Uint8Array) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { wrapScurePrivateKey } = require('./adapters/scureKeys') as {
-        wrapScurePrivateKey: (privateKey: Uint8Array) => ECPairInterfaceLike;
-      };
+      const { wrapScurePrivateKey } = require('./adapters/scureKeys');
       return wrapScurePrivateKey(ecpair);
     } catch (error) {
       throw new Error(
@@ -38,9 +36,7 @@ export function toBIP32Interface(
   if (isScureHDKey(node)) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { wrapScureHDKey } = require('./adapters/scureKeys') as {
-        wrapScureHDKey: (node: ScureHDKeyLike) => BIP32InterfaceLike;
-      };
+      const { wrapScureHDKey } = require('./adapters/scureKeys');
       return wrapScureHDKey(node);
     } catch (error) {
       throw new Error(

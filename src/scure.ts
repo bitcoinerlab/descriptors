@@ -7,9 +7,8 @@
  * Usage:
  *   import { createScureLib } from '@bitcoinerlab/descriptors/scure';
  *   import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- *   import * as ecc from '@bitcoinerlab/secp256k1';
  *
- *   const lib = createScureLib(ecc);
+ *   const lib = createScureLib();
  *   const { Output } = DescriptorsFactory(lib);
  *   const psbt = lib.Psbt.fromTransaction(nativeTransaction);
  *   const scureTx = psbt.raw;

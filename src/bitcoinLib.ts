@@ -57,7 +57,6 @@ export interface BIP32InterfaceLike {
   privateKey?: Uint8Array;
   fingerprint: Uint8Array;
   derive(index: number): BIP32InterfaceLike;
-  deriveHardened(index: number): BIP32InterfaceLike;
   derivePath(path: string): BIP32InterfaceLike;
   neutered(): BIP32InterfaceLike;
   toBase58(): string;
@@ -129,19 +128,10 @@ export function isScureHDKey(
  */
 export interface ECPairAPILike {
   isPoint(maybePoint: unknown): boolean;
-  fromPrivateKey(
-    buffer: Uint8Array,
-    options?: { compressed?: boolean; network?: Network }
-  ): ECPairInterfaceLike;
   fromPublicKey(
     buffer: Uint8Array,
     options?: { compressed?: boolean; network?: Network }
   ): ECPairInterfaceLike;
-  makeRandom(options?: {
-    compressed?: boolean;
-    network?: Network;
-    rng?: (arg?: number) => Uint8Array;
-  }): ECPairInterfaceLike;
   fromWIF(
     wifString: string,
     network?: Network | Network[]
@@ -174,18 +164,7 @@ export interface ECPairAPI {
  * {@link https://github.com/bitcoinjs/bip32 | `BIP32Factory` output}.
  */
 export interface BIP32APILike {
-  fromSeed(seed: Uint8Array, network?: Network): BIP32InterfaceLike;
   fromBase58(inString: string, network?: Network): BIP32InterfaceLike;
-  fromPublicKey(
-    publicKey: Uint8Array,
-    chainCode: Uint8Array,
-    network?: Network
-  ): BIP32InterfaceLike;
-  fromPrivateKey(
-    privateKey: Uint8Array,
-    chainCode: Uint8Array,
-    network?: Network
-  ): BIP32InterfaceLike;
 }
 
 /** Full bitcoinjs bip32-compatible API. */
@@ -406,6 +385,10 @@ export interface BitcoinLib {
   ECPair: ECPairAPILike;
   BIP32: BIP32APILike;
 
-  // ── Raw ECC interface (needed for signature validation: verifySchnorr) ──
-  ecc: import('./types').TinySecp256k1Interface;
+  // ── Signature validation ──
+  verifySchnorr(
+    msghash: Uint8Array,
+    pubkey: Uint8Array,
+    signature: Uint8Array
+  ): boolean;
 }
