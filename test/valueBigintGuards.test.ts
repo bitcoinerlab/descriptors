@@ -11,7 +11,7 @@ const PUBKEY_HEX =
   '03c6e26fdf91debe78458853f1ba08d8de71b7672a099e1be5b6204dab83c046e5';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 function buildOutput() {
   return new Output({

@@ -13,7 +13,7 @@ import { createMasterNode } from './helpers/keys';
 import { toHex } from 'uint8array-tools';
 const { trBIP32 } = scriptExpressions;
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 const network = networks.bitcoin;
 const masterNode = createMasterNode(
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',

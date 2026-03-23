@@ -8,7 +8,7 @@ import { toHex } from 'uint8array-tools';
 import { createPrivKeySigner, getPubKey } from './helpers/keys';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { expand } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { expand } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 describe('miniscript expansion', () => {
   test('does not treat sha256 digest hex as a key expression', () => {

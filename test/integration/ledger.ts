@@ -93,7 +93,7 @@ const { signLedger, signBIP32 } = signers;
 const { pkhLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 

@@ -12,7 +12,6 @@ if (process.env['BITCOIN_LIB'] && process.env['BITCOIN_LIB'] !== 'scure') {
   process.exit(0);
 }
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { RegtestUtils } from 'regtest-client';
 import { HDKey } from '@scure/bip32';
@@ -41,7 +40,7 @@ const MNEMONIC =
   'drum turtle globe inherit autumn flavor ' +
   'slice illness sniff distance carbon elder';
 
-const { Output } = DescriptorsFactory(createScureLib(ecc));
+const { Output } = DescriptorsFactory(createScureLib());
 
 const masterNode = HDKey.fromMasterSeed(mnemonicToSeedSync(MNEMONIC), {
   public: NETWORK.bip32.public,

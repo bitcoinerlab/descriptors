@@ -13,9 +13,7 @@ import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output, expand } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output, expand } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {

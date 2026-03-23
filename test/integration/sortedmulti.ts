@@ -31,7 +31,7 @@ const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 
 // Helpers -----------------------------------------------------

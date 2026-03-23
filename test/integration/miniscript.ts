@@ -47,7 +47,7 @@ import {
 } from '../helpers/keys';
 const { signBIP32, signECPair } = signers;
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 const ecpair = createRandomSingleKeySigner(isScure);
 

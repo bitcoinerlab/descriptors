@@ -9,7 +9,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { createPrivKeySigner, getPubKey, getXOnlyPubKey } from './helpers/keys';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 // Use deterministic, distinct private keys across this file to avoid duplicate
 // pubkeys in multisig/taproot tests. `fill(seed)` repeats the byte `seed`

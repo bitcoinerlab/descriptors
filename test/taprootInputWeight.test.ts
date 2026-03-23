@@ -10,9 +10,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { fromHex, toHex } from 'uint8array-tools';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output, expand } = DescriptorsFactory(
-  isScure ? createScureLib(ecc) : ecc
-);
+const { Output, expand } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 const INTERNAL_KEY =
   'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';

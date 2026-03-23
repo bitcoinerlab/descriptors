@@ -159,8 +159,10 @@ export function createPsbt(
   network?: Network
 ): Psbt | btc.Transaction {
   if (isScure) {
-    // Create scure Transaction
-    return new btc.Transaction();
+    // Scure checks scripts on addInput by default and rejects non-wrapped
+    // templates like pk() or bare ms(). Keep this off in integration tests
+    // so we can exercise full descriptor parity with bitcoinjs-lib.
+    return new btc.Transaction({ disableScriptCheck: true });
   }
 
   // Create bitcoinjs-lib Psbt

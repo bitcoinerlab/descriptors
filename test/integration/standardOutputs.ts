@@ -36,7 +36,7 @@ import {
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib(ecc) : ecc);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 //masterNode will be able to sign all the expressions below:
