@@ -19,7 +19,9 @@ export type Preimage = {
    *
    * Accepted functions: sha256, hash256, ripemd160, hash160
    *
-   * Digests must be: 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160.
+   * Digest hex lengths by function:
+   * - `sha256`, `hash256`: 64 hex chars (32 bytes)
+   * - `ripemd160`, `hash160`: 40 hex chars (20 bytes)
    */
   digest: string;
   /**
@@ -77,7 +79,7 @@ export type KeyInfo = {
 };
 
 /**
- * An `ExpansionMap` contains destructured information of a descritptor expression.
+ * An `ExpansionMap` contains destructured information of a descriptor expression.
  *
  * For example, this descriptor `sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))` has the following
  * `expandedExpression`: `sh(wsh(andor(pk(@0),older(8640),pk(@1))))`

@@ -242,7 +242,7 @@ export type LedgerManager = {
 };
 
 /**
- * Retrieves the masterFingerPrint of a Ledger device
+ * Retrieves the master fingerprint of a Ledger device.
  */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
@@ -269,7 +269,7 @@ export async function getLedgerMasterFingerPrint({
 }
 
 /**
- * Retrieves the xpub of a certain originPath of a Ledger device
+ * Retrieves the xpub for a given origin path from a Ledger device.
  */
 export async function getLedgerXpub({
   originPath,

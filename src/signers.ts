@@ -224,6 +224,7 @@ export function signPrivKey({
 
 /**
  * Signs one input of a transaction using an HD node.
+ * Supports both bitcoinjs PSBT and scure Transaction inputs; bitcoinjs calls.
  *
  * @param {Object} params - The parameters object
  * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a
@@ -251,6 +252,7 @@ export function signInputBIP32({
 
 /**
  * Signs all signable inputs of a transaction using an HD node.
+ * Supports both bitcoinjs PSBT and scure Transaction inputs; bitcoinjs calls.
  *
  * @param {Object} params - The parameters object
  * @param {PsbtLike | ScureTransactionLike} params.psbt - Pass a

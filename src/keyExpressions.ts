@@ -273,7 +273,7 @@ function assertChangeIndexKeyPath({
  * {@link KeyExpressionParser}, which consists
  * of the reverse procedure.
  *
- * @returns {string} - The formed key expression for the Ledger device.
+ * @returns {Promise<string>} - The formed key expression for the Ledger device.
  */
 export async function keyExpressionLedger({
   ledgerManager,
