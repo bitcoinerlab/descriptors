@@ -42,10 +42,10 @@ const MNEMONIC =
 
 const { Output } = DescriptorsFactory(createScureLib());
 
-const masterNode = HDKey.fromMasterSeed(mnemonicToSeedSync(MNEMONIC), {
-  public: NETWORK.bip32.public,
-  private: NETWORK.bip32.private
-});
+const masterNode = HDKey.fromMasterSeed(
+  mnemonicToSeedSync(MNEMONIC),
+  NETWORK.bip32
+);
 
 (async () => {
   const singleInputFinalValue = INITIAL_VALUE - FEE;

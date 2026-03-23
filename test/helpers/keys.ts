@@ -33,12 +33,7 @@ export function createMasterNode(
   const seed = isScure
     ? mnemonicToSeedSyncScure(mnemonic)
     : mnemonicToSeedSyncBitcoinjs(mnemonic);
-  if (isScure) {
-    return HDKey.fromMasterSeed(seed, {
-      public: network.bip32.public,
-      private: network.bip32.private
-    });
-  }
+  if (isScure) return HDKey.fromMasterSeed(seed, network.bip32);
   return BIP32.fromSeed(seed, network);
 }
 
