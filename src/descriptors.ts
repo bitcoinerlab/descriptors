@@ -329,9 +329,19 @@ export function DescriptorsFactory(
   if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
     bitcoinLib = eccOrBitcoinLib;
   } else {
-    // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createBitcoinjsLib } = require('./adapters/bitcoinjs');
+    let createBitcoinjsLib: (ecc: TinySecp256k1Interface) => BitcoinLib;
+    try {
+      // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      ({ createBitcoinjsLib } = require('./adapters/bitcoinjs'));
+    } catch (error) {
+      throw new Error(
+        'Could not load the bitcoinjs backend. Install bitcoinjs-lib, bip32 and ecpair ' +
+          'as peer dependencies, or use the scure backend with createScureLib(). ' +
+          'Original error: ' +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
     bitcoinLib = createBitcoinjsLib(eccOrBitcoinLib);
   }
   const { payments, script: scriptLib } = bitcoinLib;
