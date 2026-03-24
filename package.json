@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.0.6",
+  "version": "3.1.0",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -74,11 +74,14 @@
     "dist"
   ],
   "peerDependencies": {
-    "@ledgerhq/ledger-bitcoin": "^0.3.0",
+    "bitcoinjs-lib": "^7.0.1",
+    "bip32": "^5.0.1",
+    "ecpair": "^3.0.1",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
-    "bitcoinjs-lib": "^7.0.1"
+    "@ledgerhq/ledger-bitcoin": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
@@ -87,10 +90,19 @@
     "bitcoinjs-lib": {
       "optional": true
     },
+    "bip32": {
+      "optional": true
+    },
+    "ecpair": {
+      "optional": true
+    },
     "@scure/btc-signer": {
       "optional": true
     },
     "@scure/base": {
+      "optional": true
+    },
+    "@scure/bip32": {
       "optional": true
     },
     "@noble/curves": {
@@ -112,11 +124,13 @@
     "@scure/btc-signer": "^2.0.1",
     "@types/lodash.memoize": "^4.1.9",
     "babel-jest": "^30.3.0",
+    "bip32": "^5.0.1",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
     "bitcoinjs-lib": "^7.0.1",
     "cross-env": "^10.1.0",
+    "ecpair": "^3.0.1",
     "jest": "^30.3.0",
     "regtest-client": "^0.2.1",
     "ts-jest": "^29.4.6",
@@ -125,8 +139,6 @@
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
     "@noble/hashes": "^2.0.1",
-    "bip32": "^5.0.1",
-    "ecpair": "^3.0.1",
     "lodash.memoize": "^4.1.2",
     "uint8array-tools": "^0.0.9",
     "varuint-bitcoin": "^2.0.0"
