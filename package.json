@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors-core",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.1.0",
+  "version": "3.1.2",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -20,6 +20,9 @@
   ],
   "bugs": {
     "url": "https://github.com/bitcoinerlab/descriptors/issues"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -69,6 +72,8 @@
     "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure-adapter && npm run test:integration:soft && npm run test:integration:soft:scure",
     "test": "npm run lint && npm run build && npm run test:matrix",
     "test:ledger": "npm run lint && npm run build && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger",
+    "publish:check": "npm whoami && node ./scripts/check-publish-versions.js",
+    "publish:all": "npm run publish:check && npm publish --access public && (cd ./packages/descriptors && npm publish --access public) && (cd ./packages/descriptors-scure && npm publish --access public)",
     "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
   },
   "files": [
@@ -139,7 +144,7 @@
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
-    "@noble/hashes": "^2.0.1",
+    "@noble/hashes": "^1.8.0",
     "lodash.memoize": "^4.1.2",
     "uint8array-tools": "^0.0.9",
     "varuint-bitcoin": "^2.0.0"

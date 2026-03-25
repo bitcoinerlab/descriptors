@@ -1,12 +1,19 @@
 {
   "name": "@bitcoinerlab/descriptors",
-  "version": "3.1.0",
+  "version": "3.1.2",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, bundled for the bitcoinjs family of libraries.",
+  "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bitcoinerlab/descriptors.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bitcoinerlab/descriptors/issues"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "keywords": [
     "bitcoin",
@@ -40,7 +47,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@bitcoinerlab/descriptors-core": "^3.1.0",
+    "@bitcoinerlab/descriptors-core": "3.1.2",
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "bip32": "^5.0.1",
     "bitcoinjs-lib": "^7.0.1",
