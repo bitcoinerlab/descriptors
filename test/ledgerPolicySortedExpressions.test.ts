@@ -49,7 +49,7 @@ function mockLedgerManager(masterFingerprint: Uint8Array): LedgerManager {
   return {
     ledgerClient,
     ledgerState: { masterFingerprint },
-    ecc,
+    Output,
     network: NETWORK
   };
 }

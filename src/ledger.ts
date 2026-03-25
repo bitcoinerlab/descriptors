@@ -24,7 +24,11 @@
  * All the conditions above are checked in function ledgerPolicyFromOutput.
  */
 
-import { OutputInstance, DescriptorsFactory } from './descriptors';
+import {
+  OutputConstructor,
+  OutputInstance,
+  DescriptorsFactory
+} from './descriptors';
 import type { PsbtLike, ScureTransactionLike, Transaction } from './bitcoinLib';
 import { toPsbt } from './psbt';
 import { compare, fromHex, toHex } from 'uint8array-tools';
@@ -234,12 +238,36 @@ export type LedgerState = {
   xpubs?: { [key: string]: string };
 };
 
+/**
+ * State and helpers needed for Ledger integration.
+ *
+ * Pass the pre-bound `Output` constructor from the package you are using:
+ * - `@bitcoinerlab/descriptors`
+ * - `@bitcoinerlab/descriptors-scure`
+ * - or `DescriptorsFactory(...)` when using `@bitcoinerlab/descriptors-core`
+ */
 export type LedgerManager = {
+  /** Ledger Bitcoin app client instance. */
   ledgerClient: unknown;
+  /** Mutable cache for fingerprints, xpubs and registered policies. */
   ledgerState: LedgerState;
-  ecc: TinySecp256k1Interface;
+  /** Pre-bound `Output` constructor from the package/backend you are using. */
+  Output: OutputConstructor;
+  /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
+  /** @internal @deprecated Use `Output` instead. */
+  ecc?: TinySecp256k1Interface;
 };
+
+function getLedgerOutputConstructor(
+  ledgerManager: LedgerManager
+): OutputConstructor {
+  if (ledgerManager.Output) return ledgerManager.Output;
+  if (ledgerManager.ecc) return DescriptorsFactory(ledgerManager.ecc).Output;
+  throw new Error(
+    'Error: pass ledgerManager.Output. Legacy ledgerManager.ecc is deprecated.'
+  );
+}
 
 /**
  * Retrieves the master fingerprint of a Ledger device.
@@ -326,10 +354,10 @@ export async function ledgerPolicyFromPsbtInput({
   index: number;
 }) {
   psbt = toPsbt(psbt);
-  const { ledgerState, ecc, network } = ledgerManager;
+  const { ledgerState, network } = ledgerManager;
   const Transaction = requireBitcoinjsTransaction();
 
-  const { Output } = DescriptorsFactory(ecc);
+  const Output = getLedgerOutputConstructor(ledgerManager);
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);
   let scriptPubKey: Uint8Array | undefined;
@@ -691,14 +719,14 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  const { ledgerClient, ledgerState, ecc, network } = ledgerManager;
+  const { ledgerClient, ledgerState, network } = ledgerManager;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
   )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  const { Output } = DescriptorsFactory(ecc);
+  const Output = getLedgerOutputConstructor(ledgerManager);
   const output = new Output({
     descriptor,
     ...(descriptor.includes('*') ? { index: 0 } : {}), //if ranged set any index

@@ -52,7 +52,7 @@ async function runSpendScenario({
   ledgerManager: {
     ledgerClient: AppClient;
     ledgerState: Record<string, unknown>;
-    ecc: typeof ecc;
+    Output: typeof Output;
     network: typeof NETWORK;
   };
   expectScriptPath: boolean;
@@ -142,7 +142,7 @@ async function runSpendScenario({
   const ledgerManager = {
     ledgerClient,
     ledgerState: {},
-    ecc,
+    Output,
     network: NETWORK
   };
 

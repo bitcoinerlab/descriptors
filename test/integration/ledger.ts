@@ -126,7 +126,7 @@ const finalizers = [];
   const ledgerManager = {
     ledgerClient,
     ledgerState: {},
-    ecc,
+    Output,
     network: NETWORK
   };
 
