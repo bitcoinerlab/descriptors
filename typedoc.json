@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "tsconfig": "./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
+  "internalModule": "_Internal_",
+  "hideGenerator": true,
+  "entryPoints": ["./src/index.ts"],
+  "plugin": ["typedoc-plugin-missing-exports"],
+  "excludeExternals": true,
+  "includeVersion": true,
+  "sort": ["source-order"],
+  "excludeInternal": true,
+  "validation": {
+    "notExported": false
+  }
+}
