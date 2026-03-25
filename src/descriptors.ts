@@ -276,6 +276,19 @@ function parseTrExpression(expression: string): {
  * [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) or
  * [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer)).
  *
+ * Note:
+ * Most users do not need to call `DescriptorsFactory(...)` directly.
+ * - `@bitcoinerlab/descriptors` already provides the bitcoinjs-ready defaults.
+ * - `@bitcoinerlab/descriptors-scure` already provides the scure-ready defaults.
+ *
+ * This factory is mainly useful for:
+ * - backwards compatibility with pre-`3.1.x` bitcoinjs usage, and
+ * - advanced `@bitcoinerlab/descriptors-core` use cases where you want to bind
+ *   a specific `TinySecp256k1Interface` or a custom `BitcoinLib`.
+ *
+ * In the default bitcoinjs package, the implicit `TinySecp256k1Interface` is
+ * `@bitcoinerlab/secp256k1`.
+ *
  * Notably, it returns the {@link _Internal_.Output | `Output`} class, which
  * provides methods to create, sign, and finalize transactions from descriptor
  * expressions.
@@ -298,16 +311,16 @@ function parseTrExpression(expression: string): {
  * You can pass this parameter in three common ways:
  *
  * ```ts
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- * import { createScureLib } from '@bitcoinerlab/descriptors/scure';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+ * import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
  *
  * const { Output } = DescriptorsFactory(createScureLib());
  * ```
  *
  * ```ts
  * import * as ecc from '@bitcoinerlab/secp256k1';
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors/bitcoinjs';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+ * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
  *
  * const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
  * ```
