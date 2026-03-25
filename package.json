@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors-core",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.1.2",
+  "version": "3.1.3",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -87,7 +87,7 @@
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
-    "@ledgerhq/ledger-bitcoin": "^0.3.0"
+    "@ledgerhq/ledger-bitcoin": "^0.3.1"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
@@ -122,7 +122,7 @@
     "@bitcoinerlab/miniscript-policies": "^1.0.0",
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
-    "@ledgerhq/ledger-bitcoin": "^0.3.0",
+    "@ledgerhq/ledger-bitcoin": "^0.3.1",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
