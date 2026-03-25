@@ -1,6 +1,6 @@
 {
-  "name": "@bitcoinerlab/descriptors",
-  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
+  "name": "@bitcoinerlab/descriptors-core",
+  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
   "version": "3.1.0",
   "author": "Jose-Luis Landabaso",
@@ -13,6 +13,7 @@
     "bitcoin",
     "descriptors",
     "miniscript",
+    "psbt",
     "bitcoinjs",
     "scure",
     "noble"
@@ -50,8 +51,8 @@
     ]
   },
   "scripts": {
-    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json --excludeInternal true --validation.notExported false",
-    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json --excludeInternal true --validation.notExported false",
+    "webdocs": "typedoc --options ./webtypedoc.json && node ./scripts/postprocess-docs.js ./webdocs",
+    "docs": "typedoc --options ./typedoc.json && node ./scripts/postprocess-docs.js ./docs",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",

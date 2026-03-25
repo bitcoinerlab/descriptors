@@ -1,0 +1,41 @@
+{
+  "name": "@bitcoinerlab/descriptors",
+  "version": "3.1.0",
+  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, bundled for the bitcoinjs family of libraries.",
+  "license": "MIT",
+  "homepage": "https://github.com/bitcoinerlab/descriptors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bitcoinerlab/descriptors.git"
+  },
+  "keywords": [
+    "bitcoin",
+    "descriptors",
+    "miniscript",
+    "psbt",
+    "bitcoinjs",
+    "bitcoinjs-lib",
+    "bip32",
+    "ecpair"
+  ],
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "dependencies": {
+    "@bitcoinerlab/descriptors-core": "^3.1.0",
+    "@bitcoinerlab/secp256k1": "^1.2.0",
+    "bip32": "^5.0.1",
+    "bitcoinjs-lib": "^7.0.1",
+    "ecpair": "^3.0.1"
+  }
+}
