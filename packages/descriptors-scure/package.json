@@ -18,6 +18,14 @@
     "btc-signer",
     "bip32"
   ],
+  "peerDependencies": {
+    "@ledgerhq/ledger-bitcoin": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@ledgerhq/ledger-bitcoin": {
+      "optional": true
+    }
+  },
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {

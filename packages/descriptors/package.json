@@ -18,6 +18,14 @@
     "bip32",
     "ecpair"
   ],
+  "peerDependencies": {
+    "@ledgerhq/ledger-bitcoin": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@ledgerhq/ledger-bitcoin": {
+      "optional": true
+    }
+  },
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {
