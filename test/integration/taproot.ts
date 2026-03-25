@@ -2,6 +2,13 @@
 
 console.log('Taproot integration tests');
 
+// This test inspects bitcoinjs-lib's BIP174 PSBT internals which are not
+// available in @scure/btc-signer. Exit early if running with scure backend.
+if (process.env['BITCOIN_LIB'] === 'scure') {
+  console.log('SKIP: This test requires bitcoinjs-lib PSBT internals');
+  process.exit(0);
+}
+
 import { createHash } from 'crypto';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import { mnemonicToSeedSync } from 'bip39';
@@ -10,6 +17,7 @@ const { encode: afterEncode } = require('bip65');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
 
 import {
@@ -17,7 +25,6 @@ import {
   keyExpressionBIP32,
   signers
 } from '../../dist/index';
-import { getBitcoinLib } from '../getBitcoinLib';
 import { selectTapLeafCandidates } from '../../dist/tapTree';
 import { vsize } from '../helpers/vsize';
 
@@ -26,8 +33,7 @@ import type { BIP32Interface } from 'bip32';
 import type { PartialSig, PsbtInput } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
-const bitcoinLib = getBitcoinLib();
-const { Output, ECPair, BIP32, expand } = DescriptorsFactory(bitcoinLib);
+const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
 const { signInputECPair, signBIP32 } = signers;
 const regtestUtils = new RegtestUtils();
 

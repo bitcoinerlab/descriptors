@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// This test explicitly tests bitcoinjs-lib internal functions.
+// It is not applicable when using @scure/btc-signer backend.
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { PsbtInput } from 'bip174';
@@ -21,7 +25,10 @@ import * as bip371 from 'bitcoinjs-lib/src/psbt/bip371';
 // @ts-expect-error TypeScript Node10 resolution does not read package exports.
 import * as psbtUtils from 'bitcoinjs-lib/src/psbt/psbtutils';
 
-describe('bitcoinjs-lib internals compatibility', () => {
+// Skip all tests when using scure backend (tests bitcoinjs-lib internals)
+const describeIfNotScure = isScure ? describe.skip : describe;
+
+describeIfNotScure('bitcoinjs-lib internals compatibility', () => {
   beforeAll(() => {
     initEccLib(ecc);
   });

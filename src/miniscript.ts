@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairAPI, BIP32API } from './bitcoinLib';
+import type { ECPairAPILike, BIP32APILike } from './bitcoinLib';
 import { parseKeyExpression } from './keyExpressions';
 import { type Network, networks } from './networks';
 import * as RE from './re';
@@ -31,8 +31,8 @@ export function expandMiniscript({
   isSegwit: boolean;
   isTaproot: boolean;
   network?: Network;
-  ECPair: ECPairAPI;
-  BIP32: BIP32API;
+  ECPair: ECPairAPILike;
+  BIP32: BIP32APILike;
 }): {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;

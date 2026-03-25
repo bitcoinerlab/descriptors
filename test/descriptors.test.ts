@@ -9,10 +9,11 @@
 import { DescriptorsFactory } from '../dist';
 import { fixtures as customFixtures } from './fixtures/custom';
 import { fixtures as bitcoinCoreFixtures } from './fixtures/bitcoinCore';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
-const bitcoinLib = getBitcoinLib();
-const { Output, expand } = DescriptorsFactory(bitcoinLib);
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output, expand } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 function partialDeepEqual(obj) {
   if (typeof obj === 'object' && obj !== null && obj.constructor === Object) {

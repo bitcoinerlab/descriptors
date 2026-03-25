@@ -1,21 +1,26 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairAPI, BIP32API } from './bitcoinLib';
+import type {
+  ECPairAPILike,
+  BIP32APILike,
+  ECPairInterfaceLike,
+  BIP32InterfaceLike,
+  ScureHDKeyLike
+} from './bitcoinLib';
 import { type Network, networks } from './networks';
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
   LedgerManager,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './ledger';
+import { toBIP32Interface } from './keyInterfaces';
 import { concat, fromHex, toHex } from 'uint8array-tools';
 
 import * as RE from './re';
 
-const derivePath = (node: BIP32Interface, path: string) => {
+const derivePath = (node: BIP32InterfaceLike, path: string) => {
   if (typeof path !== 'string') {
     throw new Error(`Error: invalid derivation path ${path}`);
   }
@@ -44,7 +49,8 @@ const derivePath = (node: BIP32Interface, path: string) => {
  *    keyPath: '/1/2/3/4/*',
  *    originPath: "/49'/0'/0'",
  *    path: "m/49'/0'/0'/1/2/3/4/*",
- *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *    // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *    // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *  }
  * ```
  */
@@ -72,14 +78,17 @@ export function parseKeyExpression({
    * representation.
    */
   isTaproot?: boolean;
-  ECPair: ECPairAPI;
-  BIP32: BIP32API;
+  ECPair: ECPairAPILike;
+  BIP32: BIP32APILike;
 }): KeyInfo {
   if (isTaproot && isSegwit !== true)
     throw new Error(`Error: taproot key expressions require isSegwit`);
   let pubkey: Uint8Array | undefined; //won't be computed for ranged keyExpressions
-  let ecpair: ECPairInterface | undefined;
-  let bip32: BIP32Interface | undefined;
+  let ecpair: ECPairInterfaceLike | undefined;
+  let bip32: BIP32InterfaceLike | undefined;
+  let privkey: Uint8Array | undefined;
+  let xPub: string | undefined;
+  let xPrv: string | undefined;
   let masterFingerprint: Uint8Array | undefined;
   let originPath: string | undefined;
   let keyPath: string | undefined;
@@ -157,12 +166,13 @@ export function parseKeyExpression({
     ecpair = ECPair.fromWIF(mWIF[0], network);
     //fromWIF will throw if the wif is not valid
     pubkey = ecpair.publicKey;
+    privkey = ecpair.privateKey;
     //match xpub:
   } else if (
     (mXpubKey = actualKey.match(RE.anchorStartAndEnd(RE.reXpubKey))) !== null
   ) {
     const xPubKey = mXpubKey[0];
-    const xPub = xPubKey.match(RE.reXpub)?.[0];
+    xPub = xPubKey.match(RE.reXpub)?.[0];
     if (!xPub) throw new Error(`Error: xpub could not be matched`);
     bip32 = BIP32.fromBase58(xPub, network);
     const mPath = xPubKey.match(RE.rePath);
@@ -179,9 +189,10 @@ export function parseKeyExpression({
     (mXprvKey = actualKey.match(RE.anchorStartAndEnd(RE.reXprvKey))) !== null
   ) {
     const xPrvKey = mXprvKey[0];
-    const xPrv = xPrvKey.match(RE.reXprv)?.[0];
+    xPrv = xPrvKey.match(RE.reXprv)?.[0];
     if (!xPrv) throw new Error(`Error: xprv could not be matched`);
     bip32 = BIP32.fromBase58(xPrv, network);
+    xPub = bip32.neutered().toBase58();
     const mPath = xPrvKey.match(RE.rePath);
     if (mPath !== null) {
       keyPath = xPrvKey.match(RE.rePath)?.[0];
@@ -219,6 +230,9 @@ export function parseKeyExpression({
     ...(pubkey !== undefined ? { pubkey } : {}),
     ...(ecpair !== undefined ? { ecpair } : {}),
     ...(bip32 !== undefined ? { bip32 } : {}),
+    ...(privkey !== undefined ? { privkey } : {}),
+    ...(xPub !== undefined ? { xPub } : {}),
+    ...(xPrv !== undefined ? { xPrv } : {}),
     ...(masterFingerprint !== undefined ? { masterFingerprint } : {}),
     ...(originPath !== undefined && originPath !== '' ? { originPath } : {}),
     ...(keyPath !== undefined && keyPath !== '' ? { keyPath } : {}),
@@ -259,7 +273,7 @@ function assertChangeIndexKeyPath({
  * {@link KeyExpressionParser}, which consists
  * of the reverse procedure.
  *
- * @returns {string} - The formed key expression for the Ledger device.
+ * @returns {Promise<string>} - The formed key expression for the Ledger device.
  */
 export async function keyExpressionLedger({
   ledgerManager,
@@ -301,12 +315,53 @@ export async function keyExpressionLedger({
 }
 
 /**
- * Constructs a key expression string from its constituent components.
+ * Constructs a BIP32 key expression string from its constituent components.
  *
  * This function essentially performs the reverse operation of
  * {@link KeyExpressionParser}. For detailed
  * explanations and examples of the terms used here, refer to
  * {@link KeyExpressionParser}.
+ *
+ * @param {Object} params - The parameters object.
+ * @param {BIP32InterfaceLike | ScureHDKeyLike} params.masterNode - Root HD node.
+ * Pass either:
+ * - a bitcoinjs {@link https://github.com/bitcoinjs/bip32 | `BIP32`} node, or
+ * - a scure {@link https://github.com/paulmillr/scure-bip32 | `HDKey`}.
+ * @param {string} params.originPath - Origin path from master, e.g. `"/84'/0'/0'"`.
+ * @param {number} [params.change] - Branch index (`0` receive, `1` change).
+ * @param {number | '*'} [params.index] - Address index or `*` for ranged descriptors.
+ * @param {string} [params.keyPath] - Full suffix path (`/change/index`) alternative to
+ * `change` + `index`.
+ * @returns {string} Descriptor key expression (e.g. `[f23f9fd2/84'/0'/0']xpub.../0/5`).
+ *
+ * @example
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { BIP32Factory } from 'bip32';
+ * import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
+ *
+ * const BIP32 = BIP32Factory(ecc);
+ * const masterNode = BIP32.fromSeed(seedBytes);
+ * const keyExp = keyExpressionBIP32({
+ *   masterNode,
+ *   originPath: "/84'/0'/0'",
+ *   change: 0,
+ *   index: 5
+ * });
+ * ```
+ *
+ * @example
+ * ```ts
+ * import { HDKey } from '@scure/bip32';
+ * import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
+ *
+ * const masterNode = HDKey.fromMasterSeed(seedBytes);
+ * const keyExp = keyExpressionBIP32({
+ *   masterNode,
+ *   originPath: "/84'/0'/0'",
+ *   keyPath: '/0/*'
+ * });
+ * ```
  */
 export function keyExpressionBIP32({
   masterNode,
@@ -316,7 +371,7 @@ export function keyExpressionBIP32({
   index,
   isPublic = true
 }: {
-  masterNode: BIP32Interface;
+  masterNode: BIP32InterfaceLike | ScureHDKeyLike;
   originPath: string;
   change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
   index?: number | undefined | '*';
@@ -327,6 +382,7 @@ export function keyExpressionBIP32({
    */
   isPublic?: boolean;
 }) {
+  masterNode = toBIP32Interface(masterNode);
   assertChangeIndexKeyPath({ change, index, keyPath });
   const masterFingerprint = masterNode.fingerprint;
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;

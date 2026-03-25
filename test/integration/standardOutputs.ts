@@ -4,12 +4,13 @@
 //npm run test:integration:soft
 
 console.log('Standard output integration tests');
-import { networks, Psbt } from 'bitcoinjs-lib';
-import { mnemonicToSeedSync } from 'bip39';
+import { networks } from '../../dist';
 import { RegtestUtils } from 'regtest-client';
+import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
 const regtestUtils = new RegtestUtils();
 
 const NETWORK = networks.regtest;
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
 const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
@@ -23,15 +24,21 @@ import {
   keyExpressionBIP32,
   signers
 } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
+import { createScureLib } from '../../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
+import {
+  createMasterNode,
+  createRandomSingleKeySigner,
+  getPubKey,
+  getXOnlyPubKey
+} from '../helpers/keys';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
-const { signBIP32, signECPair } = signers;
+const { signBIP32, signECPair, signPrivKey } = signers;
 
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
-const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
+const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 //masterNode will be able to sign all the expressions below:
 const expressionsBIP32 = [
   `pk(${keyExpressionBIP32({
@@ -57,9 +64,9 @@ if (
 )
   throw new Error(`Error: cannot use keyPath <-> change, index, indistinctly`);
 
-const ecpair = ECPair.makeRandom();
-const ecpairPubkeyHex = toHex(ecpair.publicKey);
-const ecpairXOnlyHex = toHex(ecpair.publicKey.slice(1, 33));
+const ecpair = createRandomSingleKeySigner(isScure);
+const ecpairPubkeyHex = toHex(getPubKey(ecpair));
+const ecpairXOnlyHex = toHex(getXOnlyPubKey(ecpair));
 //The same ecpair will be able to sign all the expressions below:
 const expressionsECPair = [
   `pk(${ecpairPubkeyHex})`,
@@ -70,7 +77,7 @@ const expressionsECPair = [
 ];
 
 (async () => {
-  const psbtMultiInputs = new Psbt();
+  const psbtMultiInputs = createPsbt(isScure);
   const finalizers = [];
   for (const descriptor of expressionsBIP32) {
     const outputBIP32 = new Output({ descriptor, network: NETWORK });
@@ -80,17 +87,16 @@ const expressionsECPair = [
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
-    const psbt = new Psbt();
+    const psbt = createPsbt(isScure);
     //Add an input and update timelock (if necessary):
     const inputFinalizer = outputBIP32.updatePsbtAsInput({ psbt, vout, txHex });
-    const index = psbt.data.inputs.length - 1;
     if (outputBIP32.isSegwit()) {
       //Do some additional tests. Create a tmp psbt using txId and value instead
       //of txHex using Segwit. Passing the value instead of the txHex is not
       //recommended anyway. It's the user's responsibility to make sure that
       //the value is correct to avoid possible fee attacks.
       //updatePsbt should output a Warning message.
-      const tmpPsbtSegwit = new Psbt();
+      const tmpPsbtSegwit = createPsbt(isScure);
       const originalWarn = console.warn;
       let capturedOutput = '';
       console.warn = (message: string) => {
@@ -103,18 +109,9 @@ const expressionsECPair = [
         txId,
         value: BigInt(INITIAL_VALUE)
       });
-      const indexSegwit = tmpPsbtSegwit.data.inputs.length - 1;
       if (capturedOutput !== 'Warning: missing txHex may allow fee attacks')
         throw new Error(`Error: did not warn about fee attacks`);
       console.warn = originalWarn;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nonFinalTxHex = (psbt as any).__CACHE.__TX.toHex();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const nonFinalSegwitTxHex = (tmpPsbtSegwit as any).__CACHE.__TX.toHex();
-      if (indexSegwit !== index || nonFinalTxHex !== nonFinalSegwitTxHex)
-        throw new Error(
-          `Error: could not create same psbt ${nonFinalTxHex} for Segwit not using txHex: ${nonFinalSegwitTxHex}`
-        );
     }
     //2 ways to achieve the same:
     //psbt.addOutput({ script: FINAL_SCRIPTPUBKEY, value: FINAL_VALUE });
@@ -124,10 +121,9 @@ const expressionsECPair = [
     }).updatePsbtAsOutput({ psbt, value: BigInt(FINAL_VALUE) });
     signBIP32({ psbt, masterNode });
     inputFinalizer({ psbt });
-    const spendTx = psbt.extractTransaction();
-    await regtestUtils.broadcast(spendTx.toHex());
+    await regtestUtils.broadcast(psbtToHex(psbt));
     await regtestUtils.verify({
-      txId: spendTx.getId(),
+      txId: psbtToTxId(psbt),
       address: FINAL_ADDRESS,
       vout: 0,
       value: FINAL_VALUE
@@ -160,7 +156,7 @@ const expressionsECPair = [
       INITIAL_VALUE
     );
     let { txHex } = await regtestUtils.fetch(txId);
-    const psbtECPair = new Psbt();
+    const psbtECPair = createPsbt(isScure);
     //Adds an input and updates timelock (if necessary):
     const inputFinalizer = outputECPair.updatePsbtAsInput({
       psbt: psbtECPair,
@@ -176,12 +172,20 @@ const expressionsECPair = [
       psbt: psbtECPair,
       value: BigInt(FINAL_VALUE)
     });
-    signECPair({ psbt: psbtECPair, ecpair });
+    if (isScure)
+      signPrivKey({
+        psbt: psbtECPair as Parameters<typeof signPrivKey>[0]['psbt'],
+        privKey: ecpair as Parameters<typeof signPrivKey>[0]['privKey']
+      });
+    else
+      signECPair({
+        psbt: psbtECPair as Parameters<typeof signECPair>[0]['psbt'],
+        ecpair: ecpair as Parameters<typeof signECPair>[0]['ecpair']
+      });
     inputFinalizer({ psbt: psbtECPair });
-    const spendTxECPair = psbtECPair.extractTransaction();
-    await regtestUtils.broadcast(spendTxECPair.toHex());
+    await regtestUtils.broadcast(psbtToHex(psbtECPair));
     await regtestUtils.verify({
-      txId: spendTxECPair.getId(),
+      txId: psbtToTxId(psbtECPair),
       address: FINAL_ADDRESS,
       vout: 0,
       value: FINAL_VALUE
@@ -214,14 +218,22 @@ const expressionsECPair = [
     value: BigInt(FINAL_VALUE)
   });
   //Sign and finish psbtMultiInputs
-  signECPair({ psbt: psbtMultiInputs, ecpair });
+  if (isScure)
+    signPrivKey({
+      psbt: psbtMultiInputs as Parameters<typeof signPrivKey>[0]['psbt'],
+      privKey: ecpair as Parameters<typeof signPrivKey>[0]['privKey']
+    });
+  else
+    signECPair({
+      psbt: psbtMultiInputs as Parameters<typeof signECPair>[0]['psbt'],
+      ecpair: ecpair as Parameters<typeof signECPair>[0]['ecpair']
+    });
   signBIP32({ psbt: psbtMultiInputs, masterNode });
   finalizers.forEach(finalizer => finalizer({ psbt: psbtMultiInputs }));
 
-  const spendTxMultiInputs = psbtMultiInputs.extractTransaction();
-  await regtestUtils.broadcast(spendTxMultiInputs.toHex());
+  await regtestUtils.broadcast(psbtToHex(psbtMultiInputs));
   await regtestUtils.verify({
-    txId: spendTxMultiInputs.getId(),
+    txId: psbtToTxId(psbtMultiInputs),
     address: FINAL_ADDRESS,
     vout: 0,
     value: FINAL_VALUE

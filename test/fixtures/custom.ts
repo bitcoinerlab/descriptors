@@ -23,7 +23,7 @@
 //console.log(descsum_create(`wpkh([9a6a2580/84'/1'/180']tpubDCMRAYcH71GibuLuWcDkwmmY1gXkXhf162QuEHxkMpZPSi7xck2eGQ6MRGKxNTeY8P1FiFTPCLA5x7qZpFx84fnnrNQFpSnUCwd1nPG8Mk9/0/*)`));
 //console.log(descsum_check('addr(mkmZxiEcEd8ZqjQWVZuC6so5dFMKEFpN2j)#dp90etnw'));
 //console.log(descsum_check('addr(mkmZxiEcEd8ZqjQWVZuC6so5dFMKEFpN2j)#02wpgw69'));
-import { networks } from 'bitcoinjs-lib';
+import { networks } from '../../dist';
 export const fixtures = {
   valid: [
     {

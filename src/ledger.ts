@@ -24,14 +24,20 @@
  * All the conditions above are checked in function ledgerPolicyFromOutput.
  */
 
-import { OutputInstance, DescriptorsFactory } from './descriptors';
-import type { Psbt, Transaction } from './bitcoinLib';
+import {
+  OutputConstructor,
+  OutputInstance,
+  DescriptorsFactory
+} from './descriptors';
+import type { PsbtLike, ScureTransactionLike, Transaction } from './bitcoinLib';
+import { toPsbt } from './psbt';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
 import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
 import type { TapTreeInfoNode } from './tapTree';
+import { toBIP32Interface } from './keyInterfaces';
 
 /**
  * Dynamically imports the '@ledgerhq/ledger-bitcoin' module and, if provided, checks if `ledgerClient` is an instance of `AppClient`.
@@ -213,6 +219,7 @@ function isLedgerStandard({
 }
 
 //Standard key expressions don't have name, id or hmac:
+/** @internal */
 export type LedgerPolicy = {
   policyName?: string;
   ledgerTemplate: string;
@@ -231,15 +238,39 @@ export type LedgerState = {
   xpubs?: { [key: string]: string };
 };
 
+/**
+ * State and helpers needed for Ledger integration.
+ *
+ * Pass the pre-bound `Output` constructor from the package you are using:
+ * - `@bitcoinerlab/descriptors`
+ * - `@bitcoinerlab/descriptors-scure`
+ * - or `DescriptorsFactory(...)` when using `@bitcoinerlab/descriptors-core`
+ */
 export type LedgerManager = {
+  /** Ledger Bitcoin app client instance. */
   ledgerClient: unknown;
+  /** Mutable cache for fingerprints, xpubs and registered policies. */
   ledgerState: LedgerState;
-  ecc: TinySecp256k1Interface;
+  /** Pre-bound `Output` constructor from the package/backend you are using. */
+  Output: OutputConstructor;
+  /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
+  /** @internal @deprecated Use `Output` instead. */
+  ecc?: TinySecp256k1Interface;
 };
 
+function getLedgerOutputConstructor(
+  ledgerManager: LedgerManager
+): OutputConstructor {
+  if (ledgerManager.Output) return ledgerManager.Output;
+  if (ledgerManager.ecc) return DescriptorsFactory(ledgerManager.ecc).Output;
+  throw new Error(
+    'Error: pass ledgerManager.Output. Legacy ledgerManager.ecc is deprecated.'
+  );
+}
+
 /**
- * Retrieves the masterFingerPrint of a Ledger device
+ * Retrieves the master fingerprint of a Ledger device.
  */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
@@ -266,7 +297,7 @@ export async function getLedgerMasterFingerPrint({
 }
 
 /**
- * Retrieves the xpub of a certain originPath of a Ledger device
+ * Retrieves the xpub for a given origin path from a Ledger device.
  */
 export async function getLedgerXpub({
   originPath,
@@ -319,13 +350,14 @@ export async function ledgerPolicyFromPsbtInput({
   index
 }: {
   ledgerManager: LedgerManager;
-  psbt: Psbt;
+  psbt: PsbtLike | ScureTransactionLike;
   index: number;
 }) {
-  const { ledgerState, ecc, network } = ledgerManager;
+  psbt = toPsbt(psbt);
+  const { ledgerState, network } = ledgerManager;
   const Transaction = requireBitcoinjsTransaction();
 
-  const { Output } = DescriptorsFactory(ecc);
+  const Output = getLedgerOutputConstructor(ledgerManager);
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);
   let scriptPubKey: Uint8Array | undefined;
@@ -606,7 +638,8 @@ export async function ledgerPolicyFromOutput({
   const masterFingerprint = expansionMap[ledgerKey]!.masterFingerprint;
   const originPath = expansionMap[ledgerKey]!.originPath;
   const keyPath = expansionMap[ledgerKey]!.keyPath;
-  const bip32 = expansionMap[ledgerKey]!.bip32;
+  const bip32Like = expansionMap[ledgerKey]!.bip32;
+  const bip32 = bip32Like ? toBIP32Interface(bip32Like) : undefined;
   if (!masterFingerprint || !originPath || !keyPath || !bip32) {
     throw new Error(
       `Error: Ledger key expression must have a valid masterFingerprint: ${masterFingerprint}, originPath: ${originPath}, keyPath: ${keyPath} and a valid bip32 node`
@@ -642,13 +675,14 @@ export async function ledgerPolicyFromOutput({
     }
     placeholderToLedgerPlaceholder.set(key, `@${index}/**`);
     const keyInfo = expansionMap[key]!;
+    const keyBip32 = keyInfo.bip32 ? toBIP32Interface(keyInfo.bip32) : null;
     if (keyInfo.masterFingerprint && keyInfo.originPath)
       keyRoots.push(
         `[${toHex(keyInfo.masterFingerprint)}${
           keyInfo.originPath
-        }]${keyInfo?.bip32?.neutered().toBase58()}`
+        }]${keyBip32?.neutered().toBase58()}`
       );
-    else keyRoots.push(`${keyInfo?.bip32?.neutered().toBase58()}`);
+    else keyRoots.push(`${keyBip32?.neutered().toBase58()}`);
   });
 
   const ledgerTemplate = expandedExpression.replace(
@@ -685,14 +719,14 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  const { ledgerClient, ledgerState, ecc, network } = ledgerManager;
+  const { ledgerClient, ledgerState, network } = ledgerManager;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     ledgerClient
   )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(ledgerClient instanceof AppClient))
     throw new Error(`Error: pass a valid ledgerClient`);
 
-  const { Output } = DescriptorsFactory(ecc);
+  const Output = getLedgerOutputConstructor(ledgerManager);
   const output = new Output({
     descriptor,
     ...(descriptor.includes('*') ? { index: 0 } : {}), //if ranged set any index

@@ -3,21 +3,5 @@
 
 /**
  * Separate entry point for the @scure/btc-signer adapter.
- *
- * Usage:
- *   import { createScureLib } from '@bitcoinerlab/descriptors/scure';
- *   import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- *   import * as ecc from '@bitcoinerlab/secp256k1';
- *
- *   const lib = createScureLib(ecc);
- *   const { Output } = DescriptorsFactory(lib);
- *   const psbt = lib.Psbt.fromTransaction(nativeTransaction);
- *   const scureTx = psbt.raw;
  */
-export {
-  createScureLib,
-  type ScureBitcoinLib,
-  type ScurePsbt,
-  type ScurePsbtConstructor,
-  type ScureTransaction
-} from './adapters/scure';
+export { createScureLib } from './adapters/scure';

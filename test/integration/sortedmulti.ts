@@ -5,16 +5,23 @@
 
 console.log('Integration test: sortedmulti descriptors');
 
-import { networks, Psbt } from 'bitcoinjs-lib';
-import { mnemonicToSeedSync } from 'bip39';
+import { networks } from '../../dist/';
 import { RegtestUtils } from 'regtest-client';
 import { toHex } from 'uint8array-tools';
+import * as ecc from '@bitcoinerlab/secp256k1';
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
+import { createScureLib } from '../../dist/scure';
+import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
+import {
+  createMasterNode,
+  createRandomSingleKeySigner,
+  getPubKey
+} from '../helpers/keys';
 
 const regtestUtils = new RegtestUtils();
 const NETWORK = networks.regtest;
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const INITIAL_VALUE = 2e4;
 const FINAL_VALUE = INITIAL_VALUE - 1000;
@@ -24,19 +31,19 @@ const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const seed = mnemonicToSeedSync(SOFT_MNEMONIC);
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
-const masterNode = BIP32.fromSeed(seed, NETWORK);
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 
 // Helpers -----------------------------------------------------
-const { signBIP32, signECPair } = signers;
+const { signBIP32, signECPair, signInputPrivKey } = signers;
 
 // Create ECPairs for multisigs (will be reused everywhere)
-const manyKeys = Array.from({ length: 25 }, () => ECPair.makeRandom());
+const manyKeys = Array.from({ length: 25 }, () =>
+  createRandomSingleKeySigner(isScure)
+);
 
 // Make hex helper
-const hex = (pk: Uint8Array) => toHex(pk);
+const hex = (signer: (typeof manyKeys)[number]) => toHex(getPubKey(signer));
 
 // -----------------------------------------
 // Helper: build sortedmulti descriptor
@@ -89,7 +96,7 @@ async function runIntegration(descriptor: string) {
 
   const { txHex } = await regtestUtils.fetch(txId);
 
-  const psbt = new Psbt();
+  const psbt = createPsbt(isScure, NETWORK);
 
   const finalizeInput = output.updatePsbtAsInput({
     psbt,
@@ -115,8 +122,18 @@ async function runIntegration(descriptor: string) {
 
   // Sign with ECPair ONLY if it matches one of the required pubkeys
   for (const k of manyKeys) {
-    if (required.includes(toHex(k.publicKey)) && signed < m) {
-      signECPair({ psbt, ecpair: k });
+    if (required.includes(hex(k)) && signed < m) {
+      if (isScure)
+        signInputPrivKey({
+          psbt: psbt as Parameters<typeof signInputPrivKey>[0]['psbt'],
+          index: 0,
+          privKey: k as Parameters<typeof signInputPrivKey>[0]['privKey']
+        });
+      else
+        signECPair({
+          psbt: psbt as Parameters<typeof signECPair>[0]['psbt'],
+          ecpair: k as Parameters<typeof signECPair>[0]['ecpair']
+        });
       signed++;
     }
   }
@@ -124,14 +141,12 @@ async function runIntegration(descriptor: string) {
   // Finalize
   finalizeInput({ psbt });
 
-  const tx = psbt.extractTransaction();
-
   // Broadcast
-  await regtestUtils.broadcast(tx.toHex());
+  await regtestUtils.broadcast(psbtToHex(psbt));
 
   // Verify
   await regtestUtils.verify({
-    txId: tx.getId(),
+    txId: psbtToTxId(psbt),
     address: FINAL_ADDRESS,
     vout: 0,
     value: FINAL_VALUE
@@ -169,8 +184,8 @@ function expectError(label: string, fn: () => unknown): void {
     change: 0,
     index: 0
   });
-  const pubB = hex(keyB!.publicKey);
-  const pubC = hex(keyC!.publicKey);
+  const pubB = hex(keyB!);
+  const pubC = hex(keyC!);
 
   // --- Small 2-key multisigs (2-of-2)
   const smallSorted = makeSortedMulti(2, [pubA, pubB]);
@@ -193,7 +208,7 @@ function expectError(label: string, fn: () => unknown): void {
   // https://github.com/bitcoinjs/bitcoinjs-lib/pull/2297
   const manyPub = [
     pubA, // BIP32 key FIRST
-    ...manyKeys.slice(0, 15).map(k => hex(k.publicKey)) // 16 ECPairs
+    ...manyKeys.slice(0, 15).map(k => hex(k)) // 16 ECPairs
   ];
 
   const many = makeSortedMulti(2, manyPub);
@@ -218,7 +233,7 @@ function expectError(label: string, fn: () => unknown): void {
   // ----------------------------------------------------------
   // NEGATIVE TESTS: >20 keys must fail validation
   // ----------------------------------------------------------
-  const manyPub21 = manyKeys.slice(0, 21).map(k => hex(k.publicKey));
+  const manyPub21 = manyKeys.slice(0, 21).map(k => hex(k));
 
   expectError('sortedmulti with >20 keys', () => {
     const bad = makeSortedMulti(2, manyPub21);

@@ -5,8 +5,7 @@ import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
-import type { BIP32API } from 'bip32';
-import type { ECPairAPI } from 'ecpair';
+import type { BIP32APILike, ECPairAPILike } from './bitcoinLib';
 import type { PartialSig, TapBip32Derivation } from './bip174';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
@@ -25,6 +24,7 @@ import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLim
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
 
+/** @internal */
 export type TapLeafExpansionOverride = {
   // Descriptor-level, user-facing expanded leaf expression.
   expandedExpression: string;
@@ -34,6 +34,7 @@ export type TapLeafExpansionOverride = {
   tapScript: Uint8Array;
 };
 
+/** @internal */
 export type TaprootLeafSatisfaction = {
   leaf: TapLeafInfo;
   depth: number;
@@ -45,6 +46,7 @@ export type TaprootLeafSatisfaction = {
   totalWitnessSize: number;
 };
 
+/** @internal */
 export type TaprootPsbtLeafMetadata = {
   leaf: TapLeafInfo;
   depth: number;
@@ -60,8 +62,8 @@ function expandTaprootMiniscript({
 }: {
   miniscript: string;
   network?: Network;
-  BIP32: BIP32API;
-  ECPair: ECPairAPI;
+  BIP32: BIP32APILike;
+  ECPair: ECPairAPILike;
 }): {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
@@ -89,6 +91,7 @@ function expandTaprootMiniscript({
  * Example: sortedmulti_a can expose `expandedExpression=sortedmulti_a(...)`
  * while providing a tapscript already compiled.
  */
+/** @internal */
 export function buildTapTreeInfo({
   tapTree,
   network = networks.bitcoin,
@@ -99,8 +102,8 @@ export function buildTapTreeInfo({
 }: {
   tapTree: TapTreeNode;
   network?: Network;
-  BIP32: BIP32API;
-  ECPair: ECPairAPI;
+  BIP32: BIP32APILike;
+  ECPair: ECPairAPILike;
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;
@@ -175,6 +178,7 @@ export function buildTapTreeInfo({
   };
 }
 
+/** @internal */
 export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
   if ('expression' in tapTreeInfo) {
     return {
@@ -249,6 +253,7 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
  * - Convert this metadata into PSBT `tapLeafScript[]` entries
  *   for all leaves.
  */
+/** @internal */
 export function buildTaprootLeafPsbtMetadata({
   tapTreeInfo,
   internalPubkey,
@@ -327,6 +332,7 @@ export function buildTaprootLeafPsbtMetadata({
  *   this function throws.
  * - Output and `leafHashes` are sorted deterministically.
  */
+/** @internal */
 export function buildTaprootBip32Derivations({
   tapTreeInfo,
   internalKeyInfo
@@ -458,6 +464,7 @@ function estimateTaprootWitnessSize({
   return witnessStackSize([...stackItems, tapScript, controlBlock]);
 }
 
+/** @internal */
 export function normalizeTaprootPubkey(pubkey: Uint8Array): Uint8Array {
   if (pubkey.length === 32) return pubkey;
   if (pubkey.length === 33) return pubkey.slice(1, 33);
@@ -469,6 +476,7 @@ export function normalizeTaprootPubkey(pubkey: Uint8Array): Uint8Array {
  * `multi_a(...)` form by sorting placeholders using the resolved pubkeys from
  * `expansionMap`.
  */
+/** @internal */
 export function compileSortedMultiAExpandedExpression({
   expandedExpression,
   expansionMap
@@ -517,6 +525,7 @@ export function compileSortedMultiAExpandedExpression({
  * during planning. See satisfyMiniscript() for how timeConstraints keep the
  * chosen leaf consistent between planning and signing.
  */
+/** @internal */
 export function collectTaprootLeafSatisfactions({
   tapTreeInfo,
   preimages,
@@ -624,6 +633,7 @@ export function collectTaprootLeafSatisfactions({
  * Selects the taproot leaf satisfaction with the smallest total witness size.
  * Assumes the input list is in left-first tree order for deterministic ties.
  */
+/** @internal */
 export function selectBestTaprootLeafSatisfaction(
   satisfactions: TaprootLeafSatisfaction[]
 ): TaprootLeafSatisfaction {
@@ -638,6 +648,7 @@ export function selectBestTaprootLeafSatisfaction(
  * Collects a unique set of taproot leaf pubkeys (x-only) across the tree.
  * This is useful for building fake signatures when no signer subset is given.
  */
+/** @internal */
 export function collectTapTreePubkeys(
   tapTreeInfo: TapTreeInfoNode
 ): Uint8Array[] {
@@ -673,6 +684,7 @@ export function collectTapTreePubkeys(
  *    returned from the first pass (see satisfyMiniscript() for why this keeps
  *    the chosen leaf consistent between planning and signing).
  */
+/** @internal */
 export function satisfyTapTree({
   tapTreeInfo,
   signatures,

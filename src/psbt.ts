@@ -9,11 +9,13 @@ import type {
 } from './bip174';
 import type { KeyInfo } from './types';
 import type {
-  Psbt,
   FinalScriptsFunc,
   BitcoinLib,
-  PsbtTxInput
+  PsbtTxInput,
+  PsbtLike,
+  ScureTransactionLike
 } from './bitcoinLib';
+import { isScureTransaction } from './bitcoinLib';
 import type { Network } from './networks';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
@@ -115,7 +117,7 @@ export function addPsbtInput({
   rbf,
   Transaction
 }: {
-  psbt: Psbt;
+  psbt: PsbtLike;
   vout: number;
   txHex?: string;
   txId?: string;
@@ -278,4 +280,36 @@ export function addPsbtInput({
 
   psbt.addInput(input);
   return psbt.data.inputs.length - 1;
+}
+
+// ─── Type Guards and Converters ─────────────────────────────────────
+
+/**
+ * Converts a concrete transaction object to this library's internal `PsbtLike`
+ * surface.
+ *
+ * @param psbt - Either a
+ * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+ * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
+ * @returns A `PsbtLike` implementation consumed by internal code.
+ */
+export function toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike {
+  if (isScureTransaction(psbt)) {
+    // Dynamically import scure adapter only when needed
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { wrapScureTransaction } = require('./adapters/scure');
+      return wrapScureTransaction(psbt);
+    } catch (error) {
+      throw new Error(
+        'Failed to load @scure/btc-signer adapter. ' +
+          'Make sure @scure/btc-signer is installed as a peer dependency. ' +
+          'Original error: ' +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
+  }
+
+  // Already a bitcoinjs-lib compatible Psbt
+  return psbt;
 }

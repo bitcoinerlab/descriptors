@@ -13,7 +13,6 @@ import {
   address,
   payments,
   Transaction,
-  Psbt,
   initEccLib,
   script
 } from 'bitcoinjs-lib';
@@ -21,8 +20,6 @@ import { type BIP32API, BIP32Factory } from 'bip32';
 import { type ECPairAPI, ECPairFactory } from 'ecpair';
 import type { TinySecp256k1Interface } from '../types';
 import type { BitcoinLib } from '../bitcoinLib';
-
-// ─── Factory ──────────────────────────────────────────────────────────
 
 /**
  * Create a BitcoinLib backed by bitcoinjs-lib.
@@ -35,14 +32,18 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
   const ECPair: ECPairAPI = ECPairFactory(ecc);
   const BIP32: BIP32API = BIP32Factory(ecc);
 
+  if (!ecc.verifySchnorr)
+    throw new Error(
+      'TinySecp256k1Interface is not initialized properly: verifySchnorr is missing.'
+    );
+
   return {
     payments,
     script,
     Transaction,
     address,
-    Psbt,
     ECPair,
     BIP32,
-    ecc
+    verifySchnorr: ecc.verifySchnorr
   };
 }

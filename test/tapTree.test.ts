@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// This test inspects bitcoinjs-lib's BIP174 PSBT internals (tapLeafScript,
+// tapBip32Derivation) which are not available in @scure/btc-signer.
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+
 import { createHash } from 'crypto';
 import {
   parseTapTreeExpression,
@@ -8,8 +12,9 @@ import {
 } from '../dist/tapTree';
 import type { TapLeafSelection } from '../dist/tapTree';
 import type { TapBip32Derivation, TapLeafScript } from 'bip174';
-import { Psbt as BitcoinjsPsbt, Transaction } from 'bitcoinjs-lib';
-import { getBitcoinLib } from './getBitcoinLib';
+import { Psbt, Transaction } from 'bitcoinjs-lib';
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { signInputECPair } from '../dist/signers';
 import {
@@ -19,15 +24,11 @@ import {
 } from '../dist/tapMiniscript';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
-const bitcoinLib = getBitcoinLib();
+const bitcoinLib = createBitcoinjsLib(ecc);
+const { ECPair } = DescriptorsFactory(ecc);
 
 const payments = bitcoinLib.payments;
 const scriptLib = bitcoinLib.script;
-const Psbt = bitcoinLib.Psbt;
-
-function extractTransaction(psbt: { toBase64(): string }) {
-  return BitcoinjsPsbt.fromBase64(psbt.toBase64()).extractTransaction();
-}
 
 function createNextSigner<T>(
   ECPair: {
@@ -40,7 +41,10 @@ function createNextSigner<T>(
   return () => ECPair.fromPrivateKey(new Uint8Array(32).fill(seed++));
 }
 
-describe('taproot tree parser', () => {
+// Skip all tests when using scure backend (tests PSBT internals)
+const describeIfNotScure = isScure ? describe.skip : describe;
+
+describeIfNotScure('taproot tree parser', () => {
   test('parses a leaf miniscript expression', () => {
     expect(parseTapTreeExpression('pk(@0)')).toEqual({ expression: 'pk(@0)' });
   });
@@ -60,7 +64,7 @@ describe('taproot tree parser', () => {
   });
 });
 
-describe('taproot tree compilation', () => {
+describeIfNotScure('taproot tree compilation', () => {
   const INTERNAL_KEY =
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
   const LEAF_KEY_1 =
@@ -260,7 +264,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('script policy signs and finalizes through script-path', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSignerA = nextSigner();
@@ -282,7 +286,7 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: leafSignerA });
     finalize({ psbt });
 
-    const witness = extractTransaction(psbt).ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBeGreaterThanOrEqual(3);
     const controlBlock = witness[witness.length - 1];
@@ -291,7 +295,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('script policy finalizer requires tapScriptSig', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const leafSigner = nextSigner();
@@ -314,7 +318,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('key-path taproot signs and finalizes without tapLeafScript', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signer = nextSigner();
     const descriptor = `tr(${xOnly(signer.publicKey)})`;
@@ -332,13 +336,13 @@ describe('taproot tree compilation', () => {
     signInputECPair({ psbt, index: 0, ecpair: signer });
     finalize({ psbt });
 
-    const witness = extractTransaction(psbt).ins[0]?.witness;
+    const witness = psbt.extractTransaction().ins[0]?.witness;
     if (!witness) throw new Error('witness not available');
     expect(witness.length).toBe(1);
   });
 
   test('supports sortedmulti_a() as a taproot leaf expression', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -388,7 +392,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() when nested inside miniscript', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();
@@ -407,7 +411,7 @@ describe('taproot tree compilation', () => {
   });
 
   test('rejects sortedmulti_a() outside tr()', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const signerA = nextSigner();
     const signerB = nextSigner();
@@ -444,7 +448,7 @@ describe('taproot tree compilation', () => {
   });
 });
 
-describe('taproot tree satisfactions', () => {
+describeIfNotScure('taproot tree satisfactions', () => {
   const INTERNAL_KEY =
     'a34b99f22c790c4e36b2b3c2c35a36db06226e41c692fc82b8b56ac1c540c5bd';
   const LEAF_KEY =
@@ -518,7 +522,7 @@ describe('taproot tree satisfactions', () => {
   });
 
   test('accepts push-only OP_1 selectors in taproot satisfactions', () => {
-    const { Output, ECPair } = DescriptorsFactory(bitcoinLib);
+    const { Output } = DescriptorsFactory(bitcoinLib);
     const nextSigner = createNextSigner(ECPair);
     const internalSigner = nextSigner();
     const signerA = nextSigner();

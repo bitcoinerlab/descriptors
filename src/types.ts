@@ -1,9 +1,11 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
-import type { Payment } from './bitcoinLib';
+import type {
+  Payment,
+  ECPairInterfaceLike,
+  BIP32InterfaceLike
+} from './bitcoinLib';
 import type { Network } from './networks';
 import type { TapTreeNode, TapTreeInfoNode } from './tapTree';
 
@@ -17,7 +19,9 @@ export type Preimage = {
    *
    * Accepted functions: sha256, hash256, ripemd160, hash160
    *
-   * Digests must be: 64-character HEX for sha256, hash160 or 30-character HEX for ripemd160 or hash160.
+   * Digest hex lengths by function:
+   * - `sha256`, `hash256`: 64 hex chars (32 bytes)
+   * - `ripemd160`, `hash160`: 40 hex chars (20 bytes)
    */
   digest: string;
   /**
@@ -31,21 +35,51 @@ export type TimeConstraints = {
 };
 
 /**
+ * Parsed key-expression metadata.
+ *
  * See {@link KeyExpressionParser}.
  */
 export type KeyInfo = {
+  /** Original key expression string. */
   keyExpression: string;
-  pubkey?: Uint8Array; //Must be set unless this corresponds to a ranged-descriptor. For taproot this is the 32 bytes x-only pubkey.
-  ecpair?: ECPairInterface;
-  bip32?: BIP32Interface;
+  /**
+   * Concrete public key when derivable.
+   *
+   * This is usually set unless the key expression is ranged (`*`).
+   * For taproot keys this is x-only (32 bytes).
+   */
+  pubkey?: Uint8Array;
+  /**
+   * bitcoinjs-compatible single-key signer (when derivable from the expression).
+   */
+  ecpair?: ECPairInterfaceLike;
+  /**
+   * bitcoinjs-compatible HD node (when derivable from the expression).
+   */
+  bip32?: BIP32InterfaceLike;
+  /** Raw private key bytes, when available. */
+  privkey?: Uint8Array;
+  /** Parsed extended public key, when present in the expression. */
+  xPub?: string;
+  /** Parsed extended private key, when present in the expression. */
+  xPrv?: string;
+  /** BIP32 master fingerprint, when available. */
   masterFingerprint?: Uint8Array;
-  originPath?: string; //The path from the masterFingerprint to the xpub/xprv root
-  keyPath?: string; //The path from the xpub/xprv root
-  path?: string; //The complete path from the master. Format is: "m/val/val/...", starting with an m/, and where val are integers or integers followed by a tilde ', for the hardened case
+  /** Path from `masterFingerprint` to the xpub/xprv root. */
+  originPath?: string;
+  /** Path from the xpub/xprv root. */
+  keyPath?: string;
+  /**
+   * Full path from the master.
+   *
+   * Format: `m/val/val/...`, where `val` is an integer and hardened elements
+   * use `'`.
+   */
+  path?: string;
 };
 
 /**
- * An `ExpansionMap` contains destructured information of a descritptor expression.
+ * An `ExpansionMap` contains destructured information of a descriptor expression.
  *
  * For example, this descriptor `sh(wsh(andor(pk(0252972572d465d016d4c501887b8df303eee3ed602c056b1eb09260dfa0da0ab2),older(8640),pk([d34db33f/49'/0'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra/1/2/3/4/*))))` has the following
  * `expandedExpression`: `sh(wsh(andor(pk(@0),older(8640),pk(@1))))`
@@ -66,7 +100,8 @@ export type KeyInfo = {
  *      keyPath: '/1/2/3/4/*',
  *      originPath: "/49'/0'/0'",
  *      path: "m/49'/0'/0'/1/2/3/4/*",
- *      // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *      // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *      // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *    }
  *  }
  *```
@@ -165,13 +200,18 @@ export type Expansion = {
   tapTreeExpression?: string;
 
   /**
-   * The parsed taproot tree, if any. Only defined for `tr(KEY, TREE)`.
+   * Parsed taproot leaf tree for `tr(KEY, TREE)`, if any.
+   *
+   * Shape:
+   * - Branch nodes: `{ left, right }`
+   * - Leaf nodes: `{ expression: string }`
+   *
    * Example:
-   * ```
+   * ```ts
    * {
    *   left: { expression: 'pk(02aa...)' },
    *   right: {
-   *     left: { expression: 'pk(03bb...)' },
+   *     left: { expression: 'and_v(v:pk(03bb...),older(12960))' },
    *     right: { expression: 'pk(02cc...)' }
    *   }
    * }
@@ -180,29 +220,49 @@ export type Expansion = {
   tapTree?: TapTreeNode;
 
   /**
-   * The compiled taproot tree metadata, if any. Only defined for `tr(KEY, TREE)`.
-   * Same as tapTree, but each leaf includes:
+   * Compiled taproot leaf metadata tree for `tr(KEY, TREE)`, if any.
+   *
+   * Same branch/leaf tree shape as `tapTree`, but each leaf is enriched with:
    * - `expandedExpression`: descriptor-level expanded leaf expression
-   * - optional `expandedMiniscript`: miniscript-expanded leaf (when applicable)
-   * - key expansion map
-   * - compiled tapscript (`tapScript`)
-   * - leaf version.
+   * - optional `expandedMiniscript`: miniscript-expanded leaf
+   * - `expansionMap`: resolved keys for that leaf (`@0`, `@1`, ...)
+   * - `tapScript`: compiled tapscript bytes
+   * - `version`: leaf version (typically tapscript `0xc0`)
    *
    * Note: `@i` placeholders are scoped per leaf, since each leaf is expanded
    * and satisfied independently.
    *
    * Example:
-   * ```
+   * ```ts
    * {
    *   left: {
    *     expression: 'pk(02aa...)',
    *     expandedExpression: 'pk(@0)',
    *     expandedMiniscript: 'pk(@0)',
-   *     expansionMap: ExpansionMap;
-   *     tapScript: Uint8Array;
-   *     version: number;
+   *     expansionMap: {
+   *       '@0': { pubkey: Uint8Array(32), ... }
+   *     },
+   *     tapScript: Uint8Array(...),
+   *     version: 0xc0
    *   },
-   *   right: ....
+   *   right: {
+   *     left: {
+   *       expression: 'and_v(v:pk(03bb...),older(12960))',
+   *       expandedExpression: 'and_v(v:pk(@0),older(12960))',
+   *       expansionMap: { '@0': { pubkey: Uint8Array(32), ... } },
+   *       tapScript: Uint8Array(...),
+   *       version: 0xc0
+   *     },
+   *     right: {
+   *       expression: 'pk(02cc...)',
+   *       expandedExpression: 'pk(@0)',
+   *       expansionMap: { '@0': { pubkey: Uint8Array(32), ... } },
+   *       tapScript: Uint8Array(...),
+   *       version: 0xc0
+   *     }
+   *   }
+   * }
+   * ```
    */
   tapTreeInfo?: TapTreeInfoNode;
 
@@ -247,7 +307,8 @@ export type Expansion = {
  *    keyPath: '/1/2/3/4/*',
  *    originPath: "/49'/0'/0'",
  *    path: "m/49'/0'/0'/1/2/3/4/*",
- *    // Other relevant properties of the type `KeyInfo`: `pubkey`, `ecpair` & `bip32` interfaces, `masterFingerprint`, etc.
+ *    // Other relevant properties of `KeyInfo`: `pubkey`, `ecpair`, `bip32`,
+ *    // `privkey`, `xPub`, `xPrv`, `masterFingerprint`, etc.
  *  }
  * ```
  *

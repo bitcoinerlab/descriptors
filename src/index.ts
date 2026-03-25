@@ -41,7 +41,13 @@ export type {
   Preimage,
   TimeConstraints
 } from './types';
-export type { BitcoinLib, Psbt, Payment, Transaction } from './bitcoinLib';
+export type {
+  TreeNode,
+  TapTreeNode,
+  TapTreeInfoNode,
+  TapLeaf,
+  TapLeafInfo
+} from './tapTree';
 export { networks, type Network } from './networks';
 export {
   DescriptorsFactory,

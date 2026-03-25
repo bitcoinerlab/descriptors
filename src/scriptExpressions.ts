@@ -1,4 +1,4 @@
-import type { BIP32Interface } from './bitcoinLib';
+import type { BIP32InterfaceLike, ScureHDKeyLike } from './bitcoinLib';
 import type { LedgerManager } from './ledger';
 import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
 import { coinTypeFromNetwork } from './networkUtils';
@@ -30,6 +30,15 @@ function standardExpressionsBIP32Maker(
    * - `keyPath="/0/*"`
    * OR
    * - `{change:0, index:'*'}`.
+   *
+   * @param {Object} params - The parameters object.
+   * @param {BIP32InterfaceLike | ScureHDKeyLike} params.masterNode - Root HD node.
+   * Pass a bitcoinjs {@link https://github.com/bitcoinjs/bip32 | `BIP32`} node
+   * or a scure {@link https://github.com/paulmillr/scure-bip32 | `HDKey`}.
+   * @param {number} params.account - BIP32 account index.
+   * @param {number} [params.change] - Branch index (0 receive / 1 change).
+   * @param {number | '*'} [params.index] - Address index or wildcard for ranged descriptors.
+   * @param {string} [params.keyPath] - Full path suffix (`/change/index`) alternative.
    */
   function standardScriptExpressionBIP32({
     masterNode,
@@ -40,7 +49,7 @@ function standardExpressionsBIP32Maker(
     index,
     isPublic = true
   }: {
-    masterNode: BIP32Interface;
+    masterNode: BIP32InterfaceLike | ScureHDKeyLike;
     /** @default networks.bitcoin */
     network?: Network;
     account: number;

@@ -1,8 +1,8 @@
 {
-  "name": "@bitcoinerlab/descriptors",
-  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets.",
+  "name": "@bitcoinerlab/descriptors-core",
+  "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.0.6",
+  "version": "3.1.0",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -13,6 +13,7 @@
     "bitcoin",
     "descriptors",
     "miniscript",
+    "psbt",
     "bitcoinjs",
     "scure",
     "noble"
@@ -26,6 +27,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./bitcoinjs": {
+      "types": "./dist/bitcoinjs.d.ts",
+      "default": "./dist/bitcoinjs.js"
     },
     "./scure": {
       "types": "./dist/scure.d.ts",
@@ -46,8 +51,8 @@
     ]
   },
   "scripts": {
-    "webdocs": "typedoc --options ./node_modules/@bitcoinerlab/configs/webtypedoc.json",
-    "docs": "typedoc --options ./node_modules/@bitcoinerlab/configs/typedoc.json",
+    "webdocs": "typedoc --options ./webtypedoc.json && node ./scripts/postprocess-docs.js ./webdocs",
+    "docs": "typedoc --options ./typedoc.json && node ./scripts/postprocess-docs.js ./docs",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",
@@ -58,21 +63,26 @@
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
     "test:unit": "jest",
     "test:unit:scure": "cross-env BITCOIN_LIB=scure jest",
-    "test:scure": "node test/scureAdapter.js",
-    "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure",
-    "test": "npm run lint && npm run build && npm run test:matrix && npm run test:integration:soft",
-    "testledger": "npm run lint && npm run build && npm run test:integration:ledger",
-    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger"
+    "test:scure-adapter": "node test/scureAdapter.js",
+    "test:integration:soft:scure": "cross-env BITCOIN_LIB=scure bash -c 'npm run test:integration:soft'",
+    "test:integration:ledger:scure": "cross-env BITCOIN_LIB=scure bash -c 'npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\" && echo \"\" && node test/integration/ledger.js'",
+    "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure-adapter && npm run test:integration:soft && npm run test:integration:soft:scure",
+    "test": "npm run lint && npm run build && npm run test:matrix",
+    "test:ledger": "npm run lint && npm run build && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger",
+    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
   },
   "files": [
     "dist"
   ],
   "peerDependencies": {
-    "@ledgerhq/ledger-bitcoin": "^0.3.0",
+    "bitcoinjs-lib": "^7.0.1",
+    "bip32": "^5.0.1",
+    "ecpair": "^3.0.1",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
-    "bitcoinjs-lib": "^7.0.1"
+    "@ledgerhq/ledger-bitcoin": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
@@ -81,10 +91,19 @@
     "bitcoinjs-lib": {
       "optional": true
     },
+    "bip32": {
+      "optional": true
+    },
+    "ecpair": {
+      "optional": true
+    },
     "@scure/btc-signer": {
       "optional": true
     },
     "@scure/base": {
+      "optional": true
+    },
+    "@scure/bip32": {
       "optional": true
     },
     "@noble/curves": {
@@ -96,19 +115,23 @@
     "@babel/preset-env": "^7.29.0",
     "@bitcoinerlab/configs": "^2.0.0",
     "@bitcoinerlab/miniscript-policies": "^1.0.0",
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.0",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
     "@types/lodash.memoize": "^4.1.9",
     "babel-jest": "^30.3.0",
+    "bip32": "^5.0.1",
     "bip39": "^3.0.4",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
     "bitcoinjs-lib": "^7.0.1",
     "cross-env": "^10.1.0",
+    "ecpair": "^3.0.1",
     "jest": "^30.3.0",
     "regtest-client": "^0.2.1",
     "ts-jest": "^29.4.6",
@@ -116,10 +139,7 @@
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@noble/hashes": "^2.0.1",
-    "bip32": "^5.0.1",
-    "ecpair": "^3.0.1",
     "lodash.memoize": "^4.1.2",
     "uint8array-tools": "^0.0.9",
     "varuint-bitcoin": "^2.0.0"

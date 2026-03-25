@@ -1,16 +1,26 @@
 # Bitcoin Descriptors Library
 
-This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-signature, BIP32 and Hardware Wallets.
+This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-key, BIP32 and Hardware Wallets.
+
+This library uses an underlying Bitcoin library for creating, signing & decoding transactions. Users can pick:
+
+- `@bitcoinerlab/descriptors` for the [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) and [bitcoinjs](https://github.com/bitcoinjs) family of libraries: battle-tested and broadly used.
+- `@bitcoinerlab/descriptors-scure` for [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) and the [noble](https://github.com/paulmillr/noble-curves)/[scure](https://github.com/paulmillr/scure-btc-signer) family of libraries: audited, fast and minimal.
+
+Or pick `@bitcoinerlab/descriptors-core` for advanced/manual initialization,
+when you want to wire the underlying Bitcoin library yourself.
 
 ## TL;DR (quick start)
 
 ```bash
-npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @bitcoinerlab/miniscript-policies
+npm install @bitcoinerlab/descriptors @bitcoinerlab/miniscript-policies
 ```
 
 This quick example compiles a timelocked Miniscript policy, creates a descriptor address to fund, then builds, signs, and finalizes a PSBT that spends that funded UTXO and prints the final transaction hex.
 
 ```javascript
+import { ECPair, Output, Psbt, signers } from '@bitcoinerlab/descriptors'; // bitcoinjs-ready package
+
 const ecpair = ECPair.makeRandom(); // Creates a signer for a single-key wallet
 
 // Timelocked policy: signature + relative timelock (older)
@@ -41,6 +51,49 @@ finalizeInput({ psbt });
 console.log('Push this: ' + psbt.extractTransaction().toHex());
 ```
 
+<details>
+  <summary>Click to see the scure variant</summary>
+
+```bash
+npm install @bitcoinerlab/descriptors-scure @bitcoinerlab/miniscript-policies
+```
+
+```typescript
+import { Output, btc, secp256k1, signers } from '@bitcoinerlab/descriptors-scure';
+
+const privKey = btc.utils.randomPrivateKeyBytes();
+const pubkey = secp256k1.getPublicKey(privKey, true);
+
+// Timelocked policy: signature + relative timelock (older)
+const { miniscript } = compilePolicy('and(pk(@bob),older(10))');
+
+const descriptor = `wsh(${miniscript.replace('@bob', toHex(pubkey))})`;
+
+// 1) Build the output description
+const fundedOutput = new Output({ descriptor });
+const address = fundedOutput.getAddress(); // Fund this address
+
+// 2) Prepare transaction input/output
+const psbt = new btc.Transaction();
+
+const txHex = 'FUNDING_TX_HEX'; // hex of the tx that funded the address above
+const vout = 0; // Output index (vout) of that UTXO within FUNDING_TX_HEX
+const finalizeInput = fundedOutput.updatePsbtAsInput({ psbt, txHex, vout });
+
+const recipient = new Output({
+  descriptor: 'addr(bc1qgw6xanldsz959z45y4dszehx4xkuzf7nfhya8x)'
+});
+recipient.updatePsbtAsOutput({ psbt, value: 10000n }); // input covers this+fees
+
+// 3) Sign and finalize
+signers.signPrivKey({ psbt, privKey });
+finalizeInput({ psbt });
+
+console.log('Push this: ' + psbt.hex);
+```
+
+</details>
+
 ## Features
 
 - Parses and creates [Bitcoin Descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) (including those based on the [Miniscript language](https://bitcoinerlab.com/modules/miniscript)).
@@ -50,7 +103,7 @@ console.log('Push this: ' + psbt.extractTransaction().toHex());
 
 ### Version Compatibility
 
-Starting in `3.x`, this library is aligned with the modern bitcoinjs stack (`bitcoinjs-lib 7.x`).
+Starting in `3.x`, `@bitcoinerlab/descriptors` is aligned with the modern bitcoinjs stack (`bitcoinjs-lib 7.x`).
 
 In practical terms, this means:
 
@@ -58,7 +111,11 @@ In practical terms, this means:
 - satoshi values are represented as `bigint`.
 
 If you need older bitcoinjs versions, keep using `@bitcoinerlab/descriptors 2.x`.
-If you want Taproot trees (`tr(KEY,TREE)`), use `3.x`.
+If you want Taproot trees (`tr(KEY,TREE)`), use `3.x+`.
+
+Starting in `3.1.x`, scure users can install
+`@bitcoinerlab/descriptors-scure`. For advanced/custom backend wiring, use
+`@bitcoinerlab/descriptors-core`.
 
 ## Concepts
 
@@ -91,54 +148,35 @@ Before we dive in, it's worth mentioning that we have several comprehensive guid
 
 Furthermore, we've meticulously documented our API. For an in-depth look into Classes, functions and types, head over [here](https://bitcoinerlab.com/modules/descriptors/api).
 
-To use this library (and accompanying libraries), you can install them using:
+For most users, install the package that matches your preferred Bitcoin library.
+Use `@bitcoinerlab/descriptors-core` only if you want to wire the backend manually.
+
+Bitcoinjs backend:
 
 ```bash
 npm install @bitcoinerlab/descriptors
-npm install @bitcoinerlab/miniscript
-npm install @bitcoinerlab/secp256k1
 ```
 
-### Choosing a Bitcoin Backend
-
-This library supports two Bitcoin backends. You only need to install one:
-
-#### Option A: bitcoinjs-lib (default)
+Scure/noble backend:
 
 ```bash
-npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 bitcoinjs-lib@7
+npm install @bitcoinerlab/descriptors-scure
 ```
 
-```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
-const { Output, expand } = DescriptorsFactory(ecc);
-```
-
-This is the traditional backend and the one used throughout most of this README.
-
-#### Option B: @scure/btc-signer
+If you plan to compile policy strings into Miniscript in your app, also install:
 
 ```bash
-npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @scure/btc-signer@2 @noble/curves@2 @scure/base@2
+npm install @bitcoinerlab/miniscript-policies
 ```
 
-```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
-import { createScureLib } from '@bitcoinerlab/descriptors/scure';
+The examples below keep the bitcoinjs stack visible by default. When
+backend-specific code differs, a collapsible scure variant is shown right
+below.
 
-const lib = createScureLib(ecc);
-const { Output, expand } = DescriptorsFactory(lib);
-const psbt = new lib.Psbt();
-const tx = psbt.raw; // access the native @scure/btc-signer Transaction
-```
-
-The `@scure/btc-signer` backend uses audited, minimal libraries from the [noble/scure](https://paulmillr.com/noble/) family. Once you have the `Output` class, the descriptor and signing APIs are identical regardless of which backend you chose.
+If you want to manage backend dependencies yourself, use
+`@bitcoinerlab/descriptors-core`.
 
 For a minimal end-to-end scure example, see [`test/integration/scure.ts`](test/integration/scure.ts).
-
-Both backends are declared as optional peer dependencies, so install only the backend you plan to use.
 
 The library can be split into four main parts:
 
@@ -149,13 +187,48 @@ The library can be split into four main parts:
 
 ### Output class
 
-The `Output` class is dynamically created by providing a cryptographic secp256k1 engine (or a full `BitcoinLib` adapter — see [Choosing a Bitcoin Backend](#choosing-a-bitcoin-backend)):
+For normal usage, import `Output` directly from the preset package you chose.
+
+```javascript
+import { Output } from '@bitcoinerlab/descriptors'; // bitcoinjs-ready package
+```
+
+```javascript
+import { Output } from '@bitcoinerlab/descriptors-scure'; // scure-ready package
+```
+
+<details>
+  <summary>Advanced initialization using @bitcoinerlab/descriptors-core</summary>
+
+Use `@bitcoinerlab/descriptors-core` only if you want explicit backend binding.
+
+Bitcoinjs-style core setup:
+
+```bash
+npm install @bitcoinerlab/descriptors-core @bitcoinerlab/secp256k1 bitcoinjs-lib@7 bip32@5 ecpair@3
+```
 
 ```javascript
 import * as ecc from '@bitcoinerlab/secp256k1';
-import * as descriptors from '@bitcoinerlab/descriptors';
-const { Output } = descriptors.DescriptorsFactory(ecc);
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+
+const { Output } = DescriptorsFactory(ecc);
 ```
+
+Scure-style core setup:
+
+```bash
+npm install @bitcoinerlab/descriptors-core @scure/btc-signer@2 @scure/bip32@2 @noble/curves@2 @scure/base@2
+```
+
+```javascript
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
+
+const { Output } = DescriptorsFactory(createScureLib());
+```
+
+</details>
 
 Once set up, you can obtain an instance for an output, described by a descriptor such as a `wpkh`, as follows:
 
@@ -168,14 +241,14 @@ const wpkhOutput = new Output({
 
 For advanced spend-path control (for example `signersPubKeys`, `taprootSpendPath`, and `tapLeaf`), see [Spending-path selection: from WSH Miniscript to Taproot](#spending-path-selection-from-wsh-miniscript-to-taproot).
 
-Detailed information about constructor parameters can be found in [the API documentation](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#constructor) and in [this Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665).
+Detailed information about constructor parameters can be found in [the API documentation](https://bitcoinerlab.com/modules/descriptors/api/classes/Output.html#constructor) and in [this Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665).
 
 Some commonly used constructor parameters are:
 
 - `index`: for ranged descriptors ending in `*`.
 - `change`: for multipath key expressions such as `/**` or `/<0;1>/*`. For example, in `/<0;1>/*`, use `change: 0` or `change: 1`.
 
-The `Output` class [offers various helpful methods](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html), including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
+The `Output` class [offers various helpful methods](https://bitcoinerlab.com/modules/descriptors/api/classes/Output.html), including `getAddress()`, which returns the address associated with the descriptor, `getScriptPubKey()`, which returns the `scriptPubKey` for the descriptor, `expand()`, which decomposes a descriptor into its elemental parts, `updatePsbtAsInput()` and `updatePsbtAsOutput()`.
 
 The library supports a wide range of descriptor types, including:
 
@@ -201,18 +274,24 @@ The `updatePsbtAsInput()` method is an essential part of the library, responsibl
 To call `updatePsbtAsInput()`, use the following syntax:
 
 ```javascript
-import { Psbt } from 'bitcoinjs-lib';
+import { Psbt } from '@bitcoinerlab/descriptors';
 const psbt = new Psbt();
 const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout, rbf });
 ```
 
-Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
-
-If you are using the scure backend, create the PSBT-compatible object from the backend itself (using the `lib` created above):
+<details>
+  <summary>Click to see the scure variant</summary>
 
 ```javascript
-const psbt = new lib.Psbt();
+import { btc } from '@bitcoinerlab/descriptors-scure';
+
+const psbt = new btc.Transaction();
+const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout, rbf });
 ```
+
+</details>
+
+Here, `psbt` refers to either a [bitcoinjs-lib `Psbt` class](https://github.com/bitcoinjs/bitcoinjs-lib) instance or an `@scure/btc-signer` `Transaction`, depending on the backend you chose. The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
 
 The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling `inputFinalizer()`. Detailed [explanations on the `inputFinalizer` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 
@@ -225,14 +304,15 @@ const recipientOutput = new Output({
 recipientOutput.updatePsbtAsOutput({ psbt, value: 10000n });
 ```
 
-For further information on using the `Output` class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. For specific details on the methods, refer directly to [the API](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html).
+For further information on using the `Output` class, refer to the [comprehensive guides](https://bitcoinerlab.com/guides) that offer explanations and playgrounds to help learn the module. For specific details on the methods, refer directly to [the API](https://bitcoinerlab.com/modules/descriptors/api/classes/Output.html).
 
 #### Parsing Descriptors with `expand()`
 
 Most applications do not need `expand()` for normal receive/spend flows. It is mainly useful for debugging and introspection (for example, checking expanded expressions, key mappings, scripts, and parsed metadata).
 
 ```javascript
-const { expand } = descriptors.DescriptorsFactory(ecc);
+import { expand } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
+
 const info = expand({ descriptor });
 ```
 
@@ -251,12 +331,9 @@ Example with two BIP32-derived keys and one preferred signer:
 
 ```javascript
 import { randomBytes } from 'crypto';
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory, keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
+import { BIP32, Output, keyExpressionBIP32 } from '@bitcoinerlab/descriptors';
 
-const { Output, BIP32 } = DescriptorsFactory(ecc);
-
-const masterNode = BIP32.fromSeed(randomBytes(64));
+const masterNode = BIP32.fromSeed(randomBytes(32));
 
 const originPath = "/84'/0'/0'";
 
@@ -266,7 +343,7 @@ const keyPathB = '/0/1';
 const keyExprA = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathA });
 const keyExprB = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathB });
 
-const signerPubKeyA = masterNode.derivePath( `m${originPath}${keyPathA}`).publicKey;
+const signerPubKeyA = masterNode.derivePath(`m${originPath}${keyPathA}`).publicKey;
 
 // Two possible branches:
 // - branch 1: signature by keyA + older(10)
@@ -276,6 +353,33 @@ const output = new Output({
   signersPubKeys: [signerPubKeyA] // choose the keyA (timelock branch)
 });
 ```
+
+<details>
+  <summary>Click to see the scure variant</summary>
+
+```javascript
+import { randomBytes } from '@noble/hashes/utils.js';
+import { HDKey, Output, keyExpressionBIP32 } from '@bitcoinerlab/descriptors-scure';
+
+const masterNode = HDKey.fromMasterSeed(randomBytes(32));
+
+const originPath = "/84'/0'/0'";
+
+const keyPathA = '/0/0';
+const keyPathB = '/0/1';
+
+const keyExprA = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathA });
+const keyExprB = keyExpressionBIP32({ masterNode, originPath, keyPath: keyPathB });
+
+const signerPubKeyA = masterNode.derive(`m${originPath}${keyPathA}`).publicKey;
+
+const output = new Output({
+  descriptor: `wsh(andor(pk(${keyExprA}),older(10),pk(${keyExprB})))`,
+  signersPubKeys: [signerPubKeyA]
+});
+```
+
+</details>
 
 Taproot uses the same idea. For `tr(KEY,TREE)`, `signersPubKeys` helps determine which leaves are satisfiable and which satisfiable path is more optimal. In addition, Taproot provides two optional controls:
 
@@ -309,26 +413,48 @@ For a focused walkthrough of constructor choices (including `signersPubKeys`) an
 
 ### Signers and Finalizers
 
-This library encompasses a PSBT finalizer as well as three distinct signers: ECPair for single-signatures, BIP32 and Ledger (specifically crafted for Ledger Wallet devices, with upcoming support for other devices planned).
+This library encompasses a PSBT finalizer as well as signer helpers for single-key, BIP32 and Ledger flows.
 
 To incorporate these functionalities, use the following import statement:
 
 ```javascript
-import { signers } from '@bitcoinerlab/descriptors';
+import { signers } from '@bitcoinerlab/descriptors' // or '@bitcoinerlab/descriptors-scure' for scure
 ```
 
 For signing operations, utilize the methods provided by the [`signers`](https://bitcoinerlab.com/modules/descriptors/api/modules/signers.html):
 
 ```javascript
+// `psbt` here is a bitcoinjs-lib `Psbt` (for example: `const psbt = new Psbt()`)
+
 // For Ledger
 await signers.signLedger({ psbt, ledgerManager });
 
 // For BIP32 - https://github.com/bitcoinjs/bip32
-signers.signBIP32({ psbt, masterNode });
+signers.signBIP32({ psbt, masterNode }); // Here, `masterNode` is a bitcoinjs `BIP32Interface` (see examples above)
 
 // For ECPair - https://github.com/bitcoinjs/ecpair
-signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is an instance of the bitcoinjs-lib ECPairInterface
+signers.signECPair({ psbt, ecpair }); // Here, `ecpair` is a bitcoinjs `ECPairInterface`
 ```
+
+<details>
+  <summary>Click to see the scure variant</summary>
+
+```javascript
+// `psbt` here is an `@scure/btc-signer` `Transaction`
+// (for example: `const psbt = new btc.Transaction()`)
+
+// For BIP32 with @scure/bip32
+signers.signBIP32({ psbt, masterNode }); // Here, `masterNode` is an `HDKey` (see examples above)
+
+// For raw private keys
+signers.signPrivKey({ psbt, privKey }); // Here, `privKey` is a 32-byte `Uint8Array`
+signers.signInputPrivKey({ psbt, index: 0, privKey }); // Same `privKey` type as above
+
+// For Ledger
+await signers.signLedger({ psbt, ledgerManager }); // Again, `masterNode` is an `HDKey`
+```
+
+</details>
 
 Detailed information on Ledger integration will be provided in subsequent sections.
 
@@ -336,7 +462,7 @@ Detailed information on Ledger integration will be provided in subsequent sectio
 
 #### Finalizing the `psbt`
 
-When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerlab.com/modules/descriptors/api/classes/_Internal_.Output.html#updatePsbtAsInput) plays a key role. When invoked, the `output.updatePsbtAsInput()` sets up the `psbt` by designating the output as an input and, if required, adjusts the transaction locktime. In addition, it returns a `inputFinalizer` function tailored for this specific `psbt` input.
+When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerlab.com/modules/descriptors/api/classes/Output.html#updatePsbtAsInput) plays a key role. When invoked, the `output.updatePsbtAsInput()` sets up the `psbt` by designating the output as an input and, if required, adjusts the transaction locktime. In addition, it returns a `inputFinalizer` function tailored for this specific `psbt` input.
 
 ##### Procedure
 
@@ -356,7 +482,7 @@ When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerla
 
 - The finalizer function returned from `updatePsbtAsInput` adds the necessary unlocking script (`scriptWitness` or `scriptSig`) that satisfies the `Output`'s spending conditions. Remember, both `scriptSig` and `scriptWitness` contain signatures. Ensure that all necessary signing operations are completed before finalizing.
 
-- When using `updatePsbtAsInput`, the `txHex` parameter is crucial. For Segwit inputs, you can choose to pass `txId` and `value` instead of `txHex` (`value` is `bigint` in v3). However, ensure the accuracy of the `value` to avoid potential fee attacks. When unsure, use `txHex` and skip `txId` and `value`.
+- When using `updatePsbtAsInput`, the `txHex` parameter is crucial. For Segwit inputs, you can choose to pass `txId` and `value` instead of `txHex`. However, ensure the accuracy of the `value` to avoid potential fee attacks. When unsure, use `txHex` and skip `txId` and `value`.
 
 - Hardware wallets require the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
 
@@ -365,10 +491,10 @@ When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerla
 This library also provides a series of function helpers designed to streamline the generation of `descriptor` strings. These strings can serve as input parameters in the `Output` class constructor. These helpers are nested within the `scriptExpressions` module. You can import them as illustrated below:
 
 ```javascript
-import { scriptExpressions } from '@bitcoinerlab/descriptors';
+import { scriptExpressions } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
 ```
 
-Within the `scriptExpressions` module, there are functions designed to generate descriptors for commonly used scripts. Some examples include `pkhBIP32()`, `shWpkhBIP32()`, `wpkhBIP32()`, `pkhLedger()`, `shWpkhLedger()` and `wpkhLedger()`. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html#expand) for a detailed list and further information.
+Within the `scriptExpressions` module, there are functions designed to generate descriptors for commonly used scripts. Some examples include `pkhBIP32()`, `shWpkhBIP32()`, `wpkhBIP32()`, `pkhLedger()`, `shWpkhLedger()` and `wpkhLedger()`. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html) for a detailed list and further information.
 
 When using BIP32-based descriptors, the following parameters are required for the `scriptExpressions` functions:
 
@@ -384,6 +510,23 @@ pkhBIP32(params: {
 })
 ```
 
+<details>
+  <summary>Click to see the scure variant</summary>
+
+```javascript
+pkhBIP32(params: {
+  masterNode: HDKey; // @scure/bip32 - https://github.com/paulmillr/scure-bip32
+  network?: Network;
+  account: number;
+  change?: number | undefined;
+  index?: number | undefined | '*';
+  keyPath?: string;
+  isPublic?: boolean;
+})
+```
+
+</details>
+
 For functions suffixed with _Ledger_ (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration will be provided in the following section.
 
 The `keyExpressions` category includes functions that generate string representations of key expressions for public keys.
@@ -391,7 +534,7 @@ The `keyExpressions` category includes functions that generate string representa
 This library includes the following `keyExpressions`: [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) and [`keyExpressionLedger`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionLedger.html). They can be imported as follows:
 
 ```javascript
-import { keyExpressionBIP32, keyExpressionLedger } from '@bitcoinerlab/descriptors';
+import { keyExpressionBIP32, keyExpressionLedger } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
 ```
 
 The parameters required for these functions are:
@@ -407,7 +550,23 @@ function keyExpressionBIP32({
 });
 ```
 
-For the `keyExpressionLedger` function, you'd use `ledgerManager` instead of `masterNode`.
+<details>
+  <summary>Click to see the scure variant</summary>
+
+```javascript
+function keyExpressionBIP32({
+  masterNode: HDKey; // @scure/bip32 - https://github.com/paulmillr/scure-bip32
+  originPath: string;
+  change?: number | undefined;
+  index?: number | undefined | '*';
+  keyPath?: string | undefined;
+  isPublic?: boolean;
+});
+```
+
+</details>
+
+For the `keyExpressionLedger` function, use `ledgerManager` instead of `masterNode`.
 
 Both functions will generate strings that fully define BIP32 keys. For example:
 
@@ -434,7 +593,7 @@ For Ledger device signing, import the necessary functions as follows:
 ```javascript
 import Transport from '@ledgerhq/hw-transport-node-hid'; //or hw-transport-web-hid, for web
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-import { ledger } from '@bitcoinerlab/descriptors';
+import { Output, ledger, networks } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
 ```
 
 Then, use the following code to assert that the Ledger app is running Bitcoin Test version 2.1.0 or higher and to create a new Ledger client:
@@ -445,7 +604,12 @@ const transport = await Transport.create();
 await ledger.assertLedgerApp({ transport, name: 'Bitcoin Test', minVersion: '2.1.0' });
 
 const ledgerClient = new AppClient(transport);
-const ledgerManager = { ledgerClient, ledgerState: {}, ecc, network };
+const ledgerManager = {
+  ledgerClient,
+  ledgerState: {},
+  Output,
+  network: networks.testnet
+};
 ```
 
 Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).

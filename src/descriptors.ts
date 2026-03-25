@@ -4,10 +4,13 @@
 import memoize from 'lodash.memoize'; //TODO: make sure this is propoely used
 import type {
   Payment,
-  Psbt,
   BitcoinLib,
   ECPairAPI,
-  BIP32API
+  ECPairAPILike,
+  BIP32API,
+  BIP32APILike,
+  PsbtLike,
+  ScureTransactionLike
 } from './bitcoinLib';
 import {
   tapleafHash,
@@ -25,7 +28,7 @@ import type {
   KeyExpressionParser
 } from './types';
 
-import { finalScriptsFuncFactory, addPsbtInput } from './psbt';
+import { finalScriptsFuncFactory, addPsbtInput, toPsbt } from './psbt';
 import { DescriptorChecksum } from './checksum';
 import { type Network, networks } from './networks';
 
@@ -63,6 +66,56 @@ import {
 
 const ECDSA_FAKE_SIGNATURE_SIZE = 72;
 const TAPROOT_FAKE_SIGNATURE_SIZE = 64;
+
+/** Detect if the adapter was created with native bitcoinjs key factories. */
+function isBitcoinJsLib(lib: BitcoinLib): boolean {
+  const BITCOINJS_KEY_PROBE_PRIVKEY = Uint8Array.from([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1
+  ]);
+  const BITCOINJS_KEY_PROBE_SEED = new Uint8Array(32).fill(1);
+  try {
+    const maybeECPairWithFromPrivateKey = lib.ECPair as ECPairAPILike & {
+      fromPrivateKey?: (privateKey: Uint8Array) => unknown;
+    };
+    const maybeBIP32WithFromSeed = lib.BIP32 as BIP32APILike & {
+      fromSeed?: (seed: Uint8Array, network?: Network) => unknown;
+    };
+    if (typeof maybeECPairWithFromPrivateKey.fromPrivateKey !== 'function')
+      return false;
+    if (typeof maybeBIP32WithFromSeed.fromSeed !== 'function') return false;
+
+    const ecpair = maybeECPairWithFromPrivateKey.fromPrivateKey(
+      BITCOINJS_KEY_PROBE_PRIVKEY
+    ) as { toWIF?: unknown; compressed?: unknown };
+    const bip32 = maybeBIP32WithFromSeed.fromSeed(
+      BITCOINJS_KEY_PROBE_SEED,
+      networks.regtest
+    ) as { chainCode?: unknown; toWIF?: unknown; depth?: unknown };
+    const looksLikeNativeECPair =
+      typeof ecpair.toWIF === 'function' &&
+      typeof ecpair.compressed === 'boolean';
+    const looksLikeNativeBIP32 =
+      bip32.chainCode instanceof Uint8Array &&
+      typeof bip32.toWIF === 'function' &&
+      typeof bip32.depth === 'number';
+    return looksLikeNativeECPair && looksLikeNativeBIP32;
+  } catch {
+    return false;
+  }
+}
+
+function unsupportedKeyApi<T extends object>(apiName: 'ECPair' | 'BIP32'): T {
+  const msg =
+    `Error: ${apiName} is unavailable with this backend. ` +
+    `You initialized @bitcoinerlab/descriptors with a non-bitcoinjs lib. ` +
+    `Use DescriptorsFactory(ecc) or createBitcoinjsLib(ecc) for full bitcoinjs ${apiName} APIs.`;
+  return new Proxy({} as T, {
+    get(_target, prop) {
+      throw new Error(`${msg} Tried to access ${apiName}.${String(prop)}.`);
+    }
+  });
+}
 
 function vectorSize(someVector: Uint8Array[]): number {
   const length = someVector.length;
@@ -217,49 +270,99 @@ function parseTrExpression(expression: string): {
 }
 
 /**
- * Constructs the necessary functions and classes for working with descriptors
- * using an external elliptic curve (ecc) library.
+ * Constructs the necessary functions and classes for working with descriptors,
+ * using either an external elliptic curve (`ecc`) library or a core Bitcoin
+ * library (e.g.
+ * [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) or
+ * [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer)).
+ *
+ * Note:
+ * Most users do not need to call `DescriptorsFactory(...)` directly.
+ * - `@bitcoinerlab/descriptors` already provides the bitcoinjs-ready defaults.
+ * - `@bitcoinerlab/descriptors-scure` already provides the scure-ready defaults.
+ *
+ * This factory is mainly useful for:
+ * - backwards compatibility with pre-`3.1.x` bitcoinjs usage, and
+ * - advanced `@bitcoinerlab/descriptors-core` use cases where you want to bind
+ *   a specific `TinySecp256k1Interface` or a custom `BitcoinLib`.
+ *
+ * In the default bitcoinjs package, the implicit `TinySecp256k1Interface` is
+ * `@bitcoinerlab/secp256k1`.
  *
  * Notably, it returns the {@link _Internal_.Output | `Output`} class, which
- * provides methods to create, sign, and finalize PSBTs based on descriptor
+ * provides methods to create, sign, and finalize transactions from descriptor
  * expressions.
  *
- * The Factory also returns utility methods like `expand` (detailed below)
+ * The factory also returns utility methods like `expand` (detailed below)
  * and `parseKeyExpression` (see {@link KeyExpressionParser}).
  *
- * Additionally, for convenience, the function returns `BIP32` and `ECPair`.
- * These are {@link https://github.com/bitcoinjs bitcoinjs-lib} classes designed
- * for managing {@link https://github.com/bitcoinjs/bip32 | `BIP32`} keys and
- * public/private key pairs:
- * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}, respectively.
+ * Additionally, for convenience, the factory returns
+ * {@link https://github.com/bitcoinjs/bip32 | `BIP32`} and
+ * {@link https://github.com/bitcoinjs/ecpair | `ECPair`}.
+ * In bitcoinjs mode, these are the already initialized bitcoinjs factories,
+ * equivalent to `BIP32 = BIP32Factory(ecc)` and `ECPair = ECPairFactory(ecc)`.
+ * When using scure, prefer scure-native key types
+ * ({@link https://github.com/paulmillr/scure-bip32 | `HDKey`} and
+ * `Uint8Array` for private keys), which do not require key-factory initialization.
  *
- * @param {Object} eccOrBitcoinLib - An object with elliptic curve operations,
- * such as [tiny-secp256k1](https://github.com/bitcoinjs/tiny-secp256k1) or
- * [@bitcoinerlab/secp256k1](https://github.com/bitcoinerlab/secp256k1).
+ * @param {TinySecp256k1Interface | BitcoinLib} eccOrBitcoinLib - The core
+ * Bitcoin library input used by the factory.
+ *
+ * You can pass this parameter in three common ways:
+ *
+ * ```ts
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+ * import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
+ *
+ * const { Output } = DescriptorsFactory(createScureLib());
+ * ```
+ *
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+ * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
+ *
+ * const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
+ * ```
+ *
+ * ```ts
+ * import * as ecc from '@bitcoinerlab/secp256k1';
+ * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+ *
+ * // Equivalent to `DescriptorsFactory(createBitcoinjsLib(ecc))`, but implicit.
+ * const { Output } = DescriptorsFactory(ecc);
+ * ```
  */
-export function DescriptorsFactory<
-  T extends TinySecp256k1Interface | BitcoinLib
->(eccOrBitcoinLib: T) {
+export function DescriptorsFactory(
+  eccOrBitcoinLib: TinySecp256k1Interface | BitcoinLib
+) {
   // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let bitcoinLib: BitcoinLib;
-  let ecc: TinySecp256k1Interface;
   if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
     bitcoinLib = eccOrBitcoinLib;
-    ecc = bitcoinLib.ecc;
   } else {
-    ecc = eccOrBitcoinLib;
-    // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createBitcoinjsLib } = require('./adapters/bitcoinjs');
-    bitcoinLib = createBitcoinjsLib(ecc);
+    let createBitcoinjsLib: (ecc: TinySecp256k1Interface) => BitcoinLib;
+    try {
+      // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      ({ createBitcoinjsLib } = require('./adapters/bitcoinjs'));
+    } catch (error) {
+      throw new Error(
+        'Could not load the bitcoinjs backend. Install bitcoinjs-lib, bip32 and ecpair ' +
+          'as peer dependencies, or use the scure backend with createScureLib(). ' +
+          'Original error: ' +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
+    bitcoinLib = createBitcoinjsLib(eccOrBitcoinLib);
   }
   const { payments, script: scriptLib } = bitcoinLib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const address = bitcoinLib.address;
   const Transaction = bitcoinLib.Transaction;
-  const BIP32: BIP32API = bitcoinLib.BIP32;
-  const ECPair: ECPairAPI = bitcoinLib.ECPair;
+  const BIP32 = bitcoinLib.BIP32; //This is in fact BIP32APILike
+  const ECPair = bitcoinLib.ECPair; //This is in fact ECPairAPILike
 
   const signatureValidator = (
     pubkey: Uint8Array,
@@ -268,12 +371,7 @@ export function DescriptorsFactory<
   ): boolean => {
     if (pubkey.length === 32) {
       //x-only
-      if (!ecc.verifySchnorr) {
-        throw new Error(
-          'TinySecp256k1Interface is not initialized properly: verifySchnorr is missing.'
-        );
-      }
-      return ecc.verifySchnorr(msghash, pubkey, signature);
+      return bitcoinLib.verifySchnorr(msghash, pubkey, signature);
     } else {
       return ECPair.fromPublicKey(pubkey).verify(msghash, signature);
     }
@@ -2012,7 +2110,11 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * all signing operations before calling the finalizer.
      * The finalizer has this signature:
      *
-     * `( { psbt, validate = true } : { psbt: Psbt; validate: boolean | undefined } ) => void`
+     * `( { psbt, validate = true } : { psbt: PsbtLike | ScureTransactionLike; validate: boolean | undefined } ) => void`
+     *
+     * where `psbt` can be either a
+     * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+     * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
      *
      */
     updatePsbtAsInput({
@@ -2023,13 +2125,16 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
       vout, //vector output index
       rbf = true
     }: {
-      psbt: Psbt;
+      psbt: PsbtLike | ScureTransactionLike;
       txHex?: string;
       txId?: string;
       value?: bigint;
       vout: number;
       rbf?: boolean;
     }) {
+      // Normalize to Psbt interface
+      psbt = toPsbt(psbt);
+
       if (value !== undefined && typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value !== undefined && value < 0n)
@@ -2115,13 +2220,15 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         psbt,
         validate = true
       }: {
-        psbt: Psbt;
+        psbt: PsbtLike | ScureTransactionLike;
         /** Runs further test on the validity of the signatures.
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
          * @default true */
         validate?: boolean | undefined;
       }) => {
+        // Normalize to Psbt interface for finalization
+        psbt = toPsbt(psbt);
         if (
           validate &&
           !psbt.validateSignaturesOfInput(index, signatureValidator)
@@ -2211,17 +2318,35 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * Adds this output as an output of the provided `psbt` with the given
      * value.
      * @param params - The parameters for the method.
-     * @param params.psbt - The Partially Signed Bitcoin Transaction.
+     * @param params.psbt - Either a
+     * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
+     * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
      * @param params.value - The value for the output in satoshis.
      */
-    updatePsbtAsOutput({ psbt, value }: { psbt: Psbt; value: bigint }) {
+    updatePsbtAsOutput({
+      psbt,
+      value
+    }: {
+      psbt: PsbtLike | ScureTransactionLike;
+      value: bigint;
+    }) {
       if (typeof value !== 'bigint')
         throw new Error(`Error: value must be a bigint`);
       if (value < 0n) throw new Error(`Error: value must be >= 0n`);
+      // Normalize to Psbt interface
+      psbt = toPsbt(psbt);
       psbt.addOutput({ script: this.getScriptPubKey(), value });
     }
 
-    #assertPsbtInput({ psbt, index }: { psbt: Psbt; index: number }): void {
+    #assertPsbtInput({
+      psbt,
+      index
+    }: {
+      psbt: PsbtLike | ScureTransactionLike;
+      index: number;
+    }): void {
+      // Normalize to Psbt interface
+      psbt = toPsbt(psbt);
       const input = psbt.data.inputs[index];
       const txInput = psbt.txInputs[index];
       if (!input || !txInput)
@@ -2299,27 +2424,23 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
     }
   }
 
+  const nativeKeys = isBitcoinJsLib(bitcoinLib);
+
   return {
     Output,
     parseKeyExpression,
     expand,
-    ECPair,
-    BIP32
-
-    //Psbt: bitcoinLib.Psbt // -> already returned by createScureLib
-  } as unknown as {
-    Output: typeof Output;
-    parseKeyExpression: typeof parseKeyExpression;
-    expand: typeof expand;
-    ECPair: typeof ECPair;
-    BIP32: typeof BIP32;
-
-    ////which type is Psbt?
-    //Psbt: T extends BitcoinLib
-    //  ? //if the param passed for eccOrBitcoinLib === bitcoinLib ->
-    //    T['Psbt'] //the type of the param itself
-    //  : //if the parm for eccOrBitcoinLib === ecc ->
-    //    typeof import('bitcoinjs-lib').Psbt; // the bitcoinjs-lib Psbt type
+    ECPair: nativeKeys
+      ? // Expose full ECPairAPI typing only with native bitcoinjs adapter.
+        // In this branch ECPair comes from the real 'ecpair' package.
+        (ECPair as ECPairAPI)
+      : // Non-bitcoinjs adapters only implement the subset used internally.
+        // Expose a throwing proxy to prevent accidental external usage.
+        unsupportedKeyApi<ECPairAPI>('ECPair'),
+    // Same behavior for BIP32: full API only for native bitcoinjs adapter.
+    BIP32: nativeKeys
+      ? (BIP32 as BIP32API)
+      : unsupportedKeyApi<BIP32API>('BIP32')
   };
 }
 
@@ -2329,7 +2450,7 @@ type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
  * creates and returns the {@link _Internal_.Output | `Output`} class.
  * This class is specialized for the provided `TinySecp256k1Interface`.
  * Use `OutputInstance` to declare instances for this class:
- * `const: OutputInstance = new Output();`
+ * `const output: OutputInstance = new Output();`
  *
  * See the {@link _Internal_.Output | documentation for the internal `Output`
  * class} for a complete list of available methods.

@@ -2,6 +2,13 @@
 
 console.log('Ledger taproot integration tests');
 
+// This test inspects bitcoinjs-lib's BIP174 PSBT internals which are not
+// available in @scure/btc-signer. Exit early if running with scure backend.
+if (process.env['BITCOIN_LIB'] === 'scure') {
+  console.log('SKIP: This test requires bitcoinjs-lib PSBT internals');
+  process.exit(0);
+}
+
 import Transport from '@ledgerhq/hw-transport-node-hid';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { mnemonicToSeedSync } from 'bip39';
@@ -16,7 +23,6 @@ import {
   scriptExpressions,
   signers
 } from '../../dist/';
-import { getBitcoinLib } from '../getBitcoinLib';
 
 const regtestUtils = new RegtestUtils();
 
@@ -26,8 +32,7 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const bitcoinLib = getBitcoinLib();
-const { Output, BIP32 } = DescriptorsFactory(bitcoinLib);
+const { Output, BIP32 } = DescriptorsFactory(ecc);
 const { signLedger } = signers;
 const { trLedger } = scriptExpressions;
 const { registerLedgerWallet, assertLedgerApp } = ledger;
@@ -47,7 +52,7 @@ async function runSpendScenario({
   ledgerManager: {
     ledgerClient: AppClient;
     ledgerState: Record<string, unknown>;
-    ecc: typeof ecc;
+    Output: typeof Output;
     network: typeof NETWORK;
   };
   expectScriptPath: boolean;
@@ -137,7 +142,7 @@ async function runSpendScenario({
   const ledgerManager = {
     ledgerClient,
     ledgerState: {},
-    ecc,
+    Output,
     network: NETWORK
   };
 

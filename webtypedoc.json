@@ -1,0 +1,7 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "extends": "./typedoc.json",
+  "customCss": "./node_modules/@bitcoinerlab/configs/webtypedoc.css",
+  "readme": "none",
+  "out": "./webdocs"
+}

@@ -1,14 +1,11 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { mnemonicToSeedSync } from 'bip39';
-import { networks } from 'bitcoinjs-lib';
-import type { Network } from 'bitcoinjs-lib';
-import { DescriptorsFactory, scriptExpressions } from '../dist/';
-import { getBitcoinLib } from './getBitcoinLib';
-
-const bitcoinLib = getBitcoinLib();
-const { BIP32 } = DescriptorsFactory(bitcoinLib);
+import { networks } from '../dist';
+import type { Network } from '../dist';
+import { scriptExpressions } from '../dist/';
+import { createMasterNode } from './helpers/keys';
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -25,10 +22,7 @@ function cloneNetwork(network: Network): Network {
 describe('scriptExpressions network detection', () => {
   test('wpkhBIP32 uses coin type 0 for mainnet network clone', () => {
     const mainnetClone = cloneNetwork(networks.bitcoin);
-    const masterNode = BIP32.fromSeed(
-      mnemonicToSeedSync(MNEMONIC),
-      networks.bitcoin
-    );
+    const masterNode = createMasterNode(MNEMONIC, networks.bitcoin, isScure);
 
     const descriptor = scriptExpressions.wpkhBIP32({
       masterNode,
@@ -43,10 +37,7 @@ describe('scriptExpressions network detection', () => {
 
   test('wpkhBIP32 uses coin type 1 for testnet network clone', () => {
     const testnetClone = cloneNetwork(networks.testnet);
-    const masterNode = BIP32.fromSeed(
-      mnemonicToSeedSync(MNEMONIC),
-      networks.testnet
-    );
+    const masterNode = createMasterNode(MNEMONIC, networks.testnet, isScure);
 
     const descriptor = scriptExpressions.wpkhBIP32({
       masterNode,
@@ -61,10 +52,7 @@ describe('scriptExpressions network detection', () => {
 
   test('trBIP32 uses coin type 0 for mainnet network clone', () => {
     const mainnetClone = cloneNetwork(networks.bitcoin);
-    const masterNode = BIP32.fromSeed(
-      mnemonicToSeedSync(MNEMONIC),
-      networks.bitcoin
-    );
+    const masterNode = createMasterNode(MNEMONIC, networks.bitcoin, isScure);
 
     const descriptor = scriptExpressions.trBIP32({
       masterNode,

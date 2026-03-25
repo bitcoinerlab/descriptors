@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks } from 'bitcoinjs-lib';
+import { networks } from '../dist';
 import { DescriptorsFactory } from '../dist';
-import { getBitcoinLib } from './getBitcoinLib';
+import { createScureLib } from '../dist/scure';
+import * as ecc from '@bitcoinerlab/secp256k1';
 
-const bitcoinLib = getBitcoinLib();
-const { Output } = DescriptorsFactory(bitcoinLib);
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
 
 const XPUB_ROOT =
   "[de41e56d/84'/1'/0']tpubDCdxmvzJ5QBjTN8oCjjyT2V58AyZvA1fkmCeZRC75QMoaHcVP2m45Bv3hmnR7ttAwkb2UNYyoXdHVt4gwBqRrJqLUU2JrM43HippxiWpHra";
