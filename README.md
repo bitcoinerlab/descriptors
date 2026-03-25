@@ -358,7 +358,7 @@ const output = new Output({
   <summary>Click to see the scure variant</summary>
 
 ```javascript
-import { randomBytes } from '@noble/hashes/utils.js';
+import { randomBytes } from '@noble/hashes/utils';
 import { HDKey, Output, keyExpressionBIP32 } from '@bitcoinerlab/descriptors-scure';
 
 const masterNode = HDKey.fromMasterSeed(randomBytes(32));

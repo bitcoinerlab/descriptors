@@ -2,8 +2,8 @@
 // Distributed under the MIT software license
 // https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/crypto.ts
 
-import { ripemd160 } from '@noble/hashes/legacy.js';
-import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
+import { ripemd160 } from '@noble/hashes/ripemd160';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha256';
 import { concat } from 'uint8array-tools';
 
 const TAGGED_HASH_PREFIXES: Record<string, Uint8Array> = {
