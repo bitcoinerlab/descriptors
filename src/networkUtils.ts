@@ -1,5 +1,4 @@
-import { networks } from 'bitcoinjs-lib';
-import type { Network } from 'bitcoinjs-lib';
+import { type Network, networks } from './networks';
 
 export function isBitcoinMainnet(network: Network): boolean {
   return (

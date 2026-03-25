@@ -41,6 +41,8 @@ export type {
   Preimage,
   TimeConstraints
 } from './types';
+export type { BitcoinLib, Psbt, Payment, Transaction } from './bitcoinLib';
+export { networks, type Network } from './networks';
 export {
   DescriptorsFactory,
   OutputInstance,

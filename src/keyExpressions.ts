@@ -1,9 +1,10 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { networks, Network } from 'bitcoinjs-lib';
-import type { ECPairAPI, ECPairInterface } from 'ecpair';
-import type { BIP32API, BIP32Interface } from 'bip32';
+import type { ECPairAPI, BIP32API } from './bitcoinLib';
+import { type Network, networks } from './networks';
+import type { ECPairInterface } from 'ecpair';
+import type { BIP32Interface } from 'bip32';
 import type { KeyInfo } from './types';
 import {
   LedgerManager,
@@ -197,6 +198,17 @@ export function parseKeyExpression({
   }
   if (originPath || keyPath) {
     path = `m${originPath ?? ''}${keyPath ?? ''}`;
+  }
+  if (pubkey !== undefined) {
+    if (isTaproot) {
+      if (pubkey.length !== 33) throw new Error(`Error: invalid pubkey`);
+    } else if (
+      typeof isSegwit === 'boolean' &&
+      isSegwit &&
+      pubkey.length !== 33
+    ) {
+      throw new Error(`Error: invalid pubkey`);
+    }
   }
   if (pubkey !== undefined && isTaproot && pubkey.length === 33)
     // If we get a 33-byte compressed key, drop the first byte.

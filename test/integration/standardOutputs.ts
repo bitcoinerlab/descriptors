@@ -17,18 +17,19 @@ const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-import * as ecc from '@bitcoinerlab/secp256k1';
 import {
   DescriptorsFactory,
   scriptExpressions,
   keyExpressionBIP32,
   signers
 } from '../../dist/';
+import { getBitcoinLib } from '../getBitcoinLib';
 import { toHex } from 'uint8array-tools';
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair } = signers;
 
-const { Output, BIP32, ECPair } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { Output, BIP32, ECPair } = DescriptorsFactory(bitcoinLib);
 
 const masterNode = BIP32.fromSeed(mnemonicToSeedSync(SOFT_MNEMONIC), NETWORK);
 //masterNode will be able to sign all the expressions below:

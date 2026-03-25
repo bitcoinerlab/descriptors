@@ -4,10 +4,11 @@
 import { mnemonicToSeedSync } from 'bip39';
 import { networks } from 'bitcoinjs-lib';
 import type { Network } from 'bitcoinjs-lib';
-import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, scriptExpressions } from '../dist/';
+import { getBitcoinLib } from './getBitcoinLib';
 
-const { BIP32 } = DescriptorsFactory(ecc);
+const bitcoinLib = getBitcoinLib();
+const { BIP32 } = DescriptorsFactory(bitcoinLib);
 
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';

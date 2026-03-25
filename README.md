@@ -99,6 +99,47 @@ npm install @bitcoinerlab/miniscript
 npm install @bitcoinerlab/secp256k1
 ```
 
+### Choosing a Bitcoin Backend
+
+This library supports two Bitcoin backends. You only need to install one:
+
+#### Option A: bitcoinjs-lib (default)
+
+```bash
+npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 bitcoinjs-lib@7
+```
+
+```javascript
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+const { Output, expand } = DescriptorsFactory(ecc);
+```
+
+This is the traditional backend and the one used throughout most of this README.
+
+#### Option B: @scure/btc-signer
+
+```bash
+npm install @bitcoinerlab/descriptors @bitcoinerlab/secp256k1 @scure/btc-signer@2 @noble/curves@2 @scure/base@2
+```
+
+```javascript
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
+import { createScureLib } from '@bitcoinerlab/descriptors/scure';
+
+const lib = createScureLib(ecc);
+const { Output, expand } = DescriptorsFactory(lib);
+const psbt = new lib.Psbt();
+const tx = psbt.raw; // access the native @scure/btc-signer Transaction
+```
+
+The `@scure/btc-signer` backend uses audited, minimal libraries from the [noble/scure](https://paulmillr.com/noble/) family. Once you have the `Output` class, the descriptor and signing APIs are identical regardless of which backend you chose.
+
+For a minimal end-to-end scure example, see [`test/integration/scure.ts`](test/integration/scure.ts).
+
+Both backends are declared as optional peer dependencies, so install only the backend you plan to use.
+
 The library can be split into four main parts:
 
 - The `Output` class is the central component for managing descriptors. It facilitates the creation of outputs to receive funds and enables the signing and finalization of PSBTs (Partially Signed Bitcoin Transactions) for spending UTXOs (Unspent Transaction Outputs).
@@ -108,7 +149,7 @@ The library can be split into four main parts:
 
 ### Output class
 
-The `Output` class is dynamically created by providing a cryptographic secp256k1 engine as shown below:
+The `Output` class is dynamically created by providing a cryptographic secp256k1 engine (or a full `BitcoinLib` adapter — see [Choosing a Bitcoin Backend](#choosing-a-bitcoin-backend)):
 
 ```javascript
 import * as ecc from '@bitcoinerlab/secp256k1';
@@ -166,6 +207,12 @@ const inputFinalizer = output.updatePsbtAsInput({ psbt, txHex, vout, rbf });
 ```
 
 Here, `psbt` refers to an instance of the [bitcoinjs-lib Psbt class](https://github.com/bitcoinjs/bitcoinjs-lib). The parameter `txHex` denotes a hex string that serializes the previous transaction containing this output. Meanwhile, `vout` is an integer that marks the position of the output within that transaction. Finally, `rbf` is an optional parameter (defaulting to `true`) used to indicate whether the transaction uses Replace-By-Fee (RBF). When RBF is enabled, transactions can be replaced while they are in the mempool with others that have higher fees. Note that RBF is enabled for the entire transaction if at least one input signals it. Also, note that transactions using relative time locks inherently opt into RBF due to the `nSequence` range used.
+
+If you are using the scure backend, create the PSBT-compatible object from the backend itself (using the `lib` created above):
+
+```javascript
+const psbt = new lib.Psbt();
+```
 
 The method returns the `inputFinalizer()` function. This finalizer function completes a PSBT input by adding the unlocking script (`scriptWitness` or `scriptSig`) that satisfies the previous output's spending conditions. Bear in mind that both `scriptSig` and `scriptWitness` incorporate signatures. As such, you should complete all necessary signing operations before calling `inputFinalizer()`. Detailed [explanations on the `inputFinalizer` method](#signers-and-finalizers-finalize-psbt-input) can be found in the Signers and Finalizers section.
 

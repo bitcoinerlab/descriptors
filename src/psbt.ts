@@ -6,17 +6,18 @@ import type {
   Bip32Derivation,
   TapBip32Derivation,
   TapLeafScript
-} from 'bip174';
+} from './bip174';
 import type { KeyInfo } from './types';
-import {
-  payments,
-  Network,
+import type {
   Psbt,
-  Transaction,
+  FinalScriptsFunc,
+  BitcoinLib,
   PsbtTxInput
-} from 'bitcoinjs-lib';
+} from './bitcoinLib';
+import type { Network } from './networks';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
+
 interface PsbtInputExtended extends PsbtInput, PsbtTxInput {}
 
 function reverseBytes(buffer: Uint8Array): Uint8Array {
@@ -32,29 +33,17 @@ function reverseBytes(buffer: Uint8Array): Uint8Array {
   }
   return copy;
 }
-
-/**
- * This function must do two things:
- * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
- *   ie. `Can not finalize input #${inputIndex}`
- * 2. Create finalScriptSig and finalScriptWitness.
- */
-type FinalScriptsFunc = (
-  inputIndex: number, // Which input is it?
-  input: PsbtInput, // The PSBT input contents
-  script: Uint8Array, // The "meaningful" locking script (redeemScript for P2SH etc.)
-  isSegwit: boolean, // Is it segwit?
-  isP2SH: boolean, // Is it P2SH?
-  isP2WSH: boolean // Is it P2WSH?
-) => {
-  finalScriptSig: Uint8Array | undefined;
-  finalScriptWitness: Uint8Array | undefined;
-};
-
 export function finalScriptsFuncFactory(
   scriptSatisfaction: Uint8Array,
-  network: Network
+  network: Network,
+  payments: BitcoinLib['payments']
 ): FinalScriptsFunc {
+  /**
+   * This function must do two things:
+   * 1. Check if the `input` can be finalized. If it can not be finalized, throw.
+   *   ie. `Can not finalize input #${inputIndex}`
+   * 2. Create finalScriptSig and finalScriptWitness.
+   */
   const finalScriptsFunc: FinalScriptsFunc = (
     _index,
     _input,
@@ -123,7 +112,8 @@ export function addPsbtInput({
   tapBip32Derivation,
   witnessScript,
   redeemScript,
-  rbf
+  rbf,
+  Transaction
 }: {
   psbt: Psbt;
   vout: number;
@@ -144,6 +134,7 @@ export function addPsbtInput({
   witnessScript: Uint8Array | undefined;
   redeemScript: Uint8Array | undefined;
   rbf: boolean;
+  Transaction: BitcoinLib['Transaction'];
 }): number {
   if (value !== undefined && typeof value !== 'bigint')
     throw new Error(`Error: value must be a bigint`);
@@ -165,7 +156,7 @@ export function addPsbtInput({
     throw new Error(`Error: pass txHex or txId+value for Segwit inputs`);
   if (txHex !== undefined) {
     const tx = Transaction.fromHex(txHex);
-    const out = tx?.outs?.[vout];
+    const out = tx.outs[vout];
     if (!out) throw new Error(`Error: tx ${txHex} does not have vout ${vout}`);
     const outputScript = out.script;
     if (!outputScript)

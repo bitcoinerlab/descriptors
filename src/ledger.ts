@@ -25,8 +25,9 @@
  */
 
 import { OutputInstance, DescriptorsFactory } from './descriptors';
-import { Network, networks, Psbt, Transaction } from 'bitcoinjs-lib';
+import type { Psbt, Transaction } from './bitcoinLib';
 import { compare, fromHex, toHex } from 'uint8array-tools';
+import { type Network, networks } from './networks';
 import { coinTypeFromNetwork } from './networkUtils';
 import { reOriginPath } from './re';
 import type { ExpansionMap, KeyInfo, TinySecp256k1Interface } from './types';
@@ -83,6 +84,36 @@ export async function importAndValidateLedgerBitcoin(
     throw new Error('Error: invalid AppClient instance');
   }
   return ledgerBitcoinModule;
+}
+
+/**
+ *
+ * bitcoinjs-lib is a peerDependency. However, it is a dependency for
+ * @ledgerhq/ledger-bitcoin anyway, so it is safe to assume that it will be
+ * installed if @ledgerhq/ledger-bitcoin is also installed.
+ *
+ */
+function requireBitcoinjsTransaction(): {
+  fromBuffer(buffer: Uint8Array): Transaction;
+} {
+  let bitcoinjsModule: unknown;
+  try {
+    // Read comments above (importAndValidateLedgerBitcoin)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    bitcoinjsModule = require('bitcoinjs-lib');
+  } catch (error) {
+    void error;
+    throw new Error(
+      'Could not import "bitcoinjs-lib". Ledger signing requires this peer dependency to parse nonWitnessUtxo transactions. Please run "npm install bitcoinjs-lib" to use Ledger Hardware Wallet functionality.'
+    );
+  }
+  const { Transaction } = bitcoinjsModule as {
+    Transaction?: { fromBuffer(buffer: Uint8Array): Transaction };
+  };
+  if (!Transaction || typeof Transaction.fromBuffer !== 'function') {
+    throw new Error('Error: invalid bitcoinjs-lib Transaction export');
+  }
+  return Transaction;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -292,17 +323,16 @@ export async function ledgerPolicyFromPsbtInput({
   index: number;
 }) {
   const { ledgerState, ecc, network } = ledgerManager;
+  const Transaction = requireBitcoinjsTransaction();
 
   const { Output } = DescriptorsFactory(ecc);
   const input = psbt.data.inputs[index];
-  if (!input) throw new Error(`Input numer ${index} not set.`);
+  if (!input) throw new Error(`Error: input ${index} not available`);
   let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
-    const vout = psbt.txInputs[index]?.index;
-    if (vout === undefined)
-      throw new Error(
-        `Could not extract vout from nonWitnessUtxo for input ${index}.`
-      );
+    const txInput = psbt.txInputs[index];
+    if (!txInput) throw new Error(`Error: tx input ${index} not available`);
+    const vout = txInput.index;
     const nonWitnessScript = Transaction.fromBuffer(input.nonWitnessUtxo).outs[
       vout
     ]?.script;

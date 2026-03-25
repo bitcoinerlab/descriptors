@@ -1,12 +1,13 @@
 // Distributed under the MIT software license
 
-import { script as bscript, payments, networks, Network } from 'bitcoinjs-lib';
+import type { BitcoinLib, Taptree } from './bitcoinLib';
 import { tapleafHash } from './bitcoinjs-lib-internals';
 import { encodingLength } from 'varuint-bitcoin';
 import { compare, toHex } from 'uint8array-tools';
+import { type Network, networks } from './networks';
 import type { BIP32API } from 'bip32';
 import type { ECPairAPI } from 'ecpair';
-import type { PartialSig, TapBip32Derivation } from 'bip174';
+import type { PartialSig, TapBip32Derivation } from './bip174';
 import type { ExpansionMap, KeyInfo, Preimage, TimeConstraints } from './types';
 import {
   expandMiniscript,
@@ -23,12 +24,6 @@ import {
 import { assertTaprootScriptPathSatisfactionResourceLimits } from './resourceLimits';
 
 const TAPROOT_LEAF_VERSION_TAPSCRIPT = 0xc0;
-const { p2tr } = payments;
-
-type BitcoinJsTapleaf = { output: Uint8Array; version?: number };
-type Taptree =
-  | [Taptree | BitcoinJsTapleaf, Taptree | BitcoinJsTapleaf]
-  | BitcoinJsTapleaf;
 
 export type TapLeafExpansionOverride = {
   // Descriptor-level, user-facing expanded leaf expression.
@@ -99,7 +94,8 @@ export function buildTapTreeInfo({
   network = networks.bitcoin,
   BIP32,
   ECPair,
-  leafExpansionOverride
+  leafExpansionOverride,
+  scriptLib
 }: {
   tapTree: TapTreeNode;
   network?: Network;
@@ -108,6 +104,7 @@ export function buildTapTreeInfo({
   leafExpansionOverride: (
     expression: string
   ) => TapLeafExpansionOverride | undefined;
+  scriptLib: BitcoinLib['script'];
 }): TapTreeInfoNode {
   // Defensive: parseTapTreeExpression() already enforces this for descriptor
   // strings, but buildTapTreeInfo is exported and can be called directly.
@@ -144,7 +141,8 @@ export function buildTapTreeInfo({
       tapScript = miniscript2Script({
         expandedMiniscript: expanded.expandedMiniscript,
         expansionMap,
-        tapscript: true
+        tapscript: true,
+        scriptLib
       });
     }
 
@@ -163,14 +161,16 @@ export function buildTapTreeInfo({
       network,
       BIP32,
       ECPair,
-      leafExpansionOverride
+      leafExpansionOverride,
+      scriptLib
     }),
     right: buildTapTreeInfo({
       tapTree: tapTree.right,
       network,
       BIP32,
       ECPair,
-      leafExpansionOverride
+      leafExpansionOverride,
+      scriptLib
     })
   };
 }
@@ -251,10 +251,12 @@ export function tapTreeInfoToScriptTree(tapTreeInfo: TapTreeInfoNode): Taptree {
  */
 export function buildTaprootLeafPsbtMetadata({
   tapTreeInfo,
-  internalPubkey
+  internalPubkey,
+  payments
 }: {
   tapTreeInfo: TapTreeInfoNode;
   internalPubkey: Uint8Array;
+  payments: BitcoinLib['payments'];
 }): TaprootPsbtLeafMetadata[] {
   const normalizedInternalPubkey = normalizeTaprootPubkey(internalPubkey);
   const scriptTree = tapTreeInfoToScriptTree(tapTreeInfo);
@@ -269,7 +271,7 @@ export function buildTaprootLeafPsbtMetadata({
       output: leaf.tapScript,
       version: leaf.version
     });
-    const payment = p2tr({
+    const payment = payments.p2tr({
       internalPubkey: normalizedInternalPubkey,
       scriptTree,
       redeem: {
@@ -520,13 +522,15 @@ export function collectTaprootLeafSatisfactions({
   preimages,
   signatures,
   timeConstraints,
-  tapLeaf
+  tapLeaf,
+  scriptLib
 }: {
   tapTreeInfo: TapTreeInfoNode;
   preimages: Preimage[];
   signatures: PartialSig[];
   timeConstraints?: TimeConstraints;
   tapLeaf?: Uint8Array | string;
+  scriptLib: BitcoinLib['script'];
 }): TaprootLeafSatisfaction[] {
   const candidates = selectTapLeafCandidates({
     tapTreeInfo,
@@ -583,9 +587,10 @@ export function collectTaprootLeafSatisfactions({
         signatures: leafSignatures,
         preimages,
         ...(timeConstraints !== undefined ? { timeConstraints } : {}),
-        tapscript: true
+        tapscript: true,
+        scriptLib
       });
-      const satisfactionStackItems = bscript.toStack(scriptSatisfaction);
+      const satisfactionStackItems = scriptLib.toStack(scriptSatisfaction);
       assertTaprootScriptPathSatisfactionResourceLimits({
         stackItems: satisfactionStackItems
       });
@@ -673,20 +678,23 @@ export function satisfyTapTree({
   signatures,
   preimages,
   tapLeaf,
-  timeConstraints
+  timeConstraints,
+  scriptLib
 }: {
   tapTreeInfo: TapTreeInfoNode;
   signatures: PartialSig[];
   preimages: Preimage[];
   tapLeaf?: Uint8Array | string;
   timeConstraints?: TimeConstraints;
+  scriptLib: BitcoinLib['script'];
 }): TaprootLeafSatisfaction {
   const satisfactions = collectTaprootLeafSatisfactions({
     tapTreeInfo,
     preimages,
     signatures,
     ...(tapLeaf !== undefined ? { tapLeaf } : {}),
-    ...(timeConstraints !== undefined ? { timeConstraints } : {})
+    ...(timeConstraints !== undefined ? { timeConstraints } : {}),
+    scriptLib
   });
   return selectBestTaprootLeafSatisfaction(satisfactions);
 }

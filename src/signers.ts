@@ -1,11 +1,8 @@
 // Copyright (c) 2025 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { Psbt } from 'bitcoinjs-lib';
+import type { Psbt, ECPairInterface, BIP32Interface } from './bitcoinLib';
 import { isTaprootInput, tapTweakHash } from './bitcoinjs-lib-internals';
-
-import type { ECPairInterface } from 'ecpair';
-import type { BIP32Interface } from 'bip32';
 import {
   importAndValidateLedgerBitcoin,
   comparePolicies,
@@ -13,7 +10,6 @@ import {
   LedgerManager,
   ledgerPolicyFromPsbtInput
 } from './ledger';
-import { applyPR2137 } from './applyPR2137';
 type DefaultDescriptorTemplate =
   | 'pkh(@0/**)'
   | 'sh(wpkh(@0/**))'
@@ -28,6 +24,26 @@ declare class PartialSignature {
     signature: Uint8Array,
     tapleafHash?: Uint8Array
   );
+}
+
+/**
+ * This applies a bitcoinjs-lib speciffic patch.
+ * This won't be run if using the scure lib
+ */
+function ensureBitcoinjsHdPatch(psbt: Psbt): void {
+  let BitcoinjsPsbt;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    ({ Psbt: BitcoinjsPsbt } = require('bitcoinjs-lib'));
+  } catch (error) {
+    void error;
+    return;
+  }
+  if (!BitcoinjsPsbt || !(psbt instanceof BitcoinjsPsbt)) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { applyPR2137 } = require('./adapters/applyPR2137');
+  applyPR2137(psbt);
 }
 
 function range(n: number): number[] {
@@ -128,7 +144,7 @@ export function signInputBIP32({
   index: number;
   node: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
+  ensureBitcoinjsHdPatch(psbt);
   psbt.signInputHD(index, node);
 }
 
@@ -139,7 +155,7 @@ export function signBIP32({
   psbt: Psbt;
   masterNode: BIP32Interface;
 }): void {
-  applyPR2137(psbt);
+  ensureBitcoinjsHdPatch(psbt);
   psbt.signAllInputsHD(masterNode);
 }
 
