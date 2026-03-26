@@ -58,6 +58,7 @@ for (const pkg of ['bitcoinjs-lib', 'bip32', 'ecpair']) {
 }
 
 for (const pkg of [
+  '@noble/hashes',
   '@noble/curves',
   '@scure/base',
   '@scure/bip32',
