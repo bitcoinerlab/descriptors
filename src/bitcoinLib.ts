@@ -287,6 +287,8 @@ export interface PsbtLike {
   toBase64(): string;
 }
 
+export type BitcoinBackendKind = 'bitcoinjs' | 'scure';
+
 /** @internal */
 export type FinalScriptsFunc = (
   inputIndex: number,
@@ -350,7 +352,7 @@ export function isScureTransaction(
 // ─── Transaction ─────────────────────────────────────────────────────
 
 /** @internal */
-export interface Transaction {
+interface TransactionLike {
   getId(): string;
   outs: Array<{ script: Uint8Array; value: bigint }>;
   toBuffer(): Uint8Array;
@@ -373,6 +375,7 @@ export type Taptree = [Taptree | Tapleaf, Taptree | Tapleaf] | Tapleaf;
  * @internal
  */
 export interface BitcoinLib {
+  kind: BitcoinBackendKind;
   // ── Payments ──
   payments: {
     p2pk(a: { pubkey: Uint8Array; network?: Network }): Payment;
@@ -421,13 +424,20 @@ export interface BitcoinLib {
 
   // ── Transaction parsing ──
   Transaction: {
-    fromHex(hex: string): Transaction;
-    fromBuffer(buf: Uint8Array): Transaction;
+    fromHex(hex: string): TransactionLike;
+    fromBuffer(buf: Uint8Array): TransactionLike;
   };
 
   // ── Address ──
   address: {
     toOutputScript(addr: string, network?: Network): Uint8Array;
+  };
+
+  // ── Crypto ──
+  crypto: {
+    sha256(data: Uint8Array): Uint8Array;
+    hash160(data: Uint8Array): Uint8Array;
+    taggedHash(tag: string, data: Uint8Array): Uint8Array;
   };
 
   // ── Key factories ──
@@ -440,4 +450,42 @@ export interface BitcoinLib {
     pubkey: Uint8Array,
     signature: Uint8Array
   ): boolean;
+}
+
+let globalBitcoinLib: BitcoinLib | undefined;
+let globalBitcoinLibWarningShown = false;
+
+function warnAboutLockedBitcoinLib(
+  currentKind: BitcoinBackendKind,
+  incomingKind: BitcoinBackendKind
+) {
+  if (globalBitcoinLibWarningShown) return;
+  globalBitcoinLibWarningShown = true;
+  console.warn(
+    `Warning: BitcoinLib backend mismatch.
+Replacing the already initialized ${currentKind} backend 
+with the new ${incomingKind} one.
+This should be fine but it's strange you're mixing backends.
+DescriptorsFactory/create*Lib now work as a process-wide singleton in descriptors-core.`
+  );
+}
+
+export function setBitcoinLib(bitcoinLib: BitcoinLib): BitcoinLib {
+  if (!globalBitcoinLib) {
+    globalBitcoinLib = bitcoinLib;
+    return globalBitcoinLib;
+  }
+  if (globalBitcoinLib.kind !== bitcoinLib.kind)
+    warnAboutLockedBitcoinLib(globalBitcoinLib.kind, bitcoinLib.kind);
+  else globalBitcoinLib = bitcoinLib;
+
+  return globalBitcoinLib;
+}
+
+export function getBitcoinLibOrThrow(): BitcoinLib {
+  if (!globalBitcoinLib)
+    throw new Error(
+      'Error: BitcoinLib not initialized. Initialize descriptors-core first with DescriptorsFactory(...) or create*Lib().'
+    );
+  return globalBitcoinLib;
 }

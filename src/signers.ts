@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import {
+  getBitcoinLibOrThrow,
   isScureTransaction,
   type ScureTransactionLike,
   type ECPairInterfaceLike,
@@ -40,19 +41,11 @@ declare class PartialSignature {
  * This won't be run if using the scure lib
  */
 function ensureBitcoinjsHdPatch(psbt: PsbtLike): void {
-  let BitcoinjsPsbt;
-  try {
+  if (getBitcoinLibOrThrow().kind === 'bitcoinjs') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ({ Psbt: BitcoinjsPsbt } = require('bitcoinjs-lib'));
-  } catch (error) {
-    void error;
-    return;
+    const { applyPR2137 } = require('./adapters/applyPR2137');
+    applyPR2137(psbt);
   }
-  if (!BitcoinjsPsbt || !(psbt instanceof BitcoinjsPsbt)) return;
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { applyPR2137 } = require('./adapters/applyPR2137');
-  applyPR2137(psbt);
 }
 
 function signInputSingleKey({

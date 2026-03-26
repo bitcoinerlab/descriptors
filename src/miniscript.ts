@@ -9,8 +9,7 @@ import type { PartialSig } from './bip174';
 import { compileMiniscript, satisfier } from '@bitcoinerlab/miniscript';
 import { toHex } from 'uint8array-tools';
 import type { Preimage, TimeConstraints, ExpansionMap } from './types';
-import { hash160 } from './crypto';
-import type { BitcoinLib } from './bitcoinLib';
+import { getBitcoinLibOrThrow } from './bitcoinLib';
 
 /**
  * Expand a miniscript to a generalized form using variables instead of key
@@ -127,13 +126,12 @@ export function expandMiniscript({
  */
 function substituteAsm({
   expandedAsm,
-  expansionMap,
-  scriptLib
+  expansionMap
 }: {
   expandedAsm: string;
   expansionMap: ExpansionMap;
-  scriptLib: BitcoinLib['script'];
 }): string {
+  const { crypto } = getBitcoinLibOrThrow();
   //Replace back variables into the pubkeys previously computed.
   let asm = Object.keys(expansionMap).reduce((accAsm, key) => {
     const pubkey = expansionMap[key]?.pubkey;
@@ -142,7 +140,7 @@ function substituteAsm({
     }
     return accAsm
       .replaceAll(`<${key}>`, `<${toHex(pubkey)}>`)
-      .replaceAll(`<HASH160(${key})>`, `<${toHex(hash160(pubkey))}>`);
+      .replaceAll(`<HASH160(${key})>`, `<${toHex(crypto.hash160(pubkey))}>`);
   }, expandedAsm);
 
   //Now clean it and prepare it so that fromASM can be called:
@@ -156,7 +154,7 @@ function substituteAsm({
     //The regex below will match one or more digits within a string,
     //except if the sequence is surrounded by "<" and ">"
     .replace(/(<\d+>)|\b\d+\b/g, match =>
-      match.startsWith('<') ? match : numberEncodeAsm(Number(match), scriptLib)
+      match.startsWith('<') ? match : numberEncodeAsm(Number(match))
     )
     //we don't have numbers anymore, now it's safe to remove < and > since we
     //know that every remaining is either an op_code or a hex encoded number
@@ -168,23 +166,21 @@ function substituteAsm({
 export function miniscript2Script({
   expandedMiniscript,
   expansionMap,
-  tapscript = false,
-  scriptLib
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
   tapscript?: boolean;
-  scriptLib: BitcoinLib['script'];
 }): Uint8Array {
+  const { script } = getBitcoinLibOrThrow();
   const compiled = compileMiniscript(expandedMiniscript, { tapscript });
   if (compiled.issane !== true) {
     throw new Error(`Error: Miniscript ${expandedMiniscript} is not sane`);
   }
-  return scriptLib.fromASM(
+  return script.fromASM(
     substituteAsm({
       expandedAsm: compiled.asm,
-      expansionMap,
-      scriptLib
+      expansionMap
     })
   );
 }
@@ -223,8 +219,7 @@ export function satisfyMiniscript({
   signatures = [],
   preimages = [],
   timeConstraints,
-  tapscript = false,
-  scriptLib
+  tapscript = false
 }: {
   expandedMiniscript: string;
   expansionMap: ExpansionMap;
@@ -232,12 +227,12 @@ export function satisfyMiniscript({
   preimages?: Preimage[];
   timeConstraints?: TimeConstraints;
   tapscript?: boolean;
-  scriptLib: BitcoinLib['script'];
 }): {
   scriptSatisfaction: Uint8Array;
   nLockTime: number | undefined;
   nSequence: number | undefined;
 } {
+  const { script } = getBitcoinLibOrThrow();
   //convert 'sha256(6c...33)' to: { ['<sha256_preimage(6c...33)>']: '10...5f'}
   const preimageMap: { [key: string]: string } = {};
   preimages.forEach(preimage => {
@@ -295,8 +290,8 @@ export function satisfyMiniscript({
       throw new Error(`Error: invalid expandedKnownsMap`);
     expandedAsm = expandedAsm.replaceAll(search, replace);
   }
-  const scriptSatisfaction = scriptLib.fromASM(
-    substituteAsm({ expandedAsm, expansionMap, scriptLib })
+  const scriptSatisfaction = script.fromASM(
+    substituteAsm({ expandedAsm, expansionMap })
   );
 
   return {
@@ -332,11 +327,11 @@ export function satisfyMiniscript({
  * However, the `0` number is an edge case that we specially handle with this
  * function.
  *
- * bitcoinjs-lib's `scriptLib.number.encode(0)` produces an empty array.
+ * bitcoinjs-lib's `script.number.encode(0)` produces an empty array.
  * This is what the Bitcoin interpreter does and it is what `script.number.encode` was
  * implemented to do.
  *
- * The problem is `scriptLib.number.encode(0).toString('hex')` produces an
+ * The problem is `script.number.encode(0).toString('hex')` produces an
  * empty string and thus it should not be used to serialize number zero before `fromASM`.
  *
  * A zero should produce the OP_0 ASM symbolic code (corresponding to a `0` when
@@ -360,14 +355,12 @@ export function satisfyMiniscript({
  * @param {number} number An integer.
  * @returns {string} Returns `"OP_0"` for `number === 0` and a hex string representing other numbers in Little Endian encoding.
  */
-export function numberEncodeAsm(
-  number: number,
-  scriptLib: BitcoinLib['script']
-) {
+export function numberEncodeAsm(number: number) {
+  const { script } = getBitcoinLibOrThrow();
   if (Number.isSafeInteger(number) === false) {
     throw new Error(`Error: invalid number ${number}`);
   }
   if (number === 0) {
     return 'OP_0';
-  } else return toHex(scriptLib.number.encode(number));
+  } else return toHex(script.number.encode(number));
 }

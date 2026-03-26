@@ -9,23 +9,26 @@
  */
 
 import { schnorr } from '@noble/curves/secp256k1.js';
-import type { BitcoinLib } from '../bitcoinLib';
+import { setBitcoinLib, type BitcoinLib } from '../bitcoinLib';
 import { createScurePaymentsAdapter } from './scure/payments';
 import { createScureScriptAdapter } from './scure/script';
 import { createScureTransactionAdapter } from './scure/transaction';
 import { createScureAddressAdapter } from './scure/address';
 import { createScureECPairAdapter } from './scure/ecpair';
 import { createScureBIP32Adapter } from './scure/bip32';
+import { createScureCryptoAdapter } from './scure/crypto';
 export { wrapScureTransaction } from './scure/psbt';
 
 /**
  * Create a BitcoinLib backed by @scure/btc-signer.
  */
 export function createScureLib(): BitcoinLib {
-  return {
+  return setBitcoinLib({
+    kind: 'scure',
     payments: createScurePaymentsAdapter(),
     script: createScureScriptAdapter(),
     Transaction: createScureTransactionAdapter(),
+    crypto: createScureCryptoAdapter(),
     address: createScureAddressAdapter(),
     ECPair: createScureECPairAdapter(),
     BIP32: createScureBIP32Adapter(),
@@ -36,5 +39,5 @@ export function createScureLib(): BitcoinLib {
     ) {
       return schnorr.verify(signature, msghash, pubkey);
     }
-  };
+  });
 }

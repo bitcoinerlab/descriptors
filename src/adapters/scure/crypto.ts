@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
-// https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/crypto.ts
 
-import { ripemd160 } from '@noble/hashes/ripemd160';
-import { sha256 as nobleSha256 } from '@noble/hashes/sha256';
+import { ripemd160 } from '@noble/hashes/legacy.js';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { concat } from 'uint8array-tools';
 
 const TAGGED_HASH_PREFIXES: Record<string, Uint8Array> = {
@@ -63,16 +62,19 @@ const TAGGED_HASH_PREFIXES: Record<string, Uint8Array> = {
   ])
 };
 
-export function sha256(data: Uint8Array): Uint8Array {
-  return nobleSha256(data);
-}
-
-export function hash160(data: Uint8Array): Uint8Array {
-  return ripemd160(sha256(data));
-}
-
-export function taggedHash(tag: string, data: Uint8Array): Uint8Array {
-  const prefix = TAGGED_HASH_PREFIXES[tag];
-  if (!prefix) throw new Error(`Error: unsupported tagged hash prefix ${tag}`);
-  return sha256(concat([prefix, data]));
+export function createScureCryptoAdapter() {
+  return {
+    sha256(data: Uint8Array): Uint8Array {
+      return nobleSha256(data);
+    },
+    hash160(data: Uint8Array): Uint8Array {
+      return ripemd160(nobleSha256(data));
+    },
+    taggedHash(tag: string, data: Uint8Array): Uint8Array {
+      const prefix = TAGGED_HASH_PREFIXES[tag];
+      if (!prefix)
+        throw new Error(`Error: unsupported tagged hash prefix ${tag}`);
+      return nobleSha256(concat([prefix, data]));
+    }
+  };
 }

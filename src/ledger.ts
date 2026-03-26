@@ -29,7 +29,11 @@ import {
   OutputInstance,
   DescriptorsFactory
 } from './descriptors';
-import type { PsbtLike, ScureTransactionLike, Transaction } from './bitcoinLib';
+import {
+  PsbtLike,
+  ScureTransactionLike,
+  getBitcoinLibOrThrow
+} from './bitcoinLib';
 import { toPsbt } from './psbt';
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { type Network, networks } from './networks';
@@ -90,36 +94,6 @@ export async function importAndValidateLedgerBitcoin(
     throw new Error('Error: invalid AppClient instance');
   }
   return ledgerBitcoinModule;
-}
-
-/**
- *
- * bitcoinjs-lib is a peerDependency. However, it is a dependency for
- * @ledgerhq/ledger-bitcoin anyway, so it is safe to assume that it will be
- * installed if @ledgerhq/ledger-bitcoin is also installed.
- *
- */
-function requireBitcoinjsTransaction(): {
-  fromBuffer(buffer: Uint8Array): Transaction;
-} {
-  let bitcoinjsModule: unknown;
-  try {
-    // Read comments above (importAndValidateLedgerBitcoin)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    bitcoinjsModule = require('bitcoinjs-lib');
-  } catch (error) {
-    void error;
-    throw new Error(
-      'Could not import "bitcoinjs-lib". Ledger signing requires this peer dependency to parse nonWitnessUtxo transactions. Please run "npm install bitcoinjs-lib" to use Ledger Hardware Wallet functionality.'
-    );
-  }
-  const { Transaction } = bitcoinjsModule as {
-    Transaction?: { fromBuffer(buffer: Uint8Array): Transaction };
-  };
-  if (!Transaction || typeof Transaction.fromBuffer !== 'function') {
-    throw new Error('Error: invalid bitcoinjs-lib Transaction export');
-  }
-  return Transaction;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -355,7 +329,7 @@ export async function ledgerPolicyFromPsbtInput({
 }) {
   psbt = toPsbt(psbt);
   const { ledgerState, network } = ledgerManager;
-  const Transaction = requireBitcoinjsTransaction();
+  const Transaction = getBitcoinLibOrThrow().Transaction;
 
   const Output = getLedgerOutputConstructor(ledgerManager);
   const input = psbt.data.inputs[index];

@@ -3,10 +3,9 @@
 
 import { hex } from '@scure/base';
 import { RawTx, RawOldTx } from '@scure/btc-signer/script.js';
-import { sha256 } from '../../crypto';
-import type { BitcoinLib, Transaction } from '../../bitcoinLib';
+import { sha256 } from '@noble/hashes/sha2.js';
 
-function parseRawTx(rawBytes: Uint8Array): Transaction {
+function parseRawTx(rawBytes: Uint8Array) {
   const parsed = RawTx.decode(rawBytes);
   const nonWitnessSerialization = RawOldTx.encode(parsed);
   const txidHash = sha256(sha256(nonWitnessSerialization));
@@ -22,12 +21,12 @@ function parseRawTx(rawBytes: Uint8Array): Transaction {
   };
 }
 
-export function createScureTransactionAdapter(): BitcoinLib['Transaction'] {
+export function createScureTransactionAdapter() {
   return {
-    fromHex(hexStr: string): Transaction {
+    fromHex(hexStr: string) {
       return parseRawTx(hex.decode(hexStr));
     },
-    fromBuffer(buf: Uint8Array): Transaction {
+    fromBuffer(buf: Uint8Array) {
       return parseRawTx(buf);
     }
   };
