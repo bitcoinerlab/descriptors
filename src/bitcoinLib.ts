@@ -471,13 +471,9 @@ DescriptorsFactory/create*Lib now work as a process-wide singleton in descriptor
 }
 
 export function setBitcoinLib(bitcoinLib: BitcoinLib): BitcoinLib {
-  if (!globalBitcoinLib) {
-    globalBitcoinLib = bitcoinLib;
-    return globalBitcoinLib;
-  }
-  if (globalBitcoinLib.kind !== bitcoinLib.kind)
+  if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind)
     warnAboutLockedBitcoinLib(globalBitcoinLib.kind, bitcoinLib.kind);
-  else globalBitcoinLib = bitcoinLib;
+  globalBitcoinLib = bitcoinLib;
 
   return globalBitcoinLib;
 }
