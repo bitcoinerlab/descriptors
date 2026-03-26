@@ -25,10 +25,7 @@ import {
 import { compare, fromHex, toHex } from 'uint8array-tools';
 
 const bitcoinLib = createBitcoinjsLib(ecc);
-const { ECPair } = DescriptorsFactory(ecc);
-
-const payments = bitcoinLib.payments;
-const scriptLib = bitcoinLib.script;
+const { ECPair } = DescriptorsFactory(bitcoinLib);
 
 function createNextSigner<T>(
   ECPair: {
@@ -126,8 +123,7 @@ describeIfNotScure('taproot tree compilation', () => {
 
     const metadata = buildTaprootLeafPsbtMetadata({
       tapTreeInfo,
-      internalPubkey,
-      payments
+      internalPubkey
     });
     //console.log(JSON.stringify(metadata, null, 2));
     expect(metadata).toHaveLength(2);
@@ -483,8 +479,7 @@ describeIfNotScure('taproot tree satisfactions', () => {
           digest: DIGEST_EXPR,
           preimage: toHex(PREIMAGE)
         }
-      ],
-      scriptLib
+      ]
     });
     expect(best.leaf.expression).toEqual(`pk(${LEAF_KEY})`);
   });
@@ -511,8 +506,7 @@ describeIfNotScure('taproot tree satisfactions', () => {
           digest: DIGEST_EXPR,
           preimage: toHex(PREIMAGE)
         }
-      ],
-      scriptLib
+      ]
     });
     expect(best.leaf.expression.startsWith('and_v(')).toBe(true);
     const hasPreimage = best.stackItems.some(
@@ -567,8 +561,7 @@ describeIfNotScure('taproot tree satisfactions', () => {
         tapTreeInfo,
         signatures,
         tapLeaf: `pk(${LEAF_KEY})`,
-        preimages: [],
-        scriptLib
+        preimages: []
       })
     ).toThrow('ambiguous');
   });

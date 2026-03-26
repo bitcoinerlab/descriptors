@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jose-Luis Landabaso
 // Distributed under the MIT software license
 
-import type { BitcoinLib } from './bitcoinLib';
+import { getBitcoinLibOrThrow, type BitcoinLib } from './bitcoinLib';
 import type { Network } from './networks';
 
 // See Sipa's Miniscript "Resource limitations":
@@ -33,12 +33,11 @@ const MAX_STANDARD_P2WSH_STACK_ITEM_SIZE = 80;
 const MAX_STANDARD_TAPSCRIPT_STACK_ITEM_SIZE = 80;
 
 export function assertScriptNonPushOnlyOpsLimit({
-  script,
-  scriptLib
+  script
 }: {
   script: Uint8Array;
-  scriptLib: BitcoinLib['script'];
 }): void {
+  const { script: scriptLib } = getBitcoinLibOrThrow();
   const chunks = scriptLib.decompile(script);
   if (!chunks) throw new Error(`Error: could not decompile ${script}`);
   const nonPushOnlyOps = scriptLib.countNonPushOnlyOPs(chunks);

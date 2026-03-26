@@ -12,6 +12,7 @@ import type {
   PsbtLike,
   ScureTransactionLike
 } from './bitcoinLib';
+import { setBitcoinLib } from './bitcoinLib';
 import {
   tapleafHash,
   witnessStackToScriptWitness
@@ -340,7 +341,7 @@ export function DescriptorsFactory(
   // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
   let bitcoinLib: BitcoinLib;
   if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
-    bitcoinLib = eccOrBitcoinLib;
+    bitcoinLib = setBitcoinLib(eccOrBitcoinLib);
   } else {
     let createBitcoinjsLib: (ecc: TinySecp256k1Interface) => BitcoinLib;
     try {
@@ -472,8 +473,7 @@ export function DescriptorsFactory(
     const tapScript = miniscript2Script({
       expandedMiniscript: compileExpandedMiniscript,
       expansionMap,
-      tapscript: true,
-      scriptLib
+      tapscript: true
     });
 
     return { expandedExpression, expansionMap, tapScript };
@@ -854,8 +854,7 @@ export function DescriptorsFactory(
       if (!isCanonicalRanged) {
         const script = miniscript2Script({
           expandedMiniscript,
-          expansionMap,
-          scriptLib
+          expansionMap
         });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -863,7 +862,7 @@ export function DescriptorsFactory(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2sh({
           redeem: p2wsh({ redeem: { output: script, network }, network }),
           network
@@ -909,8 +908,7 @@ export function DescriptorsFactory(
       if (!isCanonicalRanged) {
         const script = miniscript2Script({
           expandedMiniscript,
-          expansionMap,
-          scriptLib
+          expansionMap
         });
         redeemScript = script;
         if (script.byteLength > MAX_SCRIPT_ELEMENT_SIZE) {
@@ -918,7 +916,7 @@ export function DescriptorsFactory(
             `Error: P2SH script is too large, ${script.byteLength} bytes is larger than ${MAX_SCRIPT_ELEMENT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2sh({ redeem: { output: script, network }, network });
       }
     }
@@ -939,8 +937,7 @@ export function DescriptorsFactory(
       if (!isCanonicalRanged) {
         const script = miniscript2Script({
           expandedMiniscript,
-          expansionMap,
-          scriptLib
+          expansionMap
         });
         witnessScript = script;
         if (script.byteLength > MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
@@ -948,7 +945,7 @@ export function DescriptorsFactory(
             `Error: script is too large, ${script.byteLength} bytes is larger than ${MAX_STANDARD_P2WSH_SCRIPT_SIZE} bytes`
           );
         }
-        assertScriptNonPushOnlyOpsLimit({ script, scriptLib });
+        assertScriptNonPushOnlyOpsLimit({ script });
         payment = p2wsh({ redeem: { output: script, network }, network });
       }
     }
@@ -977,7 +974,6 @@ export function DescriptorsFactory(
             network,
             BIP32,
             ECPair,
-            scriptLib,
             // `leafExpansionOverride` runs per leaf expression.
             // For non-matching leaves it returns undefined and
             // normal miniscript expansion is used;
@@ -1418,8 +1414,7 @@ export function DescriptorsFactory(
         timeConstraints: {
           nLockTime: constraints?.nLockTime,
           nSequence: constraints?.nSequence
-        },
-        scriptLib
+        }
       });
       this.#assertMiniscriptSatisfactionResourceLimits(
         satisfaction.scriptSatisfaction
@@ -1482,8 +1477,7 @@ export function DescriptorsFactory(
                 nSequence: constraints.nSequence
               }
             }
-          : {}),
-        scriptLib
+          : {})
       });
     }
 
@@ -1533,8 +1527,7 @@ export function DescriptorsFactory(
           expandedMiniscript,
           expansionMap,
           signatures: fakeSignatures,
-          preimages,
-          scriptLib
+          preimages
         });
         this.#assertMiniscriptSatisfactionResourceLimits(
           satisfaction.scriptSatisfaction
@@ -1552,8 +1545,7 @@ export function DescriptorsFactory(
           tapTreeInfo,
           preimages: this.#preimages,
           signatures: fakeSignatures,
-          ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {}),
-          scriptLib
+          ...(this.#tapLeaf !== undefined ? { tapLeaf: this.#tapLeaf } : {})
         });
         return { nLockTime, nSequence, tapLeafHash };
       }
@@ -2177,8 +2169,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
           );
         const taprootLeafMetadata = buildTaprootLeafPsbtMetadata({
           tapTreeInfo,
-          internalPubkey: tapInternalKey,
-          payments
+          internalPubkey: tapInternalKey
         });
         tapLeafScript = taprootLeafMetadata.map(({ leaf, controlBlock }) => ({
           script: leaf.tapScript,

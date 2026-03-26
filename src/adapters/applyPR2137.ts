@@ -5,7 +5,7 @@ import type { Psbt, Signer } from 'bitcoinjs-lib';
 import type { SignerAsync } from 'ecpair';
 import { checkForInput, type PsbtInput } from '../bip174';
 import { tapTweakHash, isTaprootInput } from '../bitcoinjs-lib-internals';
-import { taggedHash } from '../crypto';
+import { getBitcoinLibOrThrow } from '../bitcoinLib';
 import { compare, concat } from 'uint8array-tools';
 
 interface HDSignerBase {
@@ -52,7 +52,7 @@ function range(n: number): number[] {
 }
 
 function tapBranchHash(a: Uint8Array, b: Uint8Array): Uint8Array {
-  return taggedHash('TapBranch', concat([a, b]));
+  return getBitcoinLibOrThrow().crypto.taggedHash('TapBranch', concat([a, b]));
 }
 
 function calculateScriptTreeMerkleRoot(

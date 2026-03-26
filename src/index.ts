@@ -51,8 +51,8 @@ export type {
 export { networks, type Network } from './networks';
 export {
   DescriptorsFactory,
-  OutputInstance,
-  OutputConstructor
+  type OutputInstance,
+  type OutputConstructor
 } from './descriptors';
 export { DescriptorChecksum as checksum } from './checksum';
 

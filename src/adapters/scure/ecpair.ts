@@ -6,7 +6,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { compare } from 'uint8array-tools';
 import type { BitcoinLib } from '../../bitcoinLib';
 import type { Network } from '../../networks';
-import { sha256 } from '../../crypto';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { wrapScurePrivateKey, wrapScurePublicKey } from '../scureKeys';
 
 function decodeWIF(
