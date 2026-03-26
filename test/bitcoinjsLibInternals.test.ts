@@ -8,7 +8,6 @@ const isScure = process.env['BITCOIN_LIB'] === 'scure';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { PsbtInput } from 'bip174';
-import { initEccLib } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { fromHex, toHex } from 'uint8array-tools';
 import {
@@ -24,13 +23,14 @@ import * as bip341 from 'bitcoinjs-lib/src/payments/bip341';
 import * as bip371 from 'bitcoinjs-lib/src/psbt/bip371';
 // @ts-expect-error TypeScript Node10 resolution does not read package exports.
 import * as psbtUtils from 'bitcoinjs-lib/src/psbt/psbtutils';
+import { createBitcoinjsLib } from '../dist/adapters/bitcoinjs';
 
 // Skip all tests when using scure backend (tests bitcoinjs-lib internals)
 const describeIfNotScure = isScure ? describe.skip : describe;
 
 describeIfNotScure('bitcoinjs-lib internals compatibility', () => {
   beforeAll(() => {
-    initEccLib(ecc);
+    createBitcoinjsLib(ecc);
   });
 
   test('tapleafHash matches bitcoinjs implementation', () => {
