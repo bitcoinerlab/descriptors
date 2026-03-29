@@ -306,10 +306,9 @@ function parseTrExpression(expression: string): {
  * ({@link https://github.com/paulmillr/scure-bip32 | `HDKey`} and
  * `Uint8Array` for private keys), which do not require key-factory initialization.
  *
- * @param {TinySecp256k1Interface | BitcoinLib} eccOrBitcoinLib - The core
- * Bitcoin library input used by the factory.
+ * @param {BitcoinLib} bitcoinLib - A pre-built BitcoinLib backend adapter.
  *
- * You can pass this parameter in three common ways:
+ * Use one of the provided adapter factories:
  *
  * ```ts
  * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
@@ -325,39 +324,27 @@ function parseTrExpression(expression: string): {
  *
  * const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
  * ```
- *
- * ```ts
- * import * as ecc from '@bitcoinerlab/secp256k1';
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- *
- * // Equivalent to `DescriptorsFactory(createBitcoinjsLib(ecc))`, but implicit.
- * const { Output } = DescriptorsFactory(ecc);
- * ```
  */
 export function DescriptorsFactory(
-  eccOrBitcoinLib: TinySecp256k1Interface | BitcoinLib
+  bitcoinLibOrEcc: BitcoinLib | TinySecp256k1Interface
 ) {
-  // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
-  // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
-  let bitcoinLib: BitcoinLib;
-  if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
-    bitcoinLib = setBitcoinLib(eccOrBitcoinLib);
-  } else {
-    let createBitcoinjsLib: (ecc: TinySecp256k1Interface) => BitcoinLib;
-    try {
-      // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      ({ createBitcoinjsLib } = require('./adapters/bitcoinjs'));
-    } catch (error) {
-      throw new Error(
-        'Could not load the bitcoinjs backend. Install bitcoinjs-lib, bip32 and ecpair ' +
-          'as peer dependencies, or use the scure backend with createScureLib(). ' +
-          'Original error: ' +
-          (error instanceof Error ? error.message : String(error))
-      );
-    }
-    bitcoinLib = createBitcoinjsLib(eccOrBitcoinLib);
+  // Require an explicit BitcoinLib adapter instead of lazy-loading bitcoinjs.
+  // The old implicit fallback used require('./adapters/bitcoinjs') which caused
+  // bundlers (esbuild, Webpack, Metro) to statically resolve the entire
+  // bitcoinjs-lib dependency tree even when using the scure backend.
+  if (!('payments' in bitcoinLibOrEcc && 'script' in bitcoinLibOrEcc)) {
+    throw new Error(
+      'DescriptorsFactory now requires an explicit BitcoinLib backend adapter. ' +
+        'Passing a raw TinySecp256k1Interface (ecc) is no longer supported.\n\n' +
+        'Use one of:\n' +
+        '  import { createBitcoinjsLib } from "@bitcoinerlab/descriptors-core/bitcoinjs";\n' +
+        '  DescriptorsFactory(createBitcoinjsLib(ecc))\n\n' +
+        '  import { createScureLib } from "@bitcoinerlab/descriptors-core/scure";\n' +
+        '  DescriptorsFactory(createScureLib())\n\n' +
+        'Or use the convenience packages @bitcoinerlab/descriptors or @bitcoinerlab/descriptors-scure.'
+    );
   }
+  const bitcoinLib: BitcoinLib = setBitcoinLib(bitcoinLibOrEcc);
   const { payments, script: scriptLib } = bitcoinLib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const address = bitcoinLib.address;
