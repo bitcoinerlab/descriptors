@@ -20,7 +20,17 @@ import {
 import { type BIP32API, BIP32Factory } from 'bip32';
 import { type ECPairAPI, ECPairFactory } from 'ecpair';
 import type { TinySecp256k1Interface } from '../types';
-import { setBitcoinLib, type BitcoinLib } from '../bitcoinLib';
+import {
+  isScureHDKey,
+  isScureTransaction,
+  setBitcoinLib,
+  type BitcoinLib,
+  type ECPairInterfaceLike,
+  type BIP32InterfaceLike,
+  type PsbtLike,
+  type ScureHDKeyLike,
+  type ScureTransactionLike
+} from '../bitcoinLib';
 
 /**
  * Create a BitcoinLib backed by bitcoinjs-lib.
@@ -47,6 +57,36 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
     address,
     ECPair,
     BIP32,
+    toPsbt(psbt: PsbtLike | ScureTransactionLike) {
+      if (isScureTransaction(psbt)) {
+        throw new Error(
+          'Scure transaction support is not available for the active backend. ' +
+            'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+            'before passing @scure/btc-signer transactions.'
+        );
+      }
+      return psbt;
+    },
+    toECPairInterface(ecpair: ECPairInterfaceLike | Uint8Array) {
+      if (ecpair instanceof Uint8Array) {
+        throw new Error(
+          'Scure private-key support is not available for the active backend. ' +
+            'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+            'before passing raw Uint8Array private keys.'
+        );
+      }
+      return ecpair;
+    },
+    toBIP32Interface(node: BIP32InterfaceLike | ScureHDKeyLike) {
+      if (isScureHDKey(node)) {
+        throw new Error(
+          'Scure HDKey support is not available for the active backend. ' +
+            'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+            'before passing @scure/bip32 HDKey values.'
+        );
+      }
+      return node;
+    },
     verifySchnorr: ecc.verifySchnorr
   });
 }

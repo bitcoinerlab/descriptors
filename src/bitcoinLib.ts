@@ -287,8 +287,6 @@ export interface PsbtLike {
   toBase64(): string;
 }
 
-export type BitcoinBackendKind = 'bitcoinjs' | 'scure';
-
 /** @internal */
 export type FinalScriptsFunc = (
   inputIndex: number,
@@ -349,6 +347,57 @@ export function isScureTransaction(
   );
 }
 
+export function isScureHDKey(
+  node: BIP32InterfaceLike | ScureHDKeyLike
+): node is ScureHDKeyLike {
+  const candidate = node as ScureHDKeyLike;
+  return (
+    typeof candidate.fingerprint === 'number' &&
+    typeof candidate.derive === 'function' &&
+    typeof candidate.deriveChild === 'function' &&
+    typeof candidate.publicExtendedKey === 'string' &&
+    typeof candidate.privateExtendedKey === 'string'
+  );
+}
+
+/** @internal */
+export function toECPairInterface(
+  ecpair: ECPairInterfaceLike | Uint8Array
+): ECPairInterfaceLike {
+  if (ecpair instanceof Uint8Array) {
+    const bitcoinLib = getBitcoinLibOrThrow();
+    if (bitcoinLib.kind !== 'scure') {
+      throw new Error(
+        'Scure private-key support is not available for the active backend. ' +
+          'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+          'before passing raw Uint8Array private keys.'
+      );
+    }
+    return bitcoinLib.toECPairInterface(ecpair);
+  }
+
+  return ecpair;
+}
+
+/** @internal */
+export function toBIP32Interface(
+  node: BIP32InterfaceLike | ScureHDKeyLike
+): BIP32InterfaceLike {
+  if (isScureHDKey(node)) {
+    const bitcoinLib = getBitcoinLibOrThrow();
+    if (bitcoinLib.kind !== 'scure') {
+      throw new Error(
+        'Scure HDKey support is not available for the active backend. ' +
+          'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+          'before passing @scure/bip32 HDKey values.'
+      );
+    }
+    return bitcoinLib.toBIP32Interface(node);
+  }
+
+  return node;
+}
+
 // ─── Transaction ─────────────────────────────────────────────────────
 
 /** @internal */
@@ -375,7 +424,7 @@ export type Taptree = [Taptree | Tapleaf, Taptree | Tapleaf] | Tapleaf;
  * @internal
  */
 export interface BitcoinLib {
-  kind: BitcoinBackendKind;
+  kind: 'bitcoinjs' | 'scure';
   // ── Payments ──
   payments: {
     p2pk(a: { pubkey: Uint8Array; network?: Network }): Payment;
@@ -450,14 +499,23 @@ export interface BitcoinLib {
     pubkey: Uint8Array,
     signature: Uint8Array
   ): boolean;
+
+  // ── Interop hooks ──
+  toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike;
+  toECPairInterface(
+    ecpair: ECPairInterfaceLike | Uint8Array
+  ): ECPairInterfaceLike;
+  toBIP32Interface(
+    node: BIP32InterfaceLike | ScureHDKeyLike
+  ): BIP32InterfaceLike;
 }
 
 let globalBitcoinLib: BitcoinLib | undefined;
 let globalBitcoinLibWarningShown = false;
 
 function warnAboutLockedBitcoinLib(
-  currentKind: BitcoinBackendKind,
-  incomingKind: BitcoinBackendKind
+  currentKind: 'bitcoinjs' | 'scure',
+  incomingKind: 'bitcoinjs' | 'scure'
 ) {
   if (globalBitcoinLibWarningShown) return;
   globalBitcoinLibWarningShown = true;

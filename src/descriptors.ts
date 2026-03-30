@@ -22,7 +22,6 @@ import { compare, fromHex, toHex } from 'uint8array-tools';
 import type { PartialSig } from './bip174';
 
 import type {
-  TinySecp256k1Interface,
   Preimage,
   Expansion,
   ExpansionMap,
@@ -284,13 +283,16 @@ function parseTrExpression(expression: string): {
  *
  * This factory is mainly useful for:
  * - backwards compatibility with pre-`3.1.x` bitcoinjs usage, and
- * - advanced `@bitcoinerlab/descriptors-core` use cases where you want to bind
- *   a specific `TinySecp256k1Interface` or a custom `BitcoinLib`.
+ * - advanced bitcoinjs usage where you want to bind a custom
+ *   `BitcoinLib` backend adapter.
  *
- * In the default bitcoinjs package, the implicit `TinySecp256k1Interface` is
- * `@bitcoinerlab/secp256k1`.
+ * It is not the recommended public entry point for users of
+ * `@bitcoinerlab/descriptors`. It remains
+ * in core because the preset packages and their compatibility layers are built
+ * on top of it. Future major versions are expected to stop re-exporting it from
+ * those preset packages.
  *
- * Notably, it returns the {@link _Internal_.Output | `Output`} class, which
+ * Notably, it returns the `Output` class, which
  * provides methods to create, sign, and finalize transactions from descriptor
  * expressions.
  *
@@ -306,58 +308,21 @@ function parseTrExpression(expression: string): {
  * ({@link https://github.com/paulmillr/scure-bip32 | `HDKey`} and
  * `Uint8Array` for private keys), which do not require key-factory initialization.
  *
- * @param {TinySecp256k1Interface | BitcoinLib} eccOrBitcoinLib - The core
- * Bitcoin library input used by the factory.
+ * @param {BitcoinLib} bitcoinLib - A pre-built BitcoinLib backend adapter.
  *
- * You can pass this parameter in three common ways:
- *
- * ```ts
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
- * import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
- *
- * const { Output } = DescriptorsFactory(createScureLib());
- * ```
+ * For example, the current 3.x bitcoinjs preset still allows binding a custom
+ * bitcoinjs-compatible `ecc` implementation:
  *
  * ```ts
  * import * as ecc from '@bitcoinerlab/secp256k1';
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
- * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
+ * import { DescriptorsFactory, createBitcoinjsLib } from '@bitcoinerlab/descriptors';
  *
  * const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
  * ```
  *
- * ```ts
- * import * as ecc from '@bitcoinerlab/secp256k1';
- * import { DescriptorsFactory } from '@bitcoinerlab/descriptors';
- *
- * // Equivalent to `DescriptorsFactory(createBitcoinjsLib(ecc))`, but implicit.
- * const { Output } = DescriptorsFactory(ecc);
- * ```
  */
-export function DescriptorsFactory(
-  eccOrBitcoinLib: TinySecp256k1Interface | BitcoinLib
-) {
-  // Detect whether we got a raw ecc interface or a full BitcoinLib adapter.
-  // BitcoinLib has a `payments` property; TinySecp256k1Interface does not.
-  let bitcoinLib: BitcoinLib;
-  if ('payments' in eccOrBitcoinLib && 'script' in eccOrBitcoinLib) {
-    bitcoinLib = setBitcoinLib(eccOrBitcoinLib);
-  } else {
-    let createBitcoinjsLib: (ecc: TinySecp256k1Interface) => BitcoinLib;
-    try {
-      // Lazy-load the bitcoinjs adapter to avoid hard-dep when using another backend
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      ({ createBitcoinjsLib } = require('./adapters/bitcoinjs'));
-    } catch (error) {
-      throw new Error(
-        'Could not load the bitcoinjs backend. Install bitcoinjs-lib, bip32 and ecpair ' +
-          'as peer dependencies, or use the scure backend with createScureLib(). ' +
-          'Original error: ' +
-          (error instanceof Error ? error.message : String(error))
-      );
-    }
-    bitcoinLib = createBitcoinjsLib(eccOrBitcoinLib);
-  }
+export function DescriptorsFactory(bitcoinLib: BitcoinLib) {
+  bitcoinLib = setBitcoinLib(bitcoinLib);
   const { payments, script: scriptLib } = bitcoinLib;
   const { p2sh, p2wpkh, p2pkh, p2pk, p2wsh, p2tr } = payments;
   const address = bitcoinLib.address;
@@ -2438,13 +2403,13 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
 /**
  * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally
- * creates and returns the {@link _Internal_.Output | `Output`} class.
- * This class is specialized for the provided `TinySecp256k1Interface`.
+ * creates and returns the `Output` class.
+ * This class is specialized for the provided `BitcoinLib` backend adapter.
  * Use `OutputInstance` to declare instances for this class:
  * `const output: OutputInstance = new Output();`
  *
- * See the {@link _Internal_.Output | documentation for the internal `Output`
- * class} for a complete list of available methods.
+ * See the API documentation for `Output` for a complete list of available
+ * methods.
  */
 type OutputInstance = InstanceType<OutputConstructor>;
 export { OutputInstance, OutputConstructor };

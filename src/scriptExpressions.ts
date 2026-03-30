@@ -1,10 +1,9 @@
 import type { BIP32InterfaceLike, ScureHDKeyLike } from './bitcoinLib';
-import type { LedgerManager } from './ledger';
-import { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
+import { keyExpressionBIP32 } from './keyExpressions';
 import { coinTypeFromNetwork } from './networkUtils';
 import { type Network, networks } from './networks';
 
-function assertStandardKeyPath(keyPath: string) {
+export function assertStandardKeyPath(keyPath: string) {
   // Regular expression to match "/change/index" or "/change/*" format
   const regex = /^\/[01]\/(\d+|\*)$/;
   if (!regex.test(keyPath)) {
@@ -91,67 +90,3 @@ export const wpkhBIP32 = standardExpressionsBIP32Maker(
 );
 /** @function */
 export const trBIP32 = standardExpressionsBIP32Maker(86, 'tr(KEYEXPRESSION)');
-
-function standardExpressionsLedgerMaker(
-  purpose: number,
-  scriptTemplate: string
-) {
-  /**
-   * Computes the standard descriptor based on given parameters.
-   *
-   * You can define the output location either by:
-   * - Providing the full `keyPath` (e.g., "/0/2").
-   * OR
-   * - Specifying the `change` and `index` values separately (e.g., `{change:0, index:2}`).
-   *
-   * For ranged indexing, the `index` can be set as a wildcard '*'. For example:
-   * - `keyPath="/0/*"`
-   * OR
-   * - `{change:0, index:'*'}`.
-   */
-  async function standardScriptExpressionLedger({
-    ledgerManager,
-    account,
-    keyPath,
-    change,
-    index
-  }: {
-    ledgerManager: LedgerManager;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-    index?: number | undefined | '*';
-  }) {
-    const { network } = ledgerManager;
-    const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
-    if (keyPath !== undefined) assertStandardKeyPath(keyPath);
-    const keyExpression = await keyExpressionLedger({
-      ledgerManager,
-      originPath,
-      keyPath,
-      change,
-      index
-    });
-
-    return scriptTemplate.replace('KEYEXPRESSION', keyExpression);
-  }
-  return standardScriptExpressionLedger;
-}
-
-/** @function */
-export const pkhLedger = standardExpressionsLedgerMaker(
-  44,
-  'pkh(KEYEXPRESSION)'
-);
-/** @function */
-export const shWpkhLedger = standardExpressionsLedgerMaker(
-  49,
-  'sh(wpkh(KEYEXPRESSION))'
-);
-/** @function */
-export const wpkhLedger = standardExpressionsLedgerMaker(
-  84,
-  'wpkh(KEYEXPRESSION)'
-);
-/** @function */
-export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');
