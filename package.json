@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors-core",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -81,7 +81,7 @@
     "test:ledger": "npm run lint && npm run build && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger",
     "publish:check": "npm whoami && node ./scripts/check-publish-versions.js",
     "publish:all": "npm run publish:check && npm publish --access public && (cd ./packages/descriptors && npm publish --access public) && (cd ./packages/descriptors-scure && npm publish --access public)",
-    "prepublishOnly": "npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
+    "prepublishOnly": "rm -rf dist/ && npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
   },
   "files": [
     "dist"
