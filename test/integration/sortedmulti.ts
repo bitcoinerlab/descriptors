@@ -11,6 +11,7 @@ import { toHex } from 'uint8array-tools';
 import * as ecc from '@bitcoinerlab/secp256k1';
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
 import { createPsbt, psbtToHex, psbtToTxId } from '../helpers/psbt';
 import {
@@ -31,7 +32,9 @@ const FINAL_ADDRESS = regtestUtils.RANDOM_ADDRESS;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 
 // Helpers -----------------------------------------------------

@@ -2,13 +2,16 @@
 // Distributed under the MIT software license
 
 import { DescriptorsFactory } from '../dist/descriptors';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
 import { createPrivKeySigner, getPubKey } from './helpers/keys';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { expand } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { expand } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 describe('miniscript expansion', () => {
   test('does not treat sha256 digest hex as a key expression', () => {

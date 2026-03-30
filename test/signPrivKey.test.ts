@@ -2,10 +2,14 @@
 // Distributed under the MIT software license
 
 import { networks, signers } from '../dist';
+import { createScureLib } from '../dist/scure';
 import type { ScureTransactionLike } from '../dist/bitcoinLib';
 import { createPsbt } from './helpers/psbt';
 
 const { signPrivKey, signInputPrivKey, signECPair, signInputECPair } = signers;
+// Only scure initialization is needed here because the positive paths exercise
+// scure-native inputs, while the bitcoinjs negative cases fail before conversion.
+createScureLib();
 
 const testECPair = {
   publicKey: new Uint8Array(33).fill(2),

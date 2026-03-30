@@ -24,6 +24,7 @@ import {
   keyExpressionBIP32,
   signers
 } from '../../dist/';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
@@ -36,7 +37,9 @@ import {
 const { wpkhBIP32, shWpkhBIP32, pkhBIP32, trBIP32 } = scriptExpressions;
 const { signBIP32, signECPair, signPrivKey } = signers;
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 //masterNode will be able to sign all the expressions below:

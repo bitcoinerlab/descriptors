@@ -35,6 +35,7 @@ console.log(
 );
 
 import { DescriptorsFactory, keyExpressionBIP32, signers } from '../../dist/';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
@@ -47,7 +48,9 @@ import {
 } from '../helpers/keys';
 const { signBIP32, signECPair, signPrivKey } = signers;
 
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
 const ecpair = createRandomSingleKeySigner(isScure);
 

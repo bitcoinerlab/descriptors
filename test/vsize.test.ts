@@ -9,10 +9,11 @@
 
 import { networks } from '../dist';
 import { DescriptorsFactory } from '../dist';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import fixturesVsize from './fixtures/vsize.json'; // Fixture from @bitcoinerlab/coinselect
 import * as secp256k1 from '@bitcoinerlab/secp256k1';
 import { fromHex } from 'uint8array-tools';
-const { Output } = DescriptorsFactory(secp256k1);
+const { Output } = DescriptorsFactory(createBitcoinjsLib(secp256k1));
 import { vsize } from './helpers/vsize';
 import { psbtFromBase64, psbtToHex } from './helpers/psbt';
 

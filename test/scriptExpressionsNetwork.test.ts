@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks } from '../dist';
 import type { Network } from '../dist';
 import { scriptExpressions } from '../dist/';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
+import { createScureLib } from '../dist/scure';
 import { createMasterNode } from './helpers/keys';
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
+if (isScure) createScureLib();
+else createBitcoinjsLib(ecc);
 
 const MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
