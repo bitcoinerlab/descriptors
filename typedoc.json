@@ -1,14 +1,20 @@
 {
   "$schema": "https://typedoc.org/schema.json",
+  "name": "BitcoinerLab Descriptors API",
   "tsconfig": "./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
+  "basePath": "./src",
+  "displayBasePath": "./src",
   "internalModule": "_Internal_",
   "hideGenerator": true,
-  "entryPoints": ["./src/index.ts"],
+  "entryPoints": ["./src/index.ts", "./src/ledger/index.ts"],
   "plugin": ["typedoc-plugin-missing-exports"],
   "excludeExternals": true,
   "includeVersion": true,
   "sort": ["source-order"],
   "excludeInternal": true,
+  "navigation": {
+    "includeFolders": false
+  },
   "validation": {
     "notExported": false
   }

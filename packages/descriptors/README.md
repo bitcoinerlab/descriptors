@@ -1,6 +1,6 @@
 # @bitcoinerlab/descriptors
 
-Bitcoinjs-ready package for `@bitcoinerlab/descriptors-core`.
+Bitcoinjs-ready package for Bitcoin descriptor work.
 
 For most users this is the default package to install:
 
@@ -17,5 +17,6 @@ Most users can import directly from the package:
 import { Output, Psbt, ECPair, signers } from '@bitcoinerlab/descriptors';
 ```
 
-`DescriptorsFactory(ecc)` is still available for backwards compatibility and
-advanced initialization.
+`DescriptorsFactory(...)` is still available only for 3.x backwards
+compatibility and is planned to stop being a public preset-package API in the
+next major release.
