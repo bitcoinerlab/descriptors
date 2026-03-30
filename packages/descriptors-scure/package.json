@@ -33,17 +33,24 @@
       "optional": true
     }
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "scripts": {
+    "build": "npm --prefix ../.. run build:src && tsc --project ./tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ledger": {
+      "types": "./dist/ledger.d.ts",
+      "default": "./dist/ledger.js"
     }
   },
   "files": [
-    "index.js",
-    "index.d.ts",
+    "dist",
     "README.md"
   ],
   "dependencies": {

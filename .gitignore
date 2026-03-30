@@ -8,4 +8,5 @@ webdocs/
 test/**/*.js
 test/**/*.d.ts
 !test/tools/generateBitcoinCoreFixtures.js
+packages/*/dist/
 .aider*

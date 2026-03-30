@@ -35,6 +35,10 @@
       "types": "./dist/bitcoinjs.d.ts",
       "default": "./dist/bitcoinjs.js"
     },
+    "./ledger": {
+      "types": "./dist/ledger/index.d.ts",
+      "default": "./dist/ledger/index.js"
+    },
     "./scure": {
       "types": "./dist/scure.d.ts",
       "default": "./dist/scure.js"
@@ -57,10 +61,13 @@
     "webdocs": "typedoc --options ./webtypedoc.json && node ./scripts/postprocess-docs.js ./webdocs",
     "docs": "typedoc --options ./typedoc.json && node ./scripts/postprocess-docs.js ./docs",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
+    "build:packages": "tsc --project ./packages/descriptors/tsconfig.json && tsc --project ./packages/descriptors-scure/tsconfig.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",
-    "build": "npm run build:src && npm run build:test",
+    "build": "npm run build:src && npm run build:packages && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"packages/*/src/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"packages/*/src/**/*.ts\"",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js && echo \"\n\n\" && node test/integration/scure.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
