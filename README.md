@@ -7,9 +7,6 @@ This library uses an underlying Bitcoin library for creating, signing & decoding
 - `@bitcoinerlab/descriptors` for the [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) and [bitcoinjs](https://github.com/bitcoinjs) family of libraries: battle-tested and broadly used.
 - `@bitcoinerlab/descriptors-scure` for [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) and the [noble](https://github.com/paulmillr/noble-curves)/[scure](https://github.com/paulmillr/scure-btc-signer) family of libraries: audited, fast and minimal.
 
-Or pick `@bitcoinerlab/descriptors-core` for advanced/manual initialization,
-when you want to wire the underlying Bitcoin library yourself.
-
 ## TL;DR (quick start)
 
 ```bash
@@ -114,8 +111,7 @@ If you need older bitcoinjs versions, keep using `@bitcoinerlab/descriptors 2.x`
 If you want Taproot trees (`tr(KEY,TREE)`), use `3.x+`.
 
 Starting in `3.1.x`, scure users can install
-`@bitcoinerlab/descriptors-scure`. For advanced/custom backend wiring, use
-`@bitcoinerlab/descriptors-core`.
+`@bitcoinerlab/descriptors-scure`.
 
 ## Concepts
 
@@ -149,7 +145,6 @@ Before we dive in, it's worth mentioning that we have several comprehensive guid
 Furthermore, we've meticulously documented our API. For an in-depth look into Classes, functions and types, head over [here](https://bitcoinerlab.com/modules/descriptors/api).
 
 For most users, install the package that matches your preferred Bitcoin library.
-Use `@bitcoinerlab/descriptors-core` only if you want to wire the backend manually.
 
 Bitcoinjs backend:
 
@@ -173,8 +168,17 @@ The examples below keep the bitcoinjs stack visible by default. When
 backend-specific code differs, a collapsible scure variant is shown right
 below.
 
-If you want to manage backend dependencies yourself, use
-`@bitcoinerlab/descriptors-core`.
+<details>
+  <summary>Compatibility note for existing @bitcoinerlab/descriptors users</summary>
+
+The root `@bitcoinerlab/descriptors` package still keeps a few 3.x compatibility shims, but they are deprecated and planned for removal in the next major release:
+
+- `DescriptorsFactory()` and `DescriptorsFactory(ecc)` on the root package
+- Root Ledger exports such as `ledger`, `keyExpressionLedger`, `signers.signLedger`, `signers.signInputLedger`, and `scriptExpressions.*Ledger`
+
+For new code, prefer the preset top-level exports directly and use `@bitcoinerlab/descriptors/ledger` for Ledger helpers. `DescriptorsFactory(...)` on `@bitcoinerlab/descriptors` is kept only for 3.x backwards compatibility and is planned to stop being a public preset-package API in the next major release, including the custom `ecc` initialization path.
+
+</details>
 
 For a minimal end-to-end scure example, see [`test/integration/scure.ts`](test/integration/scure.ts).
 
@@ -198,34 +202,20 @@ import { Output } from '@bitcoinerlab/descriptors-scure'; // scure-ready package
 ```
 
 <details>
-  <summary>Advanced initialization using @bitcoinerlab/descriptors-core</summary>
+  <summary>Advanced: custom bitcoinjs-compatible ecc implementation</summary>
 
-Use `@bitcoinerlab/descriptors-core` only if you want explicit backend binding.
-
-Bitcoinjs-style core setup:
-
-```bash
-npm install @bitcoinerlab/descriptors-core @bitcoinerlab/secp256k1 bitcoinjs-lib@7 bip32@5 ecpair@3
-```
+Most users do not need `DescriptorsFactory(...)` directly. It remains useful if
+you want to swap the default `@bitcoinerlab/secp256k1` binding for another
+tiny-secp256k1-compatible implementation.
 
 ```javascript
-import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
+import * as ecc from '@bitcoinerlab/secp256k1'; // or another tiny-secp256k1-compatible implementation
+import {
+  DescriptorsFactory,
+  createBitcoinjsLib
+} from '@bitcoinerlab/descriptors';
 
-const { Output } = DescriptorsFactory(ecc);
-```
-
-Scure-style core setup:
-
-```bash
-npm install @bitcoinerlab/descriptors-core @scure/btc-signer@2 @scure/bip32@2 @noble/curves@2 @scure/base@2
-```
-
-```javascript
-import { DescriptorsFactory } from '@bitcoinerlab/descriptors-core';
-import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
-
-const { Output } = DescriptorsFactory(createScureLib());
+const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
 ```
 
 </details>
@@ -419,6 +409,7 @@ To incorporate these functionalities, use the following import statement:
 
 ```javascript
 import { signers } from '@bitcoinerlab/descriptors' // or '@bitcoinerlab/descriptors-scure' for scure
+import { signers as ledgerSigners } from '@bitcoinerlab/descriptors/ledger' // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
 ```
 
 For signing operations, utilize the methods provided by the [`signers`](https://bitcoinerlab.com/modules/descriptors/api/modules/signers.html):
@@ -427,7 +418,7 @@ For signing operations, utilize the methods provided by the [`signers`](https://
 // `psbt` here is a bitcoinjs-lib `Psbt` (for example: `const psbt = new Psbt()`)
 
 // For Ledger
-await signers.signLedger({ psbt, ledgerManager });
+await ledgerSigners.signLedger({ psbt, ledgerManager });
 
 // For BIP32 - https://github.com/bitcoinjs/bip32
 signers.signBIP32({ psbt, masterNode }); // Here, `masterNode` is a bitcoinjs `BIP32Interface` (see examples above)
@@ -451,7 +442,7 @@ signers.signPrivKey({ psbt, privKey }); // Here, `privKey` is a 32-byte `Uint8Ar
 signers.signInputPrivKey({ psbt, index: 0, privKey }); // Same `privKey` type as above
 
 // For Ledger
-await signers.signLedger({ psbt, ledgerManager }); // Again, `masterNode` is an `HDKey`
+await ledgerSigners.signLedger({ psbt, ledgerManager });
 ```
 
 </details>
@@ -492,9 +483,10 @@ This library also provides a series of function helpers designed to streamline t
 
 ```javascript
 import { scriptExpressions } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
+import { scriptExpressions as ledgerScriptExpressions } from '@bitcoinerlab/descriptors/ledger'; // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
 ```
 
-Within the `scriptExpressions` module, there are functions designed to generate descriptors for commonly used scripts. Some examples include `pkhBIP32()`, `shWpkhBIP32()`, `wpkhBIP32()`, `pkhLedger()`, `shWpkhLedger()` and `wpkhLedger()`. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html) for a detailed list and further information.
+Within the root `scriptExpressions` module, there are functions designed to generate descriptors for commonly used BIP32-based scripts, such as `pkhBIP32()`, `shWpkhBIP32()` and `wpkhBIP32()`. Ledger-specific helpers such as `pkhLedger()`, `shWpkhLedger()` and `wpkhLedger()` are exposed from the dedicated `ledgerScriptExpressions` import shown above. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html) for a detailed list and further information.
 
 When using BIP32-based descriptors, the following parameters are required for the `scriptExpressions` functions:
 
@@ -527,14 +519,15 @@ pkhBIP32(params: {
 
 </details>
 
-For functions suffixed with _Ledger_ (designed to generate descriptors for Ledger Hardware devices), replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration will be provided in the following section.
+For functions suffixed with _Ledger_ (designed to generate descriptors for Ledger Hardware devices), use the dedicated Ledger entrypoint and replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration is provided in the following section.
 
 The `keyExpressions` category includes functions that generate string representations of key expressions for public keys.
 
 This library includes the following `keyExpressions`: [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) and [`keyExpressionLedger`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionLedger.html). They can be imported as follows:
 
 ```javascript
-import { keyExpressionBIP32, keyExpressionLedger } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
+import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
+import { keyExpressionLedger } from '@bitcoinerlab/descriptors/ledger'; // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
 ```
 
 The parameters required for these functions are:
@@ -566,7 +559,7 @@ function keyExpressionBIP32({
 
 </details>
 
-For the `keyExpressionLedger` function, use `ledgerManager` instead of `masterNode`.
+For the `keyExpressionLedger` function, use the dedicated Ledger entrypoint and pass `ledgerManager` instead of `masterNode`.
 
 Both functions will generate strings that fully define BIP32 keys. For example:
 
@@ -593,7 +586,12 @@ For Ledger device signing, import the necessary functions as follows:
 ```javascript
 import Transport from '@ledgerhq/hw-transport-node-hid'; //or hw-transport-web-hid, for web
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-import { Output, ledger, networks } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
+import { Output, networks } from '@bitcoinerlab/descriptors';
+import {
+  assertLedgerApp,
+  registerLedgerWallet,
+  type LedgerManager
+} from '@bitcoinerlab/descriptors/ledger';
 ```
 
 Then, use the following code to assert that the Ledger app is running Bitcoin Test version 2.1.0 or higher and to create a new Ledger client:
@@ -601,10 +599,10 @@ Then, use the following code to assert that the Ledger app is running Bitcoin Te
 ```javascript
 const transport = await Transport.create();
 //Throws if not running Bitcoin Test >= 2.1.0
-await ledger.assertLedgerApp({ transport, name: 'Bitcoin Test', minVersion: '2.1.0' });
+await assertLedgerApp({ transport, name: 'Bitcoin Test', minVersion: '2.1.0' });
 
 const ledgerClient = new AppClient(transport);
-const ledgerManager = {
+const ledgerManager: LedgerManager = {
   ledgerClient,
   ledgerState: {},
   Output,
@@ -617,7 +615,7 @@ Here, `transport` is an instance of a Transport object that allows communication
 To register the policies of non-standard descriptors on the Ledger device, use the following code:
 
 ```javascript
-await ledger.registerLedgerWallet({
+await registerLedgerWallet({
   ledgerManager,
   descriptor: wshDescriptor,
   policyName: 'BitcoinerLab'
@@ -628,7 +626,7 @@ This code will auto-skip the policy registration process if it already exists. P
 
 Finally, `ledgerManager.ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
 
-The [API reference for the ledger module](https://bitcoinerlab.com/modules/descriptors/api/variables/ledger.html) provides a comprehensive list of functions related to the Ledger Hardware Wallet, along with detailed explanations of their parameters and behavior.
+The API reference for the dedicated Ledger entrypoints provides the full list of functions related to Ledger Hardware Wallet workflows, along with detailed explanations of their parameters and behavior.
 
 <a name="documentation"></a>
 

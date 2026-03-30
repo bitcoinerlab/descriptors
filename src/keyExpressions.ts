@@ -8,14 +8,9 @@ import type {
   BIP32InterfaceLike,
   ScureHDKeyLike
 } from './bitcoinLib';
+import { toBIP32Interface } from './bitcoinLib';
 import { type Network, networks } from './networks';
 import type { KeyInfo } from './types';
-import {
-  LedgerManager,
-  getLedgerMasterFingerPrint,
-  getLedgerXpub
-} from './ledger';
-import { toBIP32Interface } from './keyInterfaces';
 import { concat, fromHex, toHex } from 'uint8array-tools';
 
 import * as RE from './re';
@@ -240,7 +235,7 @@ export function parseKeyExpression({
   };
 }
 
-function assertChangeIndexKeyPath({
+export function assertChangeIndexKeyPath({
   change,
   index,
   keyPath
@@ -258,60 +253,6 @@ function assertChangeIndexKeyPath({
     throw new Error(`Error: Pass change and index or neither`);
   if ((change !== undefined) === (keyPath !== undefined))
     throw new Error(`Error: Pass either change and index or a keyPath`);
-}
-
-/**
- * Constructs a key expression string for a Ledger device from the provided
- * components.
- *
- * This function assists in crafting key expressions tailored for Ledger
- * hardware wallets. It fetches the master fingerprint and xpub for a
- * specified origin path and then combines them with the input parameters.
- *
- * For detailed understanding and examples of terms like `originPath`,
- * `change`, and `keyPath`, refer to the documentation of
- * {@link KeyExpressionParser}, which consists
- * of the reverse procedure.
- *
- * @returns {Promise<string>} - The formed key expression for the Ledger device.
- */
-export async function keyExpressionLedger({
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerManager: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}): Promise<string>;
-export async function keyExpressionLedger({
-  ledgerManager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  ledgerManager: LedgerManager;
-  originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
-}) {
-  assertChangeIndexKeyPath({ change, index, keyPath });
-
-  const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerManager
-  });
-  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerManager });
-
-  const keyRoot = `${origin}${xpub}`;
-  if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
-  else return `${keyRoot}/${change}/${index}`;
 }
 
 /**

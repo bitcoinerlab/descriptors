@@ -16,13 +16,9 @@ import { networks, Psbt } from 'bitcoinjs-lib';
 import { RegtestUtils } from 'regtest-client';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import {
-  DescriptorsFactory,
-  keyExpressionLedger,
-  ledger,
-  scriptExpressions,
-  signers
-} from '../../dist/';
+import { DescriptorsFactory } from '../../dist/';
+import * as ledger from '../../dist/ledger/index';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 
 const regtestUtils = new RegtestUtils();
 
@@ -32,10 +28,10 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output, BIP32 } = DescriptorsFactory(ecc);
-const { signLedger } = signers;
-const { trLedger } = scriptExpressions;
-const { registerLedgerWallet, assertLedgerApp } = ledger;
+const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
+const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
+const { signLedger } = ledger.signers;
+const { trLedger } = ledger.scriptExpressions;
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

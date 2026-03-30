@@ -2,7 +2,7 @@
   "name": "@bitcoinerlab/descriptors-core",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, with explicit backend wiring for advanced use cases.",
   "homepage": "https://github.com/bitcoinerlab/descriptors",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
   "repository": {
@@ -35,6 +35,10 @@
       "types": "./dist/bitcoinjs.d.ts",
       "default": "./dist/bitcoinjs.js"
     },
+    "./ledger": {
+      "types": "./dist/ledger/index.d.ts",
+      "default": "./dist/ledger/index.js"
+    },
     "./scure": {
       "types": "./dist/scure.d.ts",
       "default": "./dist/scure.js"
@@ -57,10 +61,13 @@
     "webdocs": "typedoc --options ./webtypedoc.json && node ./scripts/postprocess-docs.js ./webdocs",
     "docs": "typedoc --options ./typedoc.json && node ./scripts/postprocess-docs.js ./docs",
     "build:src": "tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.src.json",
+    "build:packages": "tsc --project ./packages/descriptors/tsconfig.json && tsc --project ./packages/descriptors-scure/tsconfig.json",
     "build:fixtures": "node test/tools/generateBitcoinCoreFixtures.js -i test/fixtures/descriptor_tests.cpp | npx prettier --parser typescript > test/fixtures/bitcoinCore.ts",
     "build:test": "npm run build:fixtures && tsc --project ./node_modules/@bitcoinerlab/configs/tsconfig.test.json --resolveJsonModule",
-    "build": "npm run build:src && npm run build:test",
+    "build": "npm run build:src && npm run build:packages && npm run build:test",
     "lint": "./node_modules/@bitcoinerlab/configs/scripts/lint.sh",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"packages/*/src/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"packages/*/src/**/*.ts\"",
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js && echo \"\n\n\" && node test/integration/scure.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
@@ -80,15 +87,15 @@
     "dist"
   ],
   "peerDependencies": {
-    "bitcoinjs-lib": "^7.0.1",
-    "bip32": "^5.0.1",
-    "ecpair": "^3.0.1",
-    "@noble/hashes": "^2.0.1",
+    "@ledgerhq/ledger-bitcoin": "^0.3.1",
     "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/btc-signer": "^2.0.1",
-    "@ledgerhq/ledger-bitcoin": "^0.3.1"
+    "bip32": "^5.0.1",
+    "bitcoinjs-lib": "^7.0.1",
+    "ecpair": "^3.0.1"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
@@ -127,8 +134,8 @@
     "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
-    "@noble/hashes": "^2.0.1",
     "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
@@ -144,7 +151,6 @@
     "ecpair": "^3.0.1",
     "jest": "^30.3.0",
     "regtest-client": "^0.2.1",
-    "ts-jest": "^29.4.6",
     "yargs": "^17.7.2"
   },
   "dependencies": {

@@ -15,7 +15,7 @@ import type {
   PsbtLike,
   ScureTransactionLike
 } from './bitcoinLib';
-import { isScureTransaction } from './bitcoinLib';
+import { getBitcoinLibOrThrow, isScureTransaction } from './bitcoinLib';
 import type { Network } from './networks';
 import { compare, fromHex } from 'uint8array-tools';
 import { witnessStackToScriptWitness } from './bitcoinjs-lib-internals';
@@ -282,34 +282,18 @@ export function addPsbtInput({
   return psbt.data.inputs.length - 1;
 }
 
-// ─── Type Guards and Converters ─────────────────────────────────────
-
-/**
- * Converts a concrete transaction object to this library's internal `PsbtLike`
- * surface.
- *
- * @param psbt - Either a
- * {@link https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/ts_src/psbt.ts | bitcoinjs-lib `Psbt`}
- * or a {@link https://github.com/paulmillr/scure-btc-signer | `@scure/btc-signer` `Transaction`}.
- * @returns A `PsbtLike` implementation consumed by internal code.
- */
 export function toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike {
   if (isScureTransaction(psbt)) {
-    // Dynamically import scure adapter only when needed
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { wrapScureTransaction } = require('./adapters/scure');
-      return wrapScureTransaction(psbt);
-    } catch (error) {
+    const bitcoinLib = getBitcoinLibOrThrow();
+    if (bitcoinLib.kind !== 'scure') {
       throw new Error(
-        'Failed to load @scure/btc-signer adapter. ' +
-          'Make sure @scure/btc-signer is installed as a peer dependency. ' +
-          'Original error: ' +
-          (error instanceof Error ? error.message : String(error))
+        'Scure transaction support is not available for the active backend. ' +
+          'Initialize descriptors-core with createScureLib() or use @bitcoinerlab/descriptors-scure ' +
+          'before passing @scure/btc-signer transactions.'
       );
     }
+    return bitcoinLib.toPsbt(psbt);
   }
 
-  // Already a bitcoinjs-lib compatible Psbt
   return psbt;
 }

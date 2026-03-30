@@ -10,16 +10,17 @@ import { networks, Psbt } from 'bitcoinjs-lib';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
-import type { LedgerManager } from '../dist/ledger';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
+import type { LedgerManager } from '../dist/ledger/index';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromPsbtInput
-} from '../dist/ledger';
+} from '../dist/ledger/policies';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { toHex } from 'uint8array-tools';
 
 const NETWORK = networks.regtest;
-const { Output, BIP32 } = DescriptorsFactory(ecc);
+const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
 
 function makeMaster(seed: number): BIP32InterfaceLike {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);

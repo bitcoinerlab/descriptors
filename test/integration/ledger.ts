@@ -80,20 +80,18 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import {
-  signers,
-  keyExpressionBIP32,
-  keyExpressionLedger,
-  scriptExpressions,
-  DescriptorsFactory,
-  ledger
-} from '../../dist/';
+import { keyExpressionBIP32, DescriptorsFactory } from '../../dist/';
+import { signBIP32 } from '../../dist/signers';
+import * as ledger from '../../dist/ledger/index';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
-const { signLedger, signBIP32 } = signers;
-const { pkhLedger } = scriptExpressions;
-const { registerLedgerWallet, assertLedgerApp } = ledger;
+const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
+const { signLedger } = ledger.signers;
+const { pkhLedger } = ledger.scriptExpressions;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 

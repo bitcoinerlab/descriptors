@@ -3,6 +3,7 @@
 
 import { networks } from '../dist';
 import { DescriptorsFactory } from '../dist';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { createPsbt } from './helpers/psbt';
@@ -11,7 +12,9 @@ const PUBKEY_HEX =
   '03c6e26fdf91debe78458853f1ba08d8de71b7672a099e1be5b6204dab83c046e5';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 function buildOutput() {
   return new Output({

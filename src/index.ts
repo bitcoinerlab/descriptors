@@ -1,3 +1,14 @@
+/**
+ * Core API shared by the preset packages.
+ *
+ * Most bitcoinjs users should import from `@bitcoinerlab/descriptors`.
+ * Scure users should import from `@bitcoinerlab/descriptors-scure`.
+ * Ledger helpers are documented under the dedicated `ledger` module.
+ *
+ * @module
+ * @mergeModuleWith <project>
+ */
+
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
@@ -59,29 +70,6 @@ export { DescriptorChecksum as checksum } from './checksum';
 import * as signers from './signers';
 export { signers };
 
-export { keyExpressionBIP32, keyExpressionLedger } from './keyExpressions';
+export { keyExpressionBIP32 } from './keyExpressions';
 import * as scriptExpressions from './scriptExpressions';
 export { scriptExpressions };
-
-import {
-  LedgerState,
-  getLedgerMasterFingerPrint,
-  getLedgerXpub,
-  registerLedgerWallet,
-  assertLedgerApp,
-  LedgerManager
-} from './ledger';
-
-/** @namespace */
-export const ledger = {
-  /** @function */
-  getLedgerMasterFingerPrint,
-  /** @function */
-  getLedgerXpub,
-  /** @function */
-  registerLedgerWallet,
-  /** @function */
-  assertLedgerApp
-};
-
-export type { LedgerState, LedgerManager };

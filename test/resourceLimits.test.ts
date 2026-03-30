@@ -4,12 +4,15 @@
 import { toHex } from 'uint8array-tools';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { parseTapTreeExpression } from '../dist/tapTree';
+import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { createScureLib } from '../dist/scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { createPrivKeySigner, getPubKey, getXOnlyPubKey } from './helpers/keys';
 
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
-const { Output } = DescriptorsFactory(isScure ? createScureLib() : ecc);
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 // Use deterministic, distinct private keys across this file to avoid duplicate
 // pubkeys in multisig/taproot tests. `fill(seed)` repeats the byte `seed`

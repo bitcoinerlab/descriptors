@@ -1,6 +1,6 @@
 {
   "name": "@bitcoinerlab/descriptors-scure",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, bundled for the scure/noble family of libraries.",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
@@ -33,21 +33,28 @@
       "optional": true
     }
   },
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "scripts": {
+    "build": "npm --prefix ../.. run build:src && tsc --project ./tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ledger": {
+      "types": "./dist/ledger.d.ts",
+      "default": "./dist/ledger.js"
     }
   },
   "files": [
-    "index.js",
-    "index.d.ts",
+    "dist",
     "README.md"
   ],
   "dependencies": {
-    "@bitcoinerlab/descriptors-core": "3.1.4",
+    "@bitcoinerlab/descriptors-core": "3.1.5",
     "@noble/hashes": "^2.0.1",
     "@noble/curves": "^2.0.1",
     "@scure/base": "^2.0.0",

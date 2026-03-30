@@ -19,6 +19,7 @@ const { encode: olderEncode } = require('bip68');
 import { RegtestUtils } from 'regtest-client';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { toHex } from 'uint8array-tools';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 
 import {
   DescriptorsFactory,
@@ -33,7 +34,9 @@ import type { BIP32Interface } from 'bip32';
 import type { PartialSig, PsbtInput } from 'bip174';
 import type { OutputInstance } from '../../dist';
 
-const { Output, ECPair, BIP32, expand } = DescriptorsFactory(ecc);
+const { Output, ECPair, BIP32, expand } = DescriptorsFactory(
+  createBitcoinjsLib(ecc)
+);
 const { signInputECPair, signBIP32 } = signers;
 const regtestUtils = new RegtestUtils();
 

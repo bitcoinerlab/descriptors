@@ -1,0 +1,16 @@
+{
+  "extends": "../../node_modules/@bitcoinerlab/configs/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "allowJs": false,
+    "checkJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "@bitcoinerlab/descriptors-core": ["../../dist/index.d.ts"],
+      "@bitcoinerlab/descriptors-core/ledger": ["../../dist/ledger/index.d.ts"],
+      "@bitcoinerlab/descriptors-core/scure": ["../../dist/scure.d.ts"]
+    }
+  },
+  "include": ["./src/**/*.ts"]
+}

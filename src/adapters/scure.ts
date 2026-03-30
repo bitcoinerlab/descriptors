@@ -9,7 +9,17 @@
  */
 
 import { schnorr } from '@noble/curves/secp256k1.js';
-import { setBitcoinLib, type BitcoinLib } from '../bitcoinLib';
+import {
+  isScureHDKey,
+  isScureTransaction,
+  setBitcoinLib,
+  type BitcoinLib,
+  type ECPairInterfaceLike,
+  type BIP32InterfaceLike,
+  type PsbtLike,
+  type ScureHDKeyLike,
+  type ScureTransactionLike
+} from '../bitcoinLib';
 import { createScurePaymentsAdapter } from './scure/payments';
 import { createScureScriptAdapter } from './scure/script';
 import { createScureTransactionAdapter } from './scure/transaction';
@@ -17,6 +27,8 @@ import { createScureAddressAdapter } from './scure/address';
 import { createScureECPairAdapter } from './scure/ecpair';
 import { createScureBIP32Adapter } from './scure/bip32';
 import { createScureCryptoAdapter } from './scure/crypto';
+import { wrapScureTransaction } from './scure/psbt';
+import { wrapScureHDKey, wrapScurePrivateKey } from './scureKeys';
 export { wrapScureTransaction } from './scure/psbt';
 
 /**
@@ -32,6 +44,21 @@ export function createScureLib(): BitcoinLib {
     address: createScureAddressAdapter(),
     ECPair: createScureECPairAdapter(),
     BIP32: createScureBIP32Adapter(),
+    toPsbt(psbt: PsbtLike | ScureTransactionLike) {
+      return isScureTransaction(psbt)
+        ? wrapScureTransaction(
+            psbt as Parameters<typeof wrapScureTransaction>[0]
+          )
+        : psbt;
+    },
+    toECPairInterface(ecpair: ECPairInterfaceLike | Uint8Array) {
+      return ecpair instanceof Uint8Array
+        ? wrapScurePrivateKey(ecpair)
+        : ecpair;
+    },
+    toBIP32Interface(node: BIP32InterfaceLike | ScureHDKeyLike) {
+      return isScureHDKey(node) ? wrapScureHDKey(node) : node;
+    },
     verifySchnorr(
       msghash: Uint8Array,
       pubkey: Uint8Array,

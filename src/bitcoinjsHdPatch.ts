@@ -1,11 +1,11 @@
 //While this PR is not merged: https://github.com/bitcoinjs/bitcoinjs-lib/pull/2137
 //The Async functions have not been "fixed"
 //Note that a further fix (look for FIX BITCOINERLAB) was done
-import type { Psbt, Signer } from 'bitcoinjs-lib';
+import type { Signer } from 'bitcoinjs-lib';
 import type { SignerAsync } from 'ecpair';
-import { checkForInput, type PsbtInput } from '../bip174';
-import { tapTweakHash, isTaprootInput } from '../bitcoinjs-lib-internals';
-import { getBitcoinLibOrThrow } from '../bitcoinLib';
+import { checkForInput, type PsbtInput } from './bip174';
+import { tapTweakHash, isTaprootInput } from './bitcoinjs-lib-internals';
+import { getBitcoinLibOrThrow, type PsbtLike } from './bitcoinLib';
 import { compare, concat } from 'uint8array-tools';
 
 interface HDSignerBase {
@@ -43,6 +43,20 @@ interface HDSignerAsync extends HDSignerBase {
   sign(hash: Uint8Array): Promise<Uint8Array>;
   tweak(t: Uint8Array): Signer;
 }
+
+type PsbtLikeWithHdPatch = PsbtLike & {
+  signInput(
+    inputIndex: number,
+    signer: Signer | SignerAsync,
+    sighashTypes?: number[]
+  ): void;
+  signInputHD(
+    inputIndex: number,
+    hdKeyPair: HDSigner,
+    sighashTypes?: number[]
+  ): unknown;
+  signAllInputsHD(hdKeyPair: HDSigner, sighashTypes?: number[]): unknown;
+};
 
 const toXOnly = (pubKey: Uint8Array) =>
   pubKey.length === 32 ? pubKey : pubKey.slice(1, 33);
@@ -173,8 +187,10 @@ function getSignersFromHD(
   return signers;
 }
 
-export const applyPR2137 = (psbt: Psbt) => {
-  psbt.signInputHD = function signInputHD(
+export const applyPR2137 = (psbt: PsbtLike) => {
+  const patchedPsbt = psbt as PsbtLikeWithHdPatch;
+
+  patchedPsbt.signInputHD = function signInputHD(
     inputIndex: number,
     hdKeyPair: HDSigner,
     sighashTypes?: number[]
@@ -203,7 +219,7 @@ export const applyPR2137 = (psbt: Psbt) => {
     return this;
   };
 
-  psbt.signAllInputsHD = function signAllInputsHD(
+  patchedPsbt.signAllInputsHD = function signAllInputsHD(
     hdKeyPair: HDSigner,
     sighashTypes?: number[]
   ) {
@@ -212,9 +228,9 @@ export const applyPR2137 = (psbt: Psbt) => {
     }
 
     const results: boolean[] = [];
-    for (const i of range(psbt.data.inputs.length)) {
+    for (const i of range(patchedPsbt.data.inputs.length)) {
       try {
-        psbt.signInputHD(i, hdKeyPair, sighashTypes);
+        patchedPsbt.signInputHD(i, hdKeyPair, sighashTypes);
         results.push(true);
       } catch (err) {
         void err;
