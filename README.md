@@ -6,8 +6,13 @@ This library uses an underlying Bitcoin library for creating, signing & decoding
 
 - `@bitcoinerlab/descriptors` for the [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) and [bitcoinjs](https://github.com/bitcoinjs) family of libraries: battle-tested and broadly used.
 - `@bitcoinerlab/descriptors-scure` for [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) and the [noble](https://github.com/paulmillr/noble-curves)/[scure](https://github.com/paulmillr/scure-btc-signer) family of libraries: audited, fast and minimal.
+- `@bitcoinerlab/descriptors-core` as the low-level package used under the preset packages, intended for internal use.
+
+In general, most users should pick one of the two preset packages and avoid using `@bitcoinerlab/descriptors-core` directly.
 
 ## TL;DR (quick start)
+
+_Using `@bitcoinerlab/descriptors-scure`? See the scure variant right below._
 
 ```bash
 npm install @bitcoinerlab/descriptors @bitcoinerlab/miniscript-policies
@@ -180,7 +185,7 @@ For new code, prefer the preset top-level exports directly and use `@bitcoinerla
 
 </details>
 
-For a minimal end-to-end scure example, see [`test/integration/scure.ts`](test/integration/scure.ts).
+For a minimal end-to-end scure example, see [`test/integration/scure.ts`](https://github.com/bitcoinerlab/descriptors/blob/main/test/integration/scure.ts).
 
 The library can be split into four main parts:
 

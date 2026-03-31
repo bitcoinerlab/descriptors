@@ -9,4 +9,5 @@ test/**/*.js
 test/**/*.d.ts
 !test/tools/generateBitcoinCoreFixtures.js
 packages/*/dist/
+packages/*/README.md
 .aider*
