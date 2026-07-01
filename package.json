@@ -39,6 +39,10 @@
       "types": "./dist/ledger/index.d.ts",
       "default": "./dist/ledger/index.js"
     },
+    "./hww": {
+      "types": "./dist/hww/index.d.ts",
+      "default": "./dist/hww/index.js"
+    },
     "./scure": {
       "types": "./dist/scure.d.ts",
       "default": "./dist/scure.js"

@@ -47,6 +47,10 @@
     "./ledger": {
       "types": "./dist/ledger.d.ts",
       "default": "./dist/ledger.js"
+    },
+    "./hww": {
+      "types": "./dist/hww.d.ts",
+      "default": "./dist/hww.js"
     }
   },
   "files": [

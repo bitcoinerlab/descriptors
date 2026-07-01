@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { toHex } from 'uint8array-tools';
-import { assertChangeIndexKeyPath } from '../keyExpressions';
+import { keyExpressionHardwareWallet } from '../hww/keyExpressions';
 import {
   type LedgerManager,
   getLedgerMasterFingerPrint,
@@ -22,15 +21,16 @@ export async function keyExpressionLedger({
   index?: number | undefined | '*';
   keyPath?: string | undefined;
 }): Promise<string> {
-  assertChangeIndexKeyPath({ change, index, keyPath });
-
-  const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerManager
+  return keyExpressionHardwareWallet({
+    hwwManager: {
+      Output: ledgerManager.Output,
+      network: ledgerManager.network,
+      getMasterFingerprint: () => getLedgerMasterFingerPrint({ ledgerManager }),
+      getXpub: originPath => getLedgerXpub({ originPath, ledgerManager })
+    },
+    originPath,
+    keyPath,
+    change,
+    index
   });
-  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerManager });
-
-  const keyRoot = `${origin}${xpub}`;
-  if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
-  else return `${keyRoot}/${change}/${index}`;
 }
