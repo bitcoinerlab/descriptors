@@ -25,8 +25,6 @@ console.log(
 );
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { createInterface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
 import { DescriptorsFactory, networks } from '../../dist';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import {
@@ -99,18 +97,6 @@ const NETWORK = networks.bitcoin;
 const ORIGIN_PATH = "/84'/0'/0'";
 const POLICY_ORIGIN_PATH = "/48'/0'/0'/2'";
 
-async function waitForPairingConfirmation(pairingCode: string): Promise<void> {
-  const rl = createInterface({ input, output });
-  try {
-    console.log(`Pairing code:\n${pairingCode}`);
-    await rl.question(
-      'Confirm the pairing code on the BitBox02, then press Enter here.'
-    );
-  } finally {
-    rl.close();
-  }
-}
-
 (async () => {
   await ready;
   const { bitbox02ConnectBridge } = await importBitBoxApi('bitbox-api');
@@ -119,7 +105,10 @@ async function waitForPairingConfirmation(pairingCode: string): Promise<void> {
   });
   const pairing = await unpaired.unlockAndPair();
   const pairingCode = pairing.getPairingCode();
-  if (pairingCode) await waitForPairingConfirmation(pairingCode);
+  if (pairingCode) {
+    console.log(`Pairing code:\n${pairingCode}`);
+    console.log('Confirm the pairing code on the BitBox02.');
+  }
   const bitboxClient = await pairing.waitConfirm();
 
   const manager: Manager = {
