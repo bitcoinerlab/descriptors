@@ -165,6 +165,16 @@ export function bitboxScriptConfigFromPolicy({
   };
 }
 
+const unsupportedBitBoxHashFragment =
+  /\b(?:sha256|hash256|hash160|ripemd160)\(/;
+
+export function assertBitBoxPolicyCanDerive(policy: BitBoxPolicy): void {
+  if (!unsupportedBitBoxHashFragment.test(policy.descriptorTemplate)) return;
+  throw new Error(
+    `BitBox generic policy derivation with Miniscript hash fragments is disabled because BitBox02 firmware marks sha256/hash256/hash160/ripemd160 policy fragments unsupported and firmware 9.26.1 has been observed to crash while deriving sha256(...). Avoid hashlocks with BitBox or use another signer until BitBox firmware/API support is confirmed.`
+  );
+}
+
 function isBitBoxDuplicateError(error: unknown): boolean {
   return (
     typeof error === 'object' &&

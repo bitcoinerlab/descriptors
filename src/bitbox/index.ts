@@ -14,6 +14,7 @@
 import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import {
+  assertBitBoxPolicyCanDerive,
   bitboxPolicyFromStandard,
   bitboxPolicyFromState,
   bitboxAddressKeypathFromPolicy,
@@ -237,6 +238,7 @@ async function displayPolicyAddress({
   change: number;
   index: number;
 }) {
+  assertBitBoxPolicyCanDerive(policy);
   return bitboxManager.bitboxClient.btcAddress(
     bitboxApiNetwork(bitboxManager),
     bitboxAddressKeypathFromPolicy({ policy, bitboxManager, change, index }),

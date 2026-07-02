@@ -2,11 +2,12 @@
 // Distributed under the MIT software license
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { networks } from 'bitcoinjs-lib';
+import { networks, Transaction } from 'bitcoinjs-lib';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
+import { createPsbt } from './helpers/psbt';
 import {
   bitboxKeypathFromString,
   connectors,
@@ -24,6 +25,8 @@ import {
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
 const HARDENED = 0x80000000;
+const SHA256_DIGEST =
+  '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
 type FakeBitBoxClient = BitBoxClient & {
   registered:
@@ -343,5 +346,49 @@ describe('BitBox helpers', () => {
       'cHNidP8BAA=:signed'
     );
     expect(psbt.combine).toHaveBeenCalledWith(signedPsbt);
+  });
+
+  test('rejects sha256 Miniscript policy derivation before calling the device', async () => {
+    const bitboxMaster = makeMaster(7);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxKey = await keyExpression({
+      manager: bitboxManager,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+    const descriptor = `wsh(and_v(v:pk(${bitboxKey}),sha256(${SHA256_DIGEST})))`;
+    const output = new Output({
+      descriptor,
+      index: 0,
+      preimages: [
+        {
+          digest: `sha256(${SHA256_DIGEST})`,
+          preimage:
+            '107661134f21fc7c02223d50ab9eb3600bc3ffc3712423a1e47bb1f9a9dbf55f'
+        }
+      ],
+      network: NETWORK
+    });
+    await registerWallet({
+      descriptor,
+      manager: bitboxManager,
+      policyName: 'Test sha256'
+    });
+    await expect(
+      displayAddress({ descriptor, manager: bitboxManager, index: 0 })
+    ).rejects.toThrow('sha256/hash256/hash160/ripemd160');
+    expect(client.displayed).toBeUndefined();
+    const fundingTx = new Transaction();
+    fundingTx.version = 2;
+    fundingTx.addInput(Buffer.alloc(32, 7), 0xffffffff);
+    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), BigInt(20_000));
+    const psbt = createPsbt(false, NETWORK);
+    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+
+    await expect(
+      signers.sign({ psbt, manager: bitboxManager })
+    ).rejects.toThrow('sha256/hash256/hash160/ripemd160');
+    expect(client.signed).toBeUndefined();
   });
 });

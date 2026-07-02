@@ -5,6 +5,7 @@ import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { bitboxFormatUnit, bitboxApiNetwork } from './client';
 import {
+  assertBitBoxPolicyCanDerive,
   bitboxPolicyFromPsbtInput,
   bitboxSigningKeypathFromPolicy,
   bitboxScriptConfigFromPolicy
@@ -60,6 +61,7 @@ async function forcedScriptConfigForPsbt({
     if (!policy) continue;
 
     const policyWithAccount = policyWithCachedAccount({ policy, manager });
+    assertBitBoxPolicyCanDerive(policyWithAccount);
     const scriptConfig = bitboxScriptConfigFromPolicy({
       policy: policyWithAccount,
       bitboxManager: manager

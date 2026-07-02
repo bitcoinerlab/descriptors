@@ -19,8 +19,9 @@ To run:
 6. Run `npm run test:integration:bitbox`.
 
 The test spends one standard wpkh output and one P2WSH Miniscript output
-co-signed with a software wallet using the same policy shape as the Ledger
-integration test.
+co-signed with a software wallet. The Miniscript policy mirrors the Ledger
+two-key + CSV flow, but omits Ledger's sha256 hashlock because BitBox firmware
+does not support Miniscript hash fragments in wallet policies.
 
 The local chain is regtest, but BitBox Bitcoin API calls use the testnet
 signing context internally for all non-mainnet Bitcoin networks. This mirrors
@@ -109,14 +110,11 @@ const UTXO_VALUE = 2e4;
 const FEE = 1000;
 const BLOCKS = 5;
 const OLDER = olderEncode({ blocks: BLOCKS });
-const PREIMAGE =
-  '107661134f21fc7c02223d50ab9eb3600bc3ffc3712423a1e47bb1f9a9dbf55f';
-const SHA256_DIGEST =
-  '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
-const POLICY = `and(and(and(pk(@bitbox),pk(@soft)),older(${OLDER})),sha256(${SHA256_DIGEST}))`;
+const POLICY = `and(and(pk(@bitbox),pk(@soft)),older(${OLDER}))`;
 const ORIGIN_PATH = "/84'/1'/0'";
 const POLICY_ORIGIN_PATH = "/48'/1'/0'/2'";
+const POLICY_NAME = 'BitcoinerLab CSV';
 const POLICY_RECEIVE_INDEX = 0;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -192,6 +190,11 @@ const SOFT_MNEMONIC =
   const { miniscript, issane }: { miniscript: string; issane: boolean } =
     compilePolicy(POLICY);
   if (!issane) throw new Error(`Error: miniscript not sane`);
+  console.log({
+    policyName: POLICY_NAME,
+    policyOriginPath: POLICY_ORIGIN_PATH,
+    miniscript
+  });
 
   const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, false);
   const softKeyExpression = keyExpressionBIP32({
@@ -212,7 +215,6 @@ const SOFT_MNEMONIC =
   const miniscriptOutput = new Output({
     descriptor: miniscriptDescriptor,
     index: POLICY_RECEIVE_INDEX,
-    preimages: [{ digest: `sha256(${SHA256_DIGEST})`, preimage: PREIMAGE }],
     network: NETWORK
   });
 
@@ -241,7 +243,7 @@ const SOFT_MNEMONIC =
   await registerWallet({
     descriptor: miniscriptDescriptor,
     manager,
-    policyName: 'BitcoinerLab Regtest'
+    policyName: POLICY_NAME
   });
   console.log('Sign and broadcast Miniscript policy spend');
   await signers.sign({ psbt: policyPsbt, manager });
