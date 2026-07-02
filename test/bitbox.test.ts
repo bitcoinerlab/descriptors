@@ -28,7 +28,7 @@ const HARDENED = 0x80000000;
 type FakeBitBoxClient = BitBoxClient & {
   registered:
     | {
-        coin: string;
+        apiNetwork: string;
         scriptConfig: BitBoxScriptConfig;
         keypathAccount: number[] | undefined;
         xpubType: BitBoxRegisterXPubType;
@@ -37,7 +37,7 @@ type FakeBitBoxClient = BitBoxClient & {
     | undefined;
   displayed:
     | {
-        coin: string;
+        apiNetwork: string;
         keypath: number[];
         scriptConfig: BitBoxScriptConfig;
         display: boolean;
@@ -45,7 +45,7 @@ type FakeBitBoxClient = BitBoxClient & {
     | undefined;
   signed:
     | {
-        coin: string;
+        apiNetwork: string;
         psbt: string;
         forceScriptConfig: unknown;
         formatUnit: string;
@@ -70,7 +70,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
   const client = {
     registered: undefined as
       | {
-          coin: string;
+          apiNetwork: string;
           scriptConfig: BitBoxScriptConfig;
           keypathAccount: number[] | undefined;
           xpubType: BitBoxRegisterXPubType;
@@ -79,7 +79,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       | undefined,
     displayed: undefined as
       | {
-          coin: string;
+          apiNetwork: string;
           keypath: number[];
           scriptConfig: BitBoxScriptConfig;
           display: boolean;
@@ -87,7 +87,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       | undefined,
     signed: undefined as
       | {
-          coin: string;
+          apiNetwork: string;
           psbt: string;
           forceScriptConfig: unknown;
           formatUnit: string;
@@ -96,7 +96,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     version: () => '9.99.0-test',
     rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
     btcXpub: async (
-      _coin: string,
+      _apiNetwork: string,
       keypath: string | number[],
       _xpubType: string,
       _display: boolean
@@ -110,7 +110,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     },
     btcIsScriptConfigRegistered: async () => false,
     btcRegisterScriptConfig: async (
-      coin: string,
+      apiNetwork: string,
       scriptConfig: BitBoxScriptConfig,
       keypathAccount: string | number[] | undefined,
       xpubType: BitBoxRegisterXPubType,
@@ -119,7 +119,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       if (typeof keypathAccount === 'string')
         throw new Error('unexpected string path');
       client.registered = {
-        coin,
+        apiNetwork,
         scriptConfig,
         keypathAccount,
         xpubType,
@@ -127,14 +127,14 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       };
     },
     btcAddress: async (
-      coin: string,
+      apiNetwork: string,
       keypath: string | number[],
       scriptConfig: BitBoxScriptConfig,
       display: boolean
     ) => {
       if (typeof keypath === 'string')
         throw new Error('unexpected string path');
-      client.displayed = { coin, keypath, scriptConfig, display };
+      client.displayed = { apiNetwork, keypath, scriptConfig, display };
       return 'multisig' in scriptConfig
         ? 'bcrt1multisig'
         : 'policy' in scriptConfig
@@ -142,12 +142,12 @@ function fakeClientFor(master: BIP32InterfaceLike) {
           : 'bcrt1simple';
     },
     btcSignPSBT: async (
-      coin: string,
+      apiNetwork: string,
       psbt: string,
       forceScriptConfig: unknown,
       formatUnit: string
     ) => {
-      client.signed = { coin, psbt, forceScriptConfig, formatUnit };
+      client.signed = { apiNetwork, psbt, forceScriptConfig, formatUnit };
       return `${psbt}:signed`;
     }
   } satisfies FakeBitBoxClient;
@@ -193,7 +193,7 @@ describe('BitBox helpers', () => {
     });
 
     expect(client.registered?.name).toBe('Test BitBox');
-    expect(client.registered?.coin).toBe('rbtc');
+    expect(client.registered?.apiNetwork).toBe('tbtc');
     expect(client.registered?.keypathAccount).toEqual([
       48 + HARDENED,
       1 + HARDENED,
@@ -243,7 +243,7 @@ describe('BitBox helpers', () => {
     ).resolves.toBe('bcrt1simple');
 
     expect(client.displayed).toEqual({
-      coin: 'rbtc',
+      apiNetwork: 'tbtc',
       keypath: [84 + HARDENED, 1 + HARDENED, HARDENED, 0, 7],
       scriptConfig: { simpleType: 'p2wpkh' },
       display: true
@@ -334,7 +334,7 @@ describe('BitBox helpers', () => {
       'cHNidP8BAA=:signed'
     );
     expect(client.signed).toEqual({
-      coin: 'rbtc',
+      apiNetwork: 'tbtc',
       psbt: 'cHNidP8BAA=',
       forceScriptConfig: undefined,
       formatUnit: 'default'

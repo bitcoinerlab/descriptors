@@ -3,7 +3,7 @@
 
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
-import { bitboxFormatUnit, bitboxCoin } from './client';
+import { bitboxFormatUnit, bitboxApiNetwork } from './client';
 import {
   bitboxPolicyFromPsbtInput,
   bitboxSigningKeypathFromPolicy,
@@ -115,7 +115,7 @@ export async function sign({
   psbt = toPsbt(psbt);
   const forcedScriptConfig = await forcedScriptConfigForPsbt({ psbt, manager });
   const signedPsbt = await manager.bitboxClient.btcSignPSBT(
-    bitboxCoin(manager),
+    bitboxApiNetwork(manager),
     psbt.toBase64(),
     forcedScriptConfig,
     bitboxFormatUnit(manager)

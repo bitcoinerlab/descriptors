@@ -22,7 +22,7 @@ import {
   registerBitBoxWallet
 } from './policies';
 import {
-  bitboxCoin,
+  bitboxApiNetwork,
   bitboxSimpleType,
   getBitBoxMasterFingerprint,
   getBitBoxVersion,
@@ -34,7 +34,6 @@ import type { BitBoxManager, BitBoxPolicy, BitBoxState } from './types';
 
 export type {
   BitBoxClient,
-  BitBoxCoin,
   BitBoxFormatUnit,
   BitBoxKeyOriginInfo,
   BitBoxKeypath,
@@ -190,7 +189,7 @@ async function displayStandardAddress({
   const originPath = keyRootOriginPath(policy.keyRoots[0] ?? '');
   if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
   return bitboxClient.btcAddress(
-    bitboxCoin(bitboxManager),
+    bitboxApiNetwork(bitboxManager),
     bitboxKeypathFromString(`${originPath}/${change}/${index}`),
     {
       simpleType: bitboxSimpleType({
@@ -220,7 +219,7 @@ async function displayMultisigAddress({
       `BitBox policy missing account; call registerBitBoxWallet first`
     );
   return bitboxClient.btcAddress(
-    bitboxCoin(bitboxManager),
+    bitboxApiNetwork(bitboxManager),
     [...account.keypathAccount, change, index],
     bitboxScriptConfigFromMultisigAccount(account),
     true
@@ -239,7 +238,7 @@ async function displayPolicyAddress({
   index: number;
 }) {
   return bitboxManager.bitboxClient.btcAddress(
-    bitboxCoin(bitboxManager),
+    bitboxApiNetwork(bitboxManager),
     bitboxAddressKeypathFromPolicy({ policy, bitboxManager, change, index }),
     bitboxScriptConfigFromPolicy({ policy, bitboxManager }),
     true

@@ -3,18 +3,18 @@
 
 import { coinTypeFromNetwork } from '../networkUtils';
 import type {
-  BitBoxCoin,
   BitBoxFormatUnit,
   BitBoxManager,
+  BitBoxApiNetwork,
   BitBoxRegisterXPubType,
   BitBoxSimpleType,
   BitBoxXPubType
 } from './types';
 import { bitboxKeypathFromString, normalizeFingerprint } from './utils';
 
-export function bitboxCoin(bitboxManager: BitBoxManager): BitBoxCoin {
-  if (bitboxManager.coin !== undefined) return bitboxManager.coin;
-  if (bitboxManager.network.bech32 === 'bcrt') return 'rbtc';
+export function bitboxApiNetwork(
+  bitboxManager: BitBoxManager
+): BitBoxApiNetwork {
   const coinType = coinTypeFromNetwork(bitboxManager.network);
   return coinType === 0 ? 'btc' : 'tbtc';
 }
@@ -98,7 +98,7 @@ export async function getBitBoxXpub({
   let xpub = bitboxState.xpubs[cacheKey];
   if (!xpub) {
     xpub = await bitboxClient.btcXpub(
-      bitboxCoin(bitboxManager),
+      bitboxApiNetwork(bitboxManager),
       bitboxKeypathFromString(originPath),
       bitboxXpubType(bitboxManager),
       display

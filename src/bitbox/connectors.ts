@@ -5,7 +5,6 @@ import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import type {
   BitBoxClient,
-  BitBoxCoin,
   BitBoxFormatUnit,
   BitBoxManager,
   BitBoxRegisterXPubType,
@@ -42,8 +41,6 @@ export type FromClientParams = {
   network: Network;
   /** Existing mutable cache for fingerprint, xpubs and registered policies. */
   state?: BitBoxState;
-  /** Optional coin override passed to BitBox Bitcoin methods. */
-  coin?: BitBoxCoin;
   /** Optional xpub type override passed to `btcXpub`. */
   xpubType?: BitBoxXPubType;
   /** Optional registration xpub mode override passed to `btcRegisterScriptConfig`. */
@@ -57,7 +54,6 @@ export function fromClient({
   Output,
   network,
   state,
-  coin,
   xpubType,
   registerXpubType,
   formatUnit
@@ -68,7 +64,6 @@ export function fromClient({
     Output,
     network
   };
-  if (coin !== undefined) manager.coin = coin;
   if (xpubType !== undefined) manager.xpubType = xpubType;
   if (registerXpubType !== undefined)
     manager.registerXpubType = registerXpubType;
@@ -104,7 +99,6 @@ async function connectWith(
     Output: params.Output,
     network: params.network,
     ...(params.state !== undefined ? { state: params.state } : {}),
-    ...(params.coin !== undefined ? { coin: params.coin } : {}),
     ...(params.xpubType !== undefined ? { xpubType: params.xpubType } : {}),
     ...(params.registerXpubType !== undefined
       ? { registerXpubType: params.registerXpubType }

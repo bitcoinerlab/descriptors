@@ -4,42 +4,43 @@
 import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 
+export type BitBoxApiNetwork = 'btc' | 'tbtc';
+
 export type BitBoxClient = {
   version(): string | Promise<string>;
   rootFingerprint(): string | Promise<string>;
   btcXpub(
-    coin: BitBoxCoin,
+    apiNetwork: BitBoxApiNetwork,
     keypath: BitBoxKeypath,
     xpubType: BitBoxXPubType,
     display: boolean
   ): Promise<string>;
   btcAddress(
-    coin: BitBoxCoin,
+    apiNetwork: BitBoxApiNetwork,
     keypath: BitBoxKeypath,
     scriptConfig: BitBoxScriptConfig,
     display: boolean
   ): Promise<string>;
   btcRegisterScriptConfig(
-    coin: BitBoxCoin,
+    apiNetwork: BitBoxApiNetwork,
     scriptConfig: BitBoxScriptConfig,
     keypathAccount: BitBoxKeypath | undefined,
     xpubType: BitBoxRegisterXPubType,
     name?: string
   ): Promise<void>;
   btcIsScriptConfigRegistered(
-    coin: BitBoxCoin,
+    apiNetwork: BitBoxApiNetwork,
     scriptConfig: BitBoxScriptConfig,
     keypathAccount?: BitBoxKeypath
   ): Promise<boolean>;
   btcSignPSBT(
-    coin: BitBoxCoin,
+    apiNetwork: BitBoxApiNetwork,
     psbt: string,
     forceScriptConfig: BitBoxScriptConfigWithKeypath | undefined,
     formatUnit: BitBoxFormatUnit
   ): Promise<string>;
 };
 
-export type BitBoxCoin = 'btc' | 'tbtc' | 'ltc' | 'tltc' | 'rbtc';
 export type BitBoxFormatUnit = 'default' | 'sat';
 export type BitBoxXPubType =
   | 'tpub'
@@ -115,8 +116,6 @@ export type BitBoxManager = {
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
-  /** Optional coin override passed to BitBox Bitcoin methods. */
-  coin?: BitBoxCoin;
   /** Optional xpub type override passed to `btcXpub`. */
   xpubType?: BitBoxXPubType;
   /** Optional registration xpub mode override passed to `btcRegisterScriptConfig`. */

@@ -21,6 +21,12 @@ To run:
 The test spends one standard wpkh output and one P2WSH Miniscript output
 co-signed with a software wallet using the same policy shape as the Ledger
 integration test.
+
+The local chain is regtest, but BitBox Bitcoin API calls use the testnet
+signing context internally for all non-mainnet Bitcoin networks. This mirrors
+Ledger's use of the Bitcoin Test app for regtest: PSBT scripts are
+network-neutral, while hardware wallets usually expose stable testnet support
+rather than production regtest signing flows.
 */
 
 console.log(
@@ -164,6 +170,7 @@ const SOFT_MNEMONIC =
     NETWORK
   );
 
+  console.log('Sign and broadcast standard wpkh spend');
   await signers.sign({ psbt: standardPsbt, manager });
   finalizeStandard({ psbt: standardPsbt });
   const standardResultSpend = await regtestUtils.broadcast(
@@ -235,6 +242,7 @@ const SOFT_MNEMONIC =
     manager,
     policyName: 'BitcoinerLab'
   });
+  console.log('Sign and broadcast Miniscript policy spend');
   await signers.sign({ psbt: policyPsbt, manager });
   signBIP32({ psbt: policyPsbt, masterNode });
   finalizePolicy({ psbt: policyPsbt });

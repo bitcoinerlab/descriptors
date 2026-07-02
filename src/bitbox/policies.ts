@@ -19,7 +19,7 @@ import type {
   BitBoxScriptConfig
 } from './types';
 import {
-  bitboxCoin,
+  bitboxApiNetwork,
   bitboxRegisterXpubType,
   bitboxSimpleType,
   getBitBoxMasterFingerprint,
@@ -364,13 +364,13 @@ export async function registerBitBoxWallet({
     ? bitboxScriptConfigFromMultisigAccount(account)
     : bitboxScriptConfigFromPolicy({ policy, bitboxManager });
   const registered = await bitboxClient.btcIsScriptConfigRegistered(
-    bitboxCoin(bitboxManager),
+    bitboxApiNetwork(bitboxManager),
     scriptConfig,
     account?.keypathAccount
   );
   if (!registered)
     await bitboxClient.btcRegisterScriptConfig(
-      bitboxCoin(bitboxManager),
+      bitboxApiNetwork(bitboxManager),
       scriptConfig,
       account?.keypathAccount,
       bitboxRegisterXpubType(bitboxManager),
