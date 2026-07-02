@@ -50,6 +50,39 @@ type BitBoxApiModule = {
 };
 
 const globalWithBrowserBits = globalThis as Record<string, unknown>;
+let localStorageShim = globalWithBrowserBits['localStorage'];
+if (globalWithBrowserBits['localStorage'] === undefined) {
+  const storage = new Map<string, string>();
+  localStorageShim = {
+    get length() {
+      return storage.size;
+    },
+    clear() {
+      storage.clear();
+    },
+    getItem(key: string) {
+      return storage.get(key) ?? null;
+    },
+    key(index: number) {
+      return [...storage.keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      storage.delete(key);
+    },
+    setItem(key: string, value: string) {
+      storage.set(key, String(value));
+    }
+  };
+  globalWithBrowserBits['localStorage'] = localStorageShim;
+}
+if (globalWithBrowserBits['window'] === undefined)
+  globalWithBrowserBits['window'] = globalThis;
+if (globalWithBrowserBits['self'] === undefined)
+  globalWithBrowserBits['self'] = globalThis;
+if (globalWithBrowserBits['Window'] === undefined)
+  globalWithBrowserBits['Window'] = Object;
+(globalWithBrowserBits['window'] as Record<string, unknown>)['localStorage'] =
+  localStorageShim;
 if (globalWithBrowserBits['WebSocket'] === undefined) {
   // bitbox-api expects a browser WebSocket. For Node + BitBoxBridge, provide one.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
