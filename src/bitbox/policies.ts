@@ -165,6 +165,15 @@ export function bitboxScriptConfigFromPolicy({
   };
 }
 
+function isBitBoxDuplicateError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'bitbox-duplicate'
+  );
+}
+
 function walletPolicyToBitBoxPolicy(policy: WalletPolicy): BitBoxPolicy {
   return {
     ...(policy.policyName !== undefined
@@ -368,14 +377,26 @@ export async function registerBitBoxWallet({
     scriptConfig,
     account?.keypathAccount
   );
-  if (!registered)
-    await bitboxClient.btcRegisterScriptConfig(
-      bitboxApiNetwork(bitboxManager),
-      scriptConfig,
-      account?.keypathAccount,
-      bitboxRegisterXpubType(bitboxManager),
-      policyName
-    );
+  if (!registered) {
+    try {
+      await bitboxClient.btcRegisterScriptConfig(
+        bitboxApiNetwork(bitboxManager),
+        scriptConfig,
+        account?.keypathAccount,
+        bitboxRegisterXpubType(bitboxManager),
+        policyName
+      );
+    } catch (error) {
+      if (!isBitBoxDuplicateError(error)) throw error;
+      const registeredAfterDuplicate =
+        await bitboxClient.btcIsScriptConfigRegistered(
+          bitboxApiNetwork(bitboxManager),
+          scriptConfig,
+          account?.keypathAccount
+        );
+      if (!registeredAfterDuplicate) throw error;
+    }
+  }
   bitboxState.policies.push({ ...policy, ...(account ? { account } : {}) });
 }
 

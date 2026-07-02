@@ -237,10 +237,11 @@ const SOFT_MNEMONIC =
     NETWORK
   );
 
+  console.log('Register Miniscript policy');
   await registerWallet({
     descriptor: miniscriptDescriptor,
     manager,
-    policyName: 'BitcoinerLab'
+    policyName: 'BitcoinerLab Regtest'
   });
   console.log('Sign and broadcast Miniscript policy spend');
   await signers.sign({ psbt: policyPsbt, manager });
