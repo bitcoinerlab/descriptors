@@ -253,6 +253,59 @@ describe('BitBox helpers', () => {
     });
   });
 
+  test('rejects top-level legacy pkh descriptors before calling the device', async () => {
+    const bitboxMaster = makeMaster(8);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxManager = managerFor(bitboxMaster, client);
+
+    await expect(
+      scriptExpressions.pkh({
+        manager: bitboxManager,
+        account: 0,
+        change: 0,
+        index: '*'
+      })
+    ).rejects.toThrow('top-level legacy p2pkh');
+
+    const bitboxKey = await keyExpression({
+      manager: bitboxManager,
+      originPath: "/44'/1'/0'",
+      keyPath: '/0/*'
+    });
+    await expect(
+      registerWallet({
+        descriptor: `pkh(${bitboxKey})`,
+        manager: bitboxManager,
+        policyName: 'Test pkh'
+      })
+    ).rejects.toThrow('top-level legacy p2pkh');
+    expect(client.registered).toBeUndefined();
+    expect(client.displayed).toBeUndefined();
+    expect(client.signed).toBeUndefined();
+  });
+
+  test('does not reject Miniscript pkh fragments as legacy addresses', async () => {
+    const bitboxMaster = makeMaster(9);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxKey = await keyExpression({
+      manager: bitboxManager,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+    const descriptor = `wsh(pkh(${bitboxKey}))`;
+
+    await registerWallet({
+      descriptor,
+      manager: bitboxManager,
+      policyName: 'Test Miniscript pkh'
+    });
+
+    expect(client.registered?.scriptConfig).toMatchObject({
+      policy: { policy: 'wsh(pkh(@0/**))' }
+    });
+  });
+
   test('registers and displays P2WSH Miniscript policies', async () => {
     const bitboxMaster = makeMaster(5);
     const client = fakeClientFor(bitboxMaster);

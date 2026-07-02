@@ -6,6 +6,14 @@ import { coinTypeFromNetwork } from '../networkUtils';
 import type { BitBoxManager } from './types';
 import { keyExpressionBitBox } from './keyExpressions';
 
+type StandardScriptExpressionBitBoxParams = {
+  bitboxManager: BitBoxManager;
+  account: number;
+  keyPath?: string;
+  change?: number | undefined;
+  index?: number | undefined | '*';
+};
+
 function standardExpressionsBitBoxMaker(
   purpose: number,
   scriptTemplate: string
@@ -16,13 +24,7 @@ function standardExpressionsBitBoxMaker(
     keyPath,
     change,
     index
-  }: {
-    bitboxManager: BitBoxManager;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined;
-    index?: number | undefined | '*';
-  }) {
+  }: StandardScriptExpressionBitBoxParams) {
     const { network } = bitboxManager;
     const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
@@ -39,10 +41,13 @@ function standardExpressionsBitBoxMaker(
   return standardScriptExpressionBitBox;
 }
 
-export const pkhBitBox = standardExpressionsBitBoxMaker(
-  44,
-  'pkh(KEYEXPRESSION)'
-);
+export async function pkhBitBox(
+  _params: StandardScriptExpressionBitBoxParams
+): Promise<string> {
+  throw new Error(
+    `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
+  );
+}
 export const shWpkhBitBox = standardExpressionsBitBoxMaker(
   49,
   'sh(wpkh(KEYEXPRESSION))'
@@ -61,7 +66,7 @@ function bitboxParamsFromManager<Params extends { manager: BitBoxManager }>(
 }
 
 export const pkh = (
-  params: Omit<Parameters<typeof pkhBitBox>[0], 'bitboxManager'> & {
+  params: Omit<StandardScriptExpressionBitBoxParams, 'bitboxManager'> & {
     manager: BitBoxManager;
   }
 ) => pkhBitBox(bitboxParamsFromManager(params));

@@ -44,6 +44,11 @@ export function bitboxSimpleType({
   descriptorTemplate: string;
   bitboxManager: BitBoxManager;
 }): BitBoxSimpleType {
+  if (descriptorTemplate === 'pkh(@0/**)') {
+    throw new Error(
+      `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
+    );
+  }
   const name =
     descriptorTemplate === 'sh(wpkh(@0/**))'
       ? 'p2wpkhP2sh'

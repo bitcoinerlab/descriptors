@@ -148,6 +148,12 @@ export function bitboxScriptConfigFromPolicy({
     };
   }
 
+  if (policy.descriptorTemplate.match(/^pkh\(@0\/\*\*\)$/)) {
+    throw new Error(
+      `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
+    );
+  }
+
   if (policy.descriptorTemplate.match(/^(wpkh|tr)\(@0\/\*\*\)$/)) {
     return {
       simpleType: bitboxSimpleType({
@@ -352,7 +358,17 @@ export async function registerBitBoxWallet({
     network
   });
 
-  if (await bitboxPolicyFromStandard({ output, bitboxManager })) return;
+  const standardPolicy = await bitboxPolicyFromStandard({
+    output,
+    bitboxManager
+  });
+  if (standardPolicy) {
+    bitboxSimpleType({
+      descriptorTemplate: standardPolicy.descriptorTemplate,
+      bitboxManager
+    });
+    return;
+  }
   const result = await bitboxPolicyFromOutput({ output, bitboxManager });
   if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
   if (!bitboxState.policies) bitboxState.policies = [];
