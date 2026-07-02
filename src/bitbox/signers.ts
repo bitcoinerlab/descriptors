@@ -96,9 +96,13 @@ function mergeSignedPsbtIfPossible({
   signedPsbt: string;
 }) {
   const maybeMergeable = psbt as Partial<MergeablePsbt>;
-  const fromBase64 = maybeMergeable.constructor?.fromBase64;
-  if (typeof maybeMergeable.combine !== 'function' || !fromBase64) return;
-  maybeMergeable.combine(fromBase64(signedPsbt));
+  const PsbtConstructor = maybeMergeable.constructor;
+  if (
+    typeof maybeMergeable.combine !== 'function' ||
+    typeof PsbtConstructor?.fromBase64 !== 'function'
+  )
+    return;
+  maybeMergeable.combine(PsbtConstructor.fromBase64(signedPsbt));
 }
 
 export async function sign({

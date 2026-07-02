@@ -299,6 +299,16 @@ describe('BitBox helpers', () => {
     const bitboxMaster = makeMaster(4);
     const client = fakeClientFor(bitboxMaster);
     const bitboxManager = managerFor(bitboxMaster, client);
+    const signedPsbt = { signed: true };
+    const psbtConstructor = {
+      fromBuffer: jest.fn(() => signedPsbt),
+      fromBase64(
+        this: { fromBuffer(psbtBase64: string): unknown },
+        psbtBase64: string
+      ) {
+        return this.fromBuffer(psbtBase64);
+      }
+    };
     const psbt = {
       addInput: jest.fn(),
       addOutput: jest.fn(),
@@ -315,6 +325,8 @@ describe('BitBox helpers', () => {
       finalizeTaprootInput: jest.fn(),
       validateSignaturesOfInput: jest.fn(),
       updateInput: jest.fn(),
+      combine: jest.fn(),
+      constructor: psbtConstructor,
       toBase64: () => 'cHNidP8BAA='
     };
 
@@ -327,5 +339,9 @@ describe('BitBox helpers', () => {
       forceScriptConfig: undefined,
       formatUnit: 'default'
     });
+    expect(psbtConstructor.fromBuffer).toHaveBeenCalledWith(
+      'cHNidP8BAA=:signed'
+    );
+    expect(psbt.combine).toHaveBeenCalledWith(signedPsbt);
   });
 });
