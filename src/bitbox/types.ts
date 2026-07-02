@@ -87,7 +87,7 @@ export type BitBoxMultisigScriptConfig = {
 };
 
 export type BitBoxMultisigAccount = {
-  keypathAccount: number[];
+  keypathAccount: string;
   threshold: number;
   xpubs: string[];
   ourXpubIndex: number;

@@ -9,7 +9,6 @@ import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { createPsbt } from './helpers/psbt';
 import {
-  bitboxKeypathFromString,
   connectors,
   displayAddress,
   keyExpression,
@@ -24,7 +23,6 @@ import {
 
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
-const HARDENED = 0x80000000;
 const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
@@ -33,7 +31,7 @@ type FakeBitBoxClient = BitBoxClient & {
     | {
         apiNetwork: string;
         scriptConfig: BitBoxScriptConfig;
-        keypathAccount: number[] | undefined;
+        keypathAccount: string | undefined;
         xpubType: BitBoxRegisterXPubType;
         name: string | undefined;
       }
@@ -41,7 +39,7 @@ type FakeBitBoxClient = BitBoxClient & {
   displayed:
     | {
         apiNetwork: string;
-        keypath: number[];
+        keypath: string;
         scriptConfig: BitBoxScriptConfig;
         display: boolean;
       }
@@ -75,7 +73,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       | {
           apiNetwork: string;
           scriptConfig: BitBoxScriptConfig;
-          keypathAccount: number[] | undefined;
+          keypathAccount: string | undefined;
           xpubType: BitBoxRegisterXPubType;
           name: string | undefined;
         }
@@ -83,7 +81,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     displayed: undefined as
       | {
           apiNetwork: string;
-          keypath: number[];
+          keypath: string;
           scriptConfig: BitBoxScriptConfig;
           display: boolean;
         }
@@ -104,12 +102,12 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       _xpubType: string,
       _display: boolean
     ) => {
-      if (typeof keypath === 'string')
-        throw new Error('unexpected string path');
-      const path = keypath
-        .map(index => (index >= HARDENED ? `${index - HARDENED}'` : `${index}`))
-        .join('/');
-      return master.derivePath(path).neutered().toBase58();
+      if (typeof keypath !== 'string')
+        throw new Error('unexpected number path');
+      return master
+        .derivePath(keypath.startsWith('m/') ? keypath.slice(2) : keypath)
+        .neutered()
+        .toBase58();
     },
     btcIsScriptConfigRegistered: async () => false,
     btcRegisterScriptConfig: async (
@@ -119,8 +117,8 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       xpubType: BitBoxRegisterXPubType,
       name?: string
     ) => {
-      if (typeof keypathAccount === 'string')
-        throw new Error('unexpected string path');
+      if (keypathAccount !== undefined && typeof keypathAccount !== 'string')
+        throw new Error('unexpected number path');
       client.registered = {
         apiNetwork,
         scriptConfig,
@@ -135,8 +133,8 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       scriptConfig: BitBoxScriptConfig,
       display: boolean
     ) => {
-      if (typeof keypath === 'string')
-        throw new Error('unexpected string path');
+      if (typeof keypath !== 'string')
+        throw new Error('unexpected number path');
       client.displayed = { apiNetwork, keypath, scriptConfig, display };
       return 'multisig' in scriptConfig
         ? 'bcrt1multisig'
@@ -159,17 +157,6 @@ function fakeClientFor(master: BIP32InterfaceLike) {
 }
 
 describe('BitBox helpers', () => {
-  test('parses BitBox keypaths', () => {
-    expect(bitboxKeypathFromString("m/48'/1'/0'/2'/0/7")).toEqual([
-      48 + HARDENED,
-      1 + HARDENED,
-      HARDENED,
-      2 + HARDENED,
-      0,
-      7
-    ]);
-  });
-
   test('builds key expressions and registers P2WSH multisig accounts', async () => {
     const bitboxMaster = makeMaster(1);
     const otherMaster = makeMaster(2);
@@ -197,12 +184,7 @@ describe('BitBox helpers', () => {
 
     expect(client.registered?.name).toBe('Test BitBox');
     expect(client.registered?.apiNetwork).toBe('tbtc');
-    expect(client.registered?.keypathAccount).toEqual([
-      48 + HARDENED,
-      1 + HARDENED,
-      HARDENED,
-      2 + HARDENED
-    ]);
+    expect(client.registered?.keypathAccount).toBe("m/48'/1'/0'/2'");
     expect(client.registered?.scriptConfig).toMatchObject({
       multisig: { threshold: 1, ourXpubIndex: 0, scriptType: 'p2wsh' }
     });
@@ -220,14 +202,7 @@ describe('BitBox helpers', () => {
         index: 7
       })
     ).resolves.toBe('bcrt1multisig');
-    expect(client.displayed?.keypath).toEqual([
-      48 + HARDENED,
-      1 + HARDENED,
-      HARDENED,
-      2 + HARDENED,
-      0,
-      7
-    ]);
+    expect(client.displayed?.keypath).toBe("m/48'/1'/0'/2'/0/7");
   });
 
   test('displays standard single-sig addresses', async () => {
@@ -247,7 +222,7 @@ describe('BitBox helpers', () => {
 
     expect(client.displayed).toEqual({
       apiNetwork: 'tbtc',
-      keypath: [84 + HARDENED, 1 + HARDENED, HARDENED, 0, 7],
+      keypath: "m/84'/1'/0'/0/7",
       scriptConfig: { simpleType: 'p2wpkh' },
       display: true
     });
@@ -338,14 +313,7 @@ describe('BitBox helpers', () => {
     await expect(
       displayAddress({ descriptor, manager: bitboxManager, index: 9 })
     ).resolves.toBe('bcrt1policy');
-    expect(client.displayed?.keypath).toEqual([
-      48 + HARDENED,
-      1 + HARDENED,
-      1 + HARDENED,
-      2 + HARDENED,
-      0,
-      9
-    ]);
+    expect(client.displayed?.keypath).toBe("m/48'/1'/1'/2'/0/9");
     expect(client.displayed?.scriptConfig).toMatchObject({
       policy: { policy: 'wsh(and_v(v:pk(@0/**),older(5)))' }
     });

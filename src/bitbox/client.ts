@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import { coinTypeFromNetwork } from '../networkUtils';
+import { fromHex } from 'uint8array-tools';
 import type {
   BitBoxFormatUnit,
   BitBoxManager,
@@ -10,7 +11,6 @@ import type {
   BitBoxSimpleType,
   BitBoxXPubType
 } from './types';
-import { bitboxKeypathFromString, normalizeFingerprint } from './utils';
 
 export function bitboxApiNetwork(
   bitboxManager: BitBoxManager
@@ -81,9 +81,7 @@ export async function getBitBoxMasterFingerprint({
   const { bitboxClient, bitboxState } = bitboxManager;
   if (bitboxState.masterFingerprint) return bitboxState.masterFingerprint;
 
-  const fingerprintSource = await bitboxClient.rootFingerprint();
-
-  const masterFingerprint = normalizeFingerprint(fingerprintSource);
+  const masterFingerprint = fromHex(await bitboxClient.rootFingerprint());
   bitboxState.masterFingerprint = masterFingerprint;
   return masterFingerprint;
 }
@@ -104,7 +102,7 @@ export async function getBitBoxXpub({
   if (!xpub) {
     xpub = await bitboxClient.btcXpub(
       bitboxApiNetwork(bitboxManager),
-      bitboxKeypathFromString(originPath),
+      `m${originPath}`,
       bitboxXpubType(bitboxManager),
       display
     );

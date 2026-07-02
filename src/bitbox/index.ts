@@ -30,7 +30,6 @@ import {
   getBitBoxXpub
 } from './client';
 import { keyExpressionBitBox } from './keyExpressions';
-import { bitboxKeypathFromString } from './utils';
 import type { BitBoxManager, BitBoxPolicy, BitBoxState } from './types';
 
 export type {
@@ -71,7 +70,6 @@ export {
   getBitBoxXpub
 } from './client';
 export { keyExpressionBitBox };
-export { bitboxKeypathFromString } from './utils';
 export * as scriptExpressions from './scriptExpressions';
 export * as signers from './signers';
 export * as connectors from './connectors';
@@ -191,7 +189,7 @@ async function displayStandardAddress({
   if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
   return bitboxClient.btcAddress(
     bitboxApiNetwork(bitboxManager),
-    bitboxKeypathFromString(`${originPath}/${change}/${index}`),
+    `m${originPath}/${change}/${index}`,
     {
       simpleType: bitboxSimpleType({
         descriptorTemplate: policy.descriptorTemplate,
@@ -221,7 +219,7 @@ async function displayMultisigAddress({
     );
   return bitboxClient.btcAddress(
     bitboxApiNetwork(bitboxManager),
-    [...account.keypathAccount, change, index],
+    `${account.keypathAccount}/${change}/${index}`,
     bitboxScriptConfigFromMultisigAccount(account),
     true
   );

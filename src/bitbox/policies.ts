@@ -25,7 +25,6 @@ import {
   getBitBoxMasterFingerprint,
   getBitBoxXpub
 } from './client';
-import { bitboxKeypathFromString } from './utils';
 
 export function hwwManagerFromBitBoxManager(
   bitboxManager: BitBoxManager
@@ -65,9 +64,7 @@ function bitboxKeyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
     ...(parsed.masterFingerprint
       ? { rootFingerprint: toHex(parsed.masterFingerprint) }
       : {}),
-    ...(parsed.originPath
-      ? { keypath: bitboxKeypathFromString(parsed.originPath) }
-      : {}),
+    ...(parsed.originPath ? { keypath: `m${parsed.originPath}` } : {}),
     xpub: parsed.xpub
   };
 }
@@ -102,10 +99,8 @@ export function bitboxSigningKeypathFromPolicy({
 }: {
   policy: BitBoxPolicy | WalletPolicy;
   bitboxManager: BitBoxManager;
-}): number[] {
-  return bitboxKeypathFromString(
-    bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })
-  );
+}): string {
+  return `m${bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })}`;
 }
 
 export function bitboxAddressKeypathFromPolicy({
@@ -118,10 +113,8 @@ export function bitboxAddressKeypathFromPolicy({
   bitboxManager: BitBoxManager;
   change: number;
   index: number;
-}): number[] {
-  return bitboxKeypathFromString(
-    `${bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })}/${change}/${index}`
-  );
+}): string {
+  return `m${bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })}/${change}/${index}`;
 }
 
 export function bitboxScriptConfigFromPolicy({
@@ -267,7 +260,7 @@ export function bitboxAccountFromPolicy({
   }
 
   return {
-    keypathAccount: bitboxKeypathFromString(ourOriginPath),
+    keypathAccount: `m${ourOriginPath}`,
     threshold,
     xpubs: parsedKeyRoots.map(keyRoot => keyRoot.xpub),
     ourXpubIndex,
