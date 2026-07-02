@@ -26,10 +26,14 @@
     "ecpair"
   ],
   "peerDependencies": {
+    "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
     "bitbox-api": "^0.13.0"
   },
   "peerDependenciesMeta": {
+    "@ledgerhq/hw-transport-node-hid": {
+      "optional": true
+    },
     "@ledgerhq/ledger-bitcoin": {
       "optional": true
     },

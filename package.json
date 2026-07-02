@@ -97,6 +97,7 @@
     "dist"
   ],
   "peerDependencies": {
+    "@ledgerhq/hw-transport-node-hid": "^6.30.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
@@ -109,6 +110,9 @@
     "ecpair": "^3.0.1"
   },
   "peerDependenciesMeta": {
+    "@ledgerhq/hw-transport-node-hid": {
+      "optional": true
+    },
     "@ledgerhq/ledger-bitcoin": {
       "optional": true
     },

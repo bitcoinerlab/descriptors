@@ -74,6 +74,7 @@ export { keyExpressionBitBox };
 export { bitboxKeypathFromString } from './utils';
 export * as scriptExpressions from './scriptExpressions';
 export * as signers from './signers';
+export * as connectors from './connectors';
 
 export type Manager = BitBoxManager;
 export type State = BitBoxState;

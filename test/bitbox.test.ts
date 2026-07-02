@@ -9,6 +9,7 @@ import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import {
   bitboxKeypathFromString,
+  connectors,
   displayAddress,
   keyExpression,
   registerWallet,
@@ -57,12 +58,12 @@ function makeMaster(seed: number): BIP32InterfaceLike {
 }
 
 function managerFor(master: BIP32InterfaceLike, client: BitBoxClient) {
-  return {
-    bitboxClient: client,
-    bitboxState: { masterFingerprint: master.fingerprint },
+  return connectors.fromClient({
+    client,
+    state: { masterFingerprint: master.fingerprint },
     Output,
     network: NETWORK
-  } satisfies Manager;
+  }) satisfies Manager;
 }
 
 function fakeClientFor(master: BIP32InterfaceLike) {

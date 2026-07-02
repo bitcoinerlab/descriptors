@@ -43,7 +43,6 @@ To run this test, follow these steps:
 console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (co-signed with a software wallet) -> 1 output'
 );
-import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks } from '../../dist';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
@@ -85,8 +84,6 @@ import { signBIP32 } from '../../dist/signers';
 import * as ledger from '../../dist/ledger/index';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
-const { assertLedgerApp } = ledger;
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
 const { Output } = DescriptorsFactory(
   isScure ? createScureLib() : createBitcoinjsLib(ecc)
 );
@@ -104,27 +101,12 @@ const finalizers = [];
 
 (async () => {
   await ready;
-  let transport;
-  try {
-    transport = await Transport.create(3000, 3000);
-  } catch (err) {
-    void err;
-    throw new Error(`Error: Ledger device not detected`);
-  }
-  //Throw if not running Bitcoin Test >= 2.1.0
-  await assertLedgerApp({
-    transport,
-    name: 'Bitcoin Test',
+  const ledgerManager = await ledger.connectors.nodeHid({
+    Output,
+    network: NETWORK,
+    appName: 'Bitcoin Test',
     minVersion: '2.1.0'
   });
-
-  const ledgerClient = new AppClient(transport);
-  const ledgerManager = {
-    ledgerClient,
-    ledgerState: {},
-    Output,
-    network: NETWORK
-  };
 
   //Build the miniscript-based descriptor.
   //POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'

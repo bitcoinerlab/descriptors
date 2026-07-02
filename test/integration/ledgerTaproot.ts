@@ -9,8 +9,6 @@ if (process.env['BITCOIN_LIB'] === 'scure') {
   process.exit(0);
 }
 
-import Transport from '@ledgerhq/hw-transport-node-hid';
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { mnemonicToSeedSync } from 'bip39';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import { RegtestUtils } from 'regtest-client';
@@ -29,7 +27,6 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
-const { assertLedgerApp } = ledger;
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -43,12 +40,7 @@ async function runSpendScenario({
 }: {
   name: string;
   output: InstanceType<typeof Output>;
-  ledgerManager: {
-    ledgerClient: AppClient;
-    ledgerState: Record<string, unknown>;
-    Output: typeof Output;
-    network: typeof NETWORK;
-  };
+  ledgerManager: ledger.Manager;
   expectScriptPath: boolean;
 }) {
   const destinationAddress = regtestUtils.RANDOM_ADDRESS;
@@ -118,27 +110,12 @@ async function runSpendScenario({
 }
 
 (async () => {
-  let transport;
-  try {
-    transport = await Transport.create(3000, 3000);
-  } catch (err) {
-    void err;
-    throw new Error(`Error: Ledger device not detected`);
-  }
-
-  await assertLedgerApp({
-    transport,
-    name: 'Bitcoin Test',
+  const ledgerManager = await ledger.connectors.nodeHid({
+    Output,
+    network: NETWORK,
+    appName: 'Bitcoin Test',
     minVersion: '2.1.0'
   });
-
-  const ledgerClient = new AppClient(transport);
-  const ledgerManager = {
-    ledgerClient,
-    ledgerState: {},
-    Output,
-    network: NETWORK
-  };
 
   // Scenario 1: Taproot key-path using standard Ledger BIP86 descriptor
   const trKeyPathDescriptor = await ledger.scriptExpressions.tr({

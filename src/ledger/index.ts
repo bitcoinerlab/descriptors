@@ -220,3 +220,4 @@ export async function getXpub({
 export * as signers from './signers';
 export { keyExpressionLedger };
 export * as scriptExpressions from './scriptExpressions';
+export * as connectors from './connectors';

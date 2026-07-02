@@ -28,6 +28,7 @@ import * as ecc from '@bitcoinerlab/secp256k1';
 import { DescriptorsFactory, networks } from '../../dist';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import {
+  connectors,
   displayAddress,
   getVersion,
   getXpub,
@@ -37,15 +38,6 @@ import {
   type Manager
 } from '../../dist/bitbox';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
-
-type BitBoxApiModule = {
-  bitbox02ConnectBridge(onCloseCb?: () => void): Promise<{
-    unlockAndPair(): Promise<{
-      getPairingCode(): string | undefined;
-      waitConfirm(): Promise<BitBoxClient & { close(): void }>;
-    }>;
-  }>;
-};
 
 const globalWithBrowserBits = globalThis as Record<string, unknown>;
 let localStorageShim = globalWithBrowserBits['localStorage'];
@@ -87,11 +79,6 @@ if (globalWithBrowserBits['WebSocket'] === undefined) {
   globalWithBrowserBits['WebSocket'] = require('ws');
 }
 
-const importBitBoxApi = new Function(
-  'specifier',
-  'return import(specifier)'
-) as (specifier: string) => Promise<BitBoxApiModule>;
-
 const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
 const NETWORK = networks.bitcoin;
 const ORIGIN_PATH = "/84'/0'/0'";
@@ -99,24 +86,17 @@ const POLICY_ORIGIN_PATH = "/48'/0'/0'/2'";
 
 (async () => {
   await ready;
-  const { bitbox02ConnectBridge } = await importBitBoxApi('bitbox-api');
-  const unpaired = await bitbox02ConnectBridge(() => {
-    console.log('BitBox02 connection closed');
-  });
-  const pairing = await unpaired.unlockAndPair();
-  const pairingCode = pairing.getPairingCode();
-  if (pairingCode) {
-    console.log(`Pairing code:\n${pairingCode}`);
-    console.log('Confirm the pairing code on the BitBox02.');
-  }
-  const bitboxClient = await pairing.waitConfirm();
-
-  const manager: Manager = {
-    bitboxClient,
-    bitboxState: {},
+  const manager: Manager = await connectors.bridge({
     Output,
-    network: NETWORK
-  };
+    network: NETWORK,
+    onClose: () => {
+      console.log('BitBox02 connection closed');
+    },
+    onPairingCode: pairingCode => {
+      console.log(`Pairing code:\n${pairingCode}`);
+      console.log('Confirm the pairing code on the BitBox02.');
+    }
+  });
 
   const version = await getVersion({ manager });
   const xpub = await getXpub({
@@ -160,7 +140,7 @@ const POLICY_ORIGIN_PATH = "/48'/0'/0'/2'";
   });
   console.log({ policyDescriptor, policyAddress });
 
-  bitboxClient.close();
+  (manager.bitboxClient as BitBoxClient & { close(): void }).close();
 })().catch(err => {
   console.error(err);
   process.exit(1);

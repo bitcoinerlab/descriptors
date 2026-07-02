@@ -346,6 +346,7 @@ export const ledger: LedgerModule = {
   },
   keyExpressionLedger: deprecatedKeyExpressionLedger,
   keyExpression,
+  connectors: getLedgerModule().connectors,
   scriptExpressions: {
     pkhLedger,
     shWpkhLedger,
