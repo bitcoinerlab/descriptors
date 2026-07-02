@@ -148,6 +148,18 @@ export async function signInputLedger({
   addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
 }
 
+export async function signInput({
+  psbt,
+  index,
+  manager
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  index: number;
+  manager: LedgerManager;
+}): Promise<void> {
+  return signInputLedger({ psbt, index, ledgerManager: manager });
+}
+
 export async function signLedger({
   psbt,
   ledgerManager
@@ -225,4 +237,14 @@ export async function signLedger({
       addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
     }
   }
+}
+
+export async function sign({
+  psbt,
+  manager
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  manager: LedgerManager;
+}): Promise<void> {
+  return signLedger({ psbt, ledgerManager: manager });
 }

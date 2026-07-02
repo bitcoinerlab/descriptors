@@ -26,10 +26,14 @@
     "bip32"
   ],
   "peerDependencies": {
-    "@ledgerhq/ledger-bitcoin": "^0.3.1"
+    "@ledgerhq/ledger-bitcoin": "^0.3.1",
+    "bitbox-api": "^0.13.0"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
+      "optional": true
+    },
+    "bitbox-api": {
       "optional": true
     }
   },
@@ -51,6 +55,10 @@
     "./hww": {
       "types": "./dist/hww.d.ts",
       "default": "./dist/hww.js"
+    },
+    "./bitbox": {
+      "types": "./dist/bitbox.d.ts",
+      "default": "./dist/bitbox.js"
     }
   },
   "files": [

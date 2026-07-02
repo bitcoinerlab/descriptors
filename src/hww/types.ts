@@ -6,7 +6,7 @@ import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 
 export type KnownHardwareWalletKind =
-  | 'bitbox02'
+  | 'bitbox'
   | 'coldcard'
   | 'jade'
   | 'ledger'

@@ -29,9 +29,7 @@ const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
-const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
-const { signLedger } = ledger.signers;
-const { trLedger } = ledger.scriptExpressions;
+const { assertLedgerApp } = ledger;
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -82,7 +80,7 @@ async function runSpendScenario({
     value: BigInt(UTXO_VALUE - FEE)
   });
 
-  await signLedger({ psbt, ledgerManager });
+  await ledger.signers.sign({ psbt, manager: ledgerManager });
 
   const afterSignInput = psbt.data.inputs[0];
   if (!afterSignInput)
@@ -143,8 +141,8 @@ async function runSpendScenario({
   };
 
   // Scenario 1: Taproot key-path using standard Ledger BIP86 descriptor
-  const trKeyPathDescriptor = await trLedger({
-    ledgerManager,
+  const trKeyPathDescriptor = await ledger.scriptExpressions.tr({
+    manager: ledgerManager,
     account: 0,
     change: 0,
     index: 0
@@ -168,16 +166,16 @@ async function runSpendScenario({
     .neutered()
     .toBase58();
   const internalKeyExpression = `${softXpub}/0/0`;
-  const ledgerLeafExpression = await keyExpressionLedger({
-    ledgerManager,
+  const ledgerLeafExpression = await ledger.keyExpression({
+    manager: ledgerManager,
     originPath,
     change: 0,
     index: 0
   });
   const scriptPathDescriptor = `tr(${internalKeyExpression},pk(${ledgerLeafExpression}))`;
 
-  await registerLedgerWallet({
-    ledgerManager,
+  await ledger.registerWallet({
+    manager: ledgerManager,
     descriptor: scriptPathDescriptor,
     policyName: 'Taproot ScriptPath'
   });

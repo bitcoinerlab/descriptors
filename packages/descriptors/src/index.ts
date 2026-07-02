@@ -88,6 +88,11 @@ type LedgerModule = typeof import('./ledger');
 type CompatLedgerParams<Fn> = Fn extends (params: infer Params) => unknown
   ? Omit<Params, 'ledgerManager'> & { ledgerManager: LedgerManager }
   : never;
+type CompatLedgerManagerParams<Fn> = Fn extends (
+  params: infer Params
+) => unknown
+  ? Omit<Params, 'manager'> & { manager: LedgerManager }
+  : never;
 
 /** @deprecated Use `LedgerState` from `@bitcoinerlab/descriptors/ledger`. */
 export type LedgerState = StrictLedgerState;
@@ -194,6 +199,16 @@ function normalizeLedgerParams<Params extends { ledgerManager: LedgerManager }>(
   };
 }
 
+function normalizeLedgerManagerParams<
+  Params extends { manager: LedgerManager }
+>(params: Params): Omit<Params, 'manager'> & { manager: StrictLedgerManager } {
+  const { manager, ...rest } = params;
+  const { ledgerManager } = normalizeLedgerParams({ ledgerManager: manager });
+  return { ...rest, manager: ledgerManager } as Omit<Params, 'manager'> & {
+    manager: StrictLedgerManager;
+  };
+}
+
 const bound: Bound = DescriptorsFactory(ecc);
 
 const signInputLedger = (
@@ -204,9 +219,33 @@ const signLedger = (
   params: CompatLedgerParams<LedgerModule['signers']['signLedger']>
 ) => getLedgerModule().signers.signLedger(normalizeLedgerParams(params));
 
+const signInput = (
+  params: CompatLedgerManagerParams<LedgerModule['signers']['signInput']>
+) => getLedgerModule().signers.signInput(normalizeLedgerManagerParams(params));
+
+const sign = (
+  params: CompatLedgerManagerParams<LedgerModule['signers']['sign']>
+) => getLedgerModule().signers.sign(normalizeLedgerManagerParams(params));
+
 const deprecatedKeyExpressionLedger = (
   params: CompatLedgerParams<LedgerModule['keyExpressionLedger']>
 ) => getLedgerModule().keyExpressionLedger(normalizeLedgerParams(params));
+
+const keyExpression = (
+  params: CompatLedgerManagerParams<LedgerModule['keyExpression']>
+) => getLedgerModule().keyExpression(normalizeLedgerManagerParams(params));
+
+const registerWallet = (
+  params: CompatLedgerManagerParams<LedgerModule['registerWallet']>
+) => getLedgerModule().registerWallet(normalizeLedgerManagerParams(params));
+
+const getMasterFingerprint = (
+  params: CompatLedgerManagerParams<LedgerModule['getMasterFingerprint']>
+) =>
+  getLedgerModule().getMasterFingerprint(normalizeLedgerManagerParams(params));
+
+const getXpub = (params: CompatLedgerManagerParams<LedgerModule['getXpub']>) =>
+  getLedgerModule().getXpub(normalizeLedgerManagerParams(params));
 
 const pkhLedger = (
   params: CompatLedgerParams<LedgerModule['scriptExpressions']['pkhLedger']>
@@ -229,6 +268,30 @@ const trLedger = (
   params: CompatLedgerParams<LedgerModule['scriptExpressions']['trLedger']>
 ) =>
   getLedgerModule().scriptExpressions.trLedger(normalizeLedgerParams(params));
+
+const pkh = (
+  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['pkh']>
+) =>
+  getLedgerModule().scriptExpressions.pkh(normalizeLedgerManagerParams(params));
+
+const shWpkh = (
+  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['shWpkh']>
+) =>
+  getLedgerModule().scriptExpressions.shWpkh(
+    normalizeLedgerManagerParams(params)
+  );
+
+const wpkh = (
+  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['wpkh']>
+) =>
+  getLedgerModule().scriptExpressions.wpkh(
+    normalizeLedgerManagerParams(params)
+  );
+
+const tr = (
+  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['tr']>
+) =>
+  getLedgerModule().scriptExpressions.tr(normalizeLedgerManagerParams(params));
 
 /**
  * Signer helpers.
@@ -272,16 +335,26 @@ export const ledger: LedgerModule = {
     getLedgerModule().getLedgerXpub(normalizeLedgerParams(params)),
   registerLedgerWallet: params =>
     getLedgerModule().registerLedgerWallet(normalizeLedgerParams(params)),
+  registerWallet,
+  getMasterFingerprint,
+  getXpub,
   signers: {
     signInputLedger,
-    signLedger
+    signLedger,
+    signInput,
+    sign
   },
   keyExpressionLedger: deprecatedKeyExpressionLedger,
+  keyExpression,
   scriptExpressions: {
     pkhLedger,
     shWpkhLedger,
     wpkhLedger,
-    trLedger
+    trLedger,
+    pkh,
+    shWpkh,
+    wpkh,
+    tr
   }
 };
 

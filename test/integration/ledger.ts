@@ -85,9 +85,7 @@ import { signBIP32 } from '../../dist/signers';
 import * as ledger from '../../dist/ledger/index';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
-const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
-const { signLedger } = ledger.signers;
-const { pkhLedger } = ledger.scriptExpressions;
+const { assertLedgerApp } = ledger;
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 const { Output } = DescriptorsFactory(
   isScure ? createScureLib() : createBitcoinjsLib(ecc)
@@ -138,8 +136,8 @@ const finalizers = [];
   //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
-  const pkhExternalDescriptor: string = await pkhLedger({
-    ledgerManager,
+  const pkhExternalDescriptor: string = await ledger.scriptExpressions.pkh({
+    manager: ledgerManager,
     account: 0,
     change: 0,
     index: 0
@@ -159,8 +157,8 @@ const finalizers = [];
   finalizers.push(pkhExternalOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Repeat the same for another pkh change address:
-  const pkhChangeDescriptor = await pkhLedger({
-    ledgerManager,
+  const pkhChangeDescriptor = await ledger.scriptExpressions.pkh({
+    manager: ledgerManager,
     account: 0,
     change: 1,
     index: 0
@@ -197,8 +195,8 @@ const finalizers = [];
   //ledgerKeyExpression will be something like this:
   //[1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
   //Since WSH_ORIGIN_PATH is a non-standard path, the Ledger will warn the user about this.
-  const ledgerKeyExpression: string = await keyExpressionLedger({
-    ledgerManager,
+  const ledgerKeyExpression: string = await ledger.keyExpression({
+    manager: ledgerManager,
     originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
@@ -253,8 +251,8 @@ const finalizers = [];
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
-  await registerLedgerWallet({
-    ledgerManager,
+  await ledger.registerWallet({
+    manager: ledgerManager,
     descriptor: miniscriptDescriptor,
     policyName: 'BitcoinerLab'
   });
@@ -264,7 +262,7 @@ const finalizers = [];
   //retrieved from state by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
-  await signLedger({ psbt, ledgerManager });
+  await ledger.signers.sign({ psbt, manager: ledgerManager });
   //Now sign the PSBT with the BIP32 node (the software wallet)
   signBIP32({ psbt, masterNode });
 

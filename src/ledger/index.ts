@@ -50,6 +50,7 @@ import {
   ledgerPolicyFromStandard,
   ledgerPolicyFromState
 } from './policies';
+import { keyExpressionLedger } from './keyExpressions';
 
 /**
  * Ledger devices operate in a state-less manner. Therefore, policy information
@@ -155,6 +156,67 @@ export async function registerLedgerWallet({
   }
 }
 
+export type Manager = LedgerManager;
+export type State = LedgerState;
+
+export async function registerWallet({
+  descriptor,
+  manager,
+  policyName
+}: {
+  descriptor: string;
+  manager: LedgerManager;
+  policyName: string;
+}): Promise<void> {
+  return registerLedgerWallet({
+    descriptor,
+    ledgerManager: manager,
+    policyName
+  });
+}
+
+export async function keyExpression({
+  manager,
+  originPath,
+  keyPath,
+  change,
+  index
+}: {
+  manager: LedgerManager;
+  originPath: string;
+  change?: number | undefined;
+  index?: number | undefined | '*';
+  keyPath?: string | undefined;
+}): Promise<string> {
+  return keyExpressionLedger({
+    ledgerManager: manager,
+    originPath,
+    keyPath,
+    change,
+    index
+  });
+}
+
+export async function getMasterFingerprint({
+  manager
+}: {
+  manager: LedgerManager;
+}): Promise<Uint8Array> {
+  const { getLedgerMasterFingerPrint } = await import('./client');
+  return getLedgerMasterFingerPrint({ ledgerManager: manager });
+}
+
+export async function getXpub({
+  manager,
+  originPath
+}: {
+  manager: LedgerManager;
+  originPath: string;
+}): Promise<string> {
+  const { getLedgerXpub } = await import('./client');
+  return getLedgerXpub({ originPath, ledgerManager: manager });
+}
+
 export * as signers from './signers';
-export { keyExpressionLedger } from './keyExpressions';
+export { keyExpressionLedger };
 export * as scriptExpressions from './scriptExpressions';

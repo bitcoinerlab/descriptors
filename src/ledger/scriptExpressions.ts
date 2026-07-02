@@ -52,3 +52,34 @@ export const wpkhLedger = standardExpressionsLedgerMaker(
   'wpkh(KEYEXPRESSION)'
 );
 export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');
+
+function ledgerParamsFromManager<Params extends { manager: LedgerManager }>(
+  params: Params
+): Omit<Params, 'manager'> & { ledgerManager: LedgerManager } {
+  const { manager, ...rest } = params;
+  return { ...rest, ledgerManager: manager };
+}
+
+export const pkh = (
+  params: Omit<Parameters<typeof pkhLedger>[0], 'ledgerManager'> & {
+    manager: LedgerManager;
+  }
+) => pkhLedger(ledgerParamsFromManager(params));
+
+export const shWpkh = (
+  params: Omit<Parameters<typeof shWpkhLedger>[0], 'ledgerManager'> & {
+    manager: LedgerManager;
+  }
+) => shWpkhLedger(ledgerParamsFromManager(params));
+
+export const wpkh = (
+  params: Omit<Parameters<typeof wpkhLedger>[0], 'ledgerManager'> & {
+    manager: LedgerManager;
+  }
+) => wpkhLedger(ledgerParamsFromManager(params));
+
+export const tr = (
+  params: Omit<Parameters<typeof trLedger>[0], 'ledgerManager'> & {
+    manager: LedgerManager;
+  }
+) => trLedger(ledgerParamsFromManager(params));
