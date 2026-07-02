@@ -79,7 +79,7 @@
     "ensureTester": "./node_modules/@bitcoinerlab/configs/scripts/ensureTester.sh",
     "test:integration:soft": "npm run ensureTester && node test/integration/standardOutputs.js && echo \"\n\n\" && node test/integration/miniscript.js && echo \"\n\n\" && node test/integration/sortedmulti.js && echo \"\n\n\" && node test/integration/taproot.js && echo \"\n\n\" && node test/integration/scure.js",
     "test:integration:ledger": "npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\n\n\" && node test/integration/ledger.js",
-    "test:integration:bitbox": "node --experimental-wasm-modules test/integration/bitbox.js",
+    "test:integration:bitbox": "npm run ensureTester && node --experimental-wasm-modules test/integration/bitbox.js",
     "test:unit": "jest",
     "test:unit:scure": "cross-env BITCOIN_LIB=scure jest",
     "test:scure-adapter": "node test/scureAdapter.js",
