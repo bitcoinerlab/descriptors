@@ -12,6 +12,7 @@ export type BitBoxClient = {
   btcXpub(
     apiNetwork: BitBoxApiNetwork,
     keypath: BitBoxKeypath,
+    xpubType: BitBoxXPubType,
     display: boolean
   ): Promise<string>;
   btcAddress(
@@ -24,6 +25,7 @@ export type BitBoxClient = {
     apiNetwork: BitBoxApiNetwork,
     scriptConfig: BitBoxScriptConfig,
     keypathAccount: BitBoxKeypath | undefined,
+    xpubType: BitBoxRegisterXPubType,
     name?: string
   ): Promise<void>;
   btcIsScriptConfigRegistered(
@@ -40,6 +42,18 @@ export type BitBoxClient = {
 };
 
 export type BitBoxFormatUnit = 'default' | 'sat';
+export type BitBoxXPubType =
+  | 'tpub'
+  | 'xpub'
+  | 'ypub'
+  | 'zpub'
+  | 'vpub'
+  | 'upub'
+  | 'Vpub'
+  | 'Zpub'
+  | 'Upub'
+  | 'Ypub';
+export type BitBoxRegisterXPubType = 'autoElectrum' | 'autoXpubTpub';
 export type BitBoxKeypath = string | number[];
 export type BitBoxSimpleType = 'p2wpkhP2sh' | 'p2wpkh' | 'p2tr';
 export type BitBoxMultisigScriptType = 'p2wsh' | 'p2wshP2sh';
@@ -94,7 +108,7 @@ export type BitBoxState = {
 };
 
 export type BitBoxManager = {
-  /** Connected and paired descriptor-native BitBox client. */
+  /** Connected and paired BitBox-compatible provider client. */
   bitboxClient: BitBoxClient;
   /** Mutable cache for fingerprint, xpubs and registered policies. */
   bitboxState: BitBoxState;

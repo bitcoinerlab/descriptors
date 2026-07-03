@@ -48,7 +48,6 @@ import {
   registerWallet,
   scriptExpressions,
   signers,
-  type BitBoxClient,
   type Manager
 } from '../../dist/bitbox';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -267,7 +266,7 @@ const SOFT_MNEMONIC =
     tx: psbtToHex(policyPsbt)
   });
 
-  (manager.bitboxClient as BitBoxClient & { close(): void }).close();
+  (manager.bitboxClient as Manager['bitboxClient'] & { close(): void }).close();
 })().catch(err => {
   console.error(err);
   process.exit(1);

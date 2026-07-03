@@ -98,6 +98,7 @@ export async function getBitBoxXpub({
     xpub = await bitboxClient.btcXpub(
       bitboxApiNetwork(bitboxManager),
       `m${originPath}`,
+      bitboxXpubType(bitboxManager),
       display
     );
     bitboxState.xpubs[cacheKey] = xpub;

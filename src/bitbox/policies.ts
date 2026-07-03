@@ -401,6 +401,7 @@ export async function registerBitBoxWallet({
         bitboxApiNetwork(bitboxManager),
         scriptConfig,
         account?.keypathAccount,
+        'autoXpubTpub',
         policyName
       );
     } catch (error) {

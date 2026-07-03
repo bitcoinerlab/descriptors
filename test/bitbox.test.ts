@@ -15,7 +15,6 @@ import {
   registerWallet,
   scriptExpressions,
   signers,
-  type BitBoxClient,
   type Manager,
   type BitBoxScriptConfig
 } from '../dist/bitbox';
@@ -25,10 +24,13 @@ const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
 const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
-type FakeBitBoxClient = BitBoxClient & {
+type ProviderClient = Parameters<typeof connectors.fromClient>[0]['client'];
+
+type FakeBitBoxClient = ProviderClient & {
   xpubRequests: {
     apiNetwork: string;
     keypath: string;
+    xpubType: string;
     display: boolean;
   }[];
   registered:
@@ -36,6 +38,7 @@ type FakeBitBoxClient = BitBoxClient & {
         apiNetwork: string;
         scriptConfig: BitBoxScriptConfig;
         keypathAccount: string | undefined;
+        xpubType: string;
         name: string | undefined;
       }
     | undefined;
@@ -57,33 +60,13 @@ type FakeBitBoxClient = BitBoxClient & {
     | undefined;
 };
 
-type FakeBitBoxApiClient = Parameters<
-  typeof connectors.fromBitBoxApiClient
->[0]['client'] & {
-  xpubRequests: {
-    apiNetwork: string;
-    keypath: string;
-    xpubType: string;
-    display: boolean;
-  }[];
-  registered:
-    | {
-        apiNetwork: string;
-        scriptConfig: BitBoxScriptConfig;
-        keypathAccount: string | undefined;
-        xpubType: string;
-        name: string | undefined;
-      }
-    | undefined;
-};
-
 function makeMaster(seed: number, network = NETWORK): BIP32InterfaceLike {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), network);
 }
 
 function managerFor(
   master: BIP32InterfaceLike,
-  client: BitBoxClient,
+  client: ProviderClient,
   network = NETWORK
 ) {
   return connectors.fromClient({
@@ -99,6 +82,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     xpubRequests: [] as {
       apiNetwork: string;
       keypath: string;
+      xpubType: string;
       display: boolean;
     }[],
     registered: undefined as
@@ -106,6 +90,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
           apiNetwork: string;
           scriptConfig: BitBoxScriptConfig;
           keypathAccount: string | undefined;
+          xpubType: string;
           name: string | undefined;
         }
       | undefined,
@@ -125,70 +110,6 @@ function fakeClientFor(master: BIP32InterfaceLike) {
           formatUnit: string;
         }
       | undefined,
-    version: () => '9.99.0-test',
-    rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
-    btcXpub: async (
-      apiNetwork: string,
-      keypath: string | number[],
-      display: boolean
-    ) => {
-      if (typeof keypath !== 'string')
-        throw new Error('unexpected number path');
-      client.xpubRequests.push({ apiNetwork, keypath, display });
-      return master
-        .derivePath(keypath.startsWith('m/') ? keypath.slice(2) : keypath)
-        .neutered()
-        .toBase58();
-    },
-    btcIsScriptConfigRegistered: async () => false,
-    btcRegisterScriptConfig: async (
-      apiNetwork: string,
-      scriptConfig: BitBoxScriptConfig,
-      keypathAccount: string | number[] | undefined,
-      name?: string
-    ) => {
-      if (keypathAccount !== undefined && typeof keypathAccount !== 'string')
-        throw new Error('unexpected number path');
-      client.registered = {
-        apiNetwork,
-        scriptConfig,
-        keypathAccount,
-        name
-      };
-    },
-    btcAddress: async (
-      apiNetwork: string,
-      keypath: string | number[],
-      scriptConfig: BitBoxScriptConfig,
-      display: boolean
-    ) => {
-      if (typeof keypath !== 'string')
-        throw new Error('unexpected number path');
-      client.displayed = { apiNetwork, keypath, scriptConfig, display };
-      return 'multisig' in scriptConfig
-        ? 'bcrt1multisig'
-        : 'policy' in scriptConfig
-          ? 'bcrt1policy'
-          : 'bcrt1simple';
-    },
-    btcSignPSBT: async (
-      apiNetwork: string,
-      psbt: string,
-      forceScriptConfig: unknown,
-      formatUnit: string
-    ) => {
-      client.signed = { apiNetwork, psbt, forceScriptConfig, formatUnit };
-      return `${psbt}:signed`;
-    }
-  } satisfies FakeBitBoxClient;
-
-  return client;
-}
-
-function fakeBitBoxApiClientFor(master: BIP32InterfaceLike) {
-  const client = {
-    xpubRequests: [] as FakeBitBoxApiClient['xpubRequests'],
-    registered: undefined as FakeBitBoxApiClient['registered'],
     version: () => '9.99.0-test',
     rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
     btcXpub: async (
@@ -223,14 +144,31 @@ function fakeBitBoxApiClientFor(master: BIP32InterfaceLike) {
         name
       };
     },
-    btcAddress: async () => 'bcrt1api',
-    btcSignPSBT: async (apiNetwork, psbt, forceScriptConfig, formatUnit) => {
-      void apiNetwork;
-      void forceScriptConfig;
-      void formatUnit;
+    btcAddress: async (
+      apiNetwork: string,
+      keypath: string | number[],
+      scriptConfig: BitBoxScriptConfig,
+      display: boolean
+    ) => {
+      if (typeof keypath !== 'string')
+        throw new Error('unexpected number path');
+      client.displayed = { apiNetwork, keypath, scriptConfig, display };
+      return 'multisig' in scriptConfig
+        ? 'bcrt1multisig'
+        : 'policy' in scriptConfig
+          ? 'bcrt1policy'
+          : 'bcrt1simple';
+    },
+    btcSignPSBT: async (
+      apiNetwork: string,
+      psbt: string,
+      forceScriptConfig: unknown,
+      formatUnit: string
+    ) => {
+      client.signed = { apiNetwork, psbt, forceScriptConfig, formatUnit };
       return `${psbt}:signed`;
     }
-  } satisfies FakeBitBoxApiClient;
+  } satisfies FakeBitBoxClient;
 
   return client;
 }
@@ -284,7 +222,7 @@ describe('BitBox helpers', () => {
     expect(client.displayed?.keypath).toBe("m/48'/1'/0'/2'/0/7");
   });
 
-  test('uses the simplified descriptors-native BitBox client contract', async () => {
+  test('passes xpub and registration modes to BitBox-compatible clients', async () => {
     const testnetMaster = makeMaster(10, NETWORK);
     const testnetClient = fakeClientFor(testnetMaster);
     const testnetManager = managerFor(testnetMaster, testnetClient, NETWORK);
@@ -298,18 +236,8 @@ describe('BitBox helpers', () => {
     expect(testnetClient.xpubRequests[0]).toMatchObject({
       apiNetwork: 'tbtc',
       keypath: "m/84'/1'/0'",
+      xpubType: 'tpub',
       display: false
-    });
-  });
-
-  test('adapts bitbox-api xpub and registration modes internally', async () => {
-    const testnetMaster = makeMaster(12, NETWORK);
-    const testnetClient = fakeBitBoxApiClientFor(testnetMaster);
-    const testnetManager = connectors.fromBitBoxApiClient({
-      client: testnetClient,
-      state: { masterFingerprint: testnetMaster.fingerprint },
-      Output,
-      network: NETWORK
     });
 
     const testnetKey = await keyExpression({
@@ -318,7 +246,7 @@ describe('BitBox helpers', () => {
       keyPath: '/0/*'
     });
 
-    expect(testnetClient.xpubRequests[0]).toMatchObject({
+    expect(testnetClient.xpubRequests[1]).toMatchObject({
       apiNetwork: 'tbtc',
       keypath: "m/48'/1'/0'/2'",
       xpubType: 'tpub',
@@ -328,19 +256,18 @@ describe('BitBox helpers', () => {
     await registerWallet({
       descriptor: `wsh(and_v(v:pk(${testnetKey}),older(5)))`,
       manager: testnetManager,
-      policyName: 'Test bitbox-api'
+      policyName: 'Test provider client'
     });
 
     expect(testnetClient.registered?.xpubType).toBe('autoXpubTpub');
 
     const mainnetMaster = makeMaster(11, networks.bitcoin);
-    const mainnetClient = fakeBitBoxApiClientFor(mainnetMaster);
-    const mainnetManager = connectors.fromBitBoxApiClient({
-      client: mainnetClient,
-      state: { masterFingerprint: mainnetMaster.fingerprint },
-      Output,
-      network: networks.bitcoin
-    });
+    const mainnetClient = fakeClientFor(mainnetMaster);
+    const mainnetManager = managerFor(
+      mainnetMaster,
+      mainnetClient,
+      networks.bitcoin
+    );
 
     await keyExpression({
       manager: mainnetManager,

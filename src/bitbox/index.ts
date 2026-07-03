@@ -33,7 +33,6 @@ import { keyExpressionBitBox } from './keyExpressions';
 import type { BitBoxManager, BitBoxPolicy, BitBoxState } from './types';
 
 export type {
-  BitBoxClient,
   BitBoxFormatUnit,
   BitBoxKeyOriginInfo,
   BitBoxKeypath,
