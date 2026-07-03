@@ -3,13 +3,15 @@
 
 import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
+import type { BitBoxApiXPubType } from './client';
 import type {
+  BitBoxApiNetwork,
   BitBoxClient,
   BitBoxFormatUnit,
+  BitBoxKeypath,
   BitBoxManager,
-  BitBoxRegisterXPubType,
-  BitBoxState,
-  BitBoxXPubType
+  BitBoxScriptConfig,
+  BitBoxState
 } from './types';
 
 type BitBoxConnection = {
@@ -18,7 +20,26 @@ type BitBoxConnection = {
 
 type BitBoxPairing = {
   getPairingCode(): string | undefined;
-  waitConfirm(): Promise<BitBoxClient>;
+  waitConfirm(): Promise<RawBitBoxApiClient>;
+};
+
+type RawBitBoxApiClient = Omit<
+  BitBoxClient,
+  'btcXpub' | 'btcRegisterScriptConfig'
+> & {
+  btcXpub(
+    apiNetwork: BitBoxApiNetwork,
+    keypath: BitBoxKeypath,
+    xpubType: BitBoxApiXPubType,
+    display: boolean
+  ): Promise<string>;
+  btcRegisterScriptConfig(
+    apiNetwork: BitBoxApiNetwork,
+    scriptConfig: BitBoxScriptConfig,
+    keypathAccount: BitBoxKeypath | undefined,
+    xpubType: 'autoXpubTpub',
+    name?: string
+  ): Promise<void>;
 };
 
 type BitBoxApiModule = {
@@ -33,7 +54,7 @@ const importBitBoxApi = new Function(
 ) as (specifier: string) => Promise<BitBoxApiModule>;
 
 export type FromClientParams = {
-  /** Connected and paired BitBox API client. */
+  /** Connected and paired descriptor-native BitBox client. */
   client: BitBoxClient;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;
@@ -41,10 +62,6 @@ export type FromClientParams = {
   network: Network;
   /** Existing mutable cache for fingerprint, xpubs and registered policies. */
   state?: BitBoxState;
-  /** Optional xpub type override passed to `btcXpub`. */
-  xpubType?: BitBoxXPubType;
-  /** Optional registration xpub mode override passed to `btcRegisterScriptConfig`. */
-  registerXpubType?: BitBoxRegisterXPubType;
   /** Optional display unit passed to `btcSignPSBT`. */
   formatUnit?: BitBoxFormatUnit;
 };
@@ -54,8 +71,6 @@ export function fromClient({
   Output,
   network,
   state,
-  xpubType,
-  registerXpubType,
   formatUnit
 }: FromClientParams): BitBoxManager {
   const manager: BitBoxManager = {
@@ -64,11 +79,71 @@ export function fromClient({
     Output,
     network
   };
-  if (xpubType !== undefined) manager.xpubType = xpubType;
-  if (registerXpubType !== undefined)
-    manager.registerXpubType = registerXpubType;
   if (formatUnit !== undefined) manager.formatUnit = formatUnit;
   return manager;
+}
+
+export type FromBitBoxApiClientParams = Omit<FromClientParams, 'client'> & {
+  /** Connected and paired client with the raw `bitbox-api` method shape. */
+  client: RawBitBoxApiClient;
+};
+
+function bitboxXpubTypeFromApiNetwork(
+  apiNetwork: BitBoxApiNetwork
+): BitBoxApiXPubType {
+  return apiNetwork === 'btc' ? 'xpub' : 'tpub';
+}
+
+/**
+ * Wraps a raw `bitbox-api` client so the rest of this module can use the
+ * smaller descriptor-native BitBox client shape.
+ */
+function adaptRawBitBoxApiClient(client: RawBitBoxApiClient): BitBoxClient {
+  return {
+    version: () => client.version(),
+    rootFingerprint: () => client.rootFingerprint(),
+    btcXpub: (apiNetwork, keypath, display) =>
+      client.btcXpub(
+        apiNetwork,
+        keypath,
+        bitboxXpubTypeFromApiNetwork(apiNetwork),
+        display
+      ),
+    btcAddress: (apiNetwork, keypath, scriptConfig, display) =>
+      client.btcAddress(apiNetwork, keypath, scriptConfig, display),
+    btcRegisterScriptConfig: (apiNetwork, scriptConfig, keypathAccount, name) =>
+      client.btcRegisterScriptConfig(
+        apiNetwork,
+        scriptConfig,
+        keypathAccount,
+        'autoXpubTpub',
+        name
+      ),
+    btcIsScriptConfigRegistered: (apiNetwork, scriptConfig, keypathAccount) =>
+      client.btcIsScriptConfigRegistered(
+        apiNetwork,
+        scriptConfig,
+        keypathAccount
+      ),
+    btcSignPSBT: (apiNetwork, psbt, forceScriptConfig, formatUnit) =>
+      client.btcSignPSBT(apiNetwork, psbt, forceScriptConfig, formatUnit)
+  };
+}
+
+export function fromBitBoxApiClient({
+  client,
+  Output,
+  network,
+  state,
+  formatUnit
+}: FromBitBoxApiClientParams): BitBoxManager {
+  return fromClient({
+    client: adaptRawBitBoxApiClient(client),
+    Output,
+    network,
+    ...(state !== undefined ? { state } : {}),
+    ...(formatUnit !== undefined ? { formatUnit } : {})
+  });
 }
 
 export type ConnectMechanism = 'auto' | 'bridge' | 'webhid';
@@ -94,15 +169,11 @@ async function connectWith(
   if (pairingCode !== undefined) await params.onPairingCode?.(pairingCode);
   const client = await pairing.waitConfirm();
 
-  return fromClient({
+  return fromBitBoxApiClient({
     client,
     Output: params.Output,
     network: params.network,
     ...(params.state !== undefined ? { state: params.state } : {}),
-    ...(params.xpubType !== undefined ? { xpubType: params.xpubType } : {}),
-    ...(params.registerXpubType !== undefined
-      ? { registerXpubType: params.registerXpubType }
-      : {}),
     ...(params.formatUnit !== undefined
       ? { formatUnit: params.formatUnit }
       : {})

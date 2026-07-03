@@ -17,7 +17,6 @@ import {
   signers,
   type BitBoxClient,
   type Manager,
-  type BitBoxRegisterXPubType,
   type BitBoxScriptConfig
 } from '../dist/bitbox';
 
@@ -27,12 +26,16 @@ const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 
 type FakeBitBoxClient = BitBoxClient & {
+  xpubRequests: {
+    apiNetwork: string;
+    keypath: string;
+    display: boolean;
+  }[];
   registered:
     | {
         apiNetwork: string;
         scriptConfig: BitBoxScriptConfig;
         keypathAccount: string | undefined;
-        xpubType: BitBoxRegisterXPubType;
         name: string | undefined;
       }
     | undefined;
@@ -54,27 +57,55 @@ type FakeBitBoxClient = BitBoxClient & {
     | undefined;
 };
 
-function makeMaster(seed: number): BIP32InterfaceLike {
-  return BIP32.fromSeed(new Uint8Array(32).fill(seed), NETWORK);
+type FakeBitBoxApiClient = Parameters<
+  typeof connectors.fromBitBoxApiClient
+>[0]['client'] & {
+  xpubRequests: {
+    apiNetwork: string;
+    keypath: string;
+    xpubType: string;
+    display: boolean;
+  }[];
+  registered:
+    | {
+        apiNetwork: string;
+        scriptConfig: BitBoxScriptConfig;
+        keypathAccount: string | undefined;
+        xpubType: string;
+        name: string | undefined;
+      }
+    | undefined;
+};
+
+function makeMaster(seed: number, network = NETWORK): BIP32InterfaceLike {
+  return BIP32.fromSeed(new Uint8Array(32).fill(seed), network);
 }
 
-function managerFor(master: BIP32InterfaceLike, client: BitBoxClient) {
+function managerFor(
+  master: BIP32InterfaceLike,
+  client: BitBoxClient,
+  network = NETWORK
+) {
   return connectors.fromClient({
     client,
     state: { masterFingerprint: master.fingerprint },
     Output,
-    network: NETWORK
+    network
   }) satisfies Manager;
 }
 
 function fakeClientFor(master: BIP32InterfaceLike) {
   const client = {
+    xpubRequests: [] as {
+      apiNetwork: string;
+      keypath: string;
+      display: boolean;
+    }[],
     registered: undefined as
       | {
           apiNetwork: string;
           scriptConfig: BitBoxScriptConfig;
           keypathAccount: string | undefined;
-          xpubType: BitBoxRegisterXPubType;
           name: string | undefined;
         }
       | undefined,
@@ -97,13 +128,13 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     version: () => '9.99.0-test',
     rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
     btcXpub: async (
-      _apiNetwork: string,
+      apiNetwork: string,
       keypath: string | number[],
-      _xpubType: string,
-      _display: boolean
+      display: boolean
     ) => {
       if (typeof keypath !== 'string')
         throw new Error('unexpected number path');
+      client.xpubRequests.push({ apiNetwork, keypath, display });
       return master
         .derivePath(keypath.startsWith('m/') ? keypath.slice(2) : keypath)
         .neutered()
@@ -114,7 +145,6 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       apiNetwork: string,
       scriptConfig: BitBoxScriptConfig,
       keypathAccount: string | number[] | undefined,
-      xpubType: BitBoxRegisterXPubType,
       name?: string
     ) => {
       if (keypathAccount !== undefined && typeof keypathAccount !== 'string')
@@ -123,7 +153,6 @@ function fakeClientFor(master: BIP32InterfaceLike) {
         apiNetwork,
         scriptConfig,
         keypathAccount,
-        xpubType,
         name
       };
     },
@@ -152,6 +181,56 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       return `${psbt}:signed`;
     }
   } satisfies FakeBitBoxClient;
+
+  return client;
+}
+
+function fakeBitBoxApiClientFor(master: BIP32InterfaceLike) {
+  const client = {
+    xpubRequests: [] as FakeBitBoxApiClient['xpubRequests'],
+    registered: undefined as FakeBitBoxApiClient['registered'],
+    version: () => '9.99.0-test',
+    rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
+    btcXpub: async (
+      apiNetwork: string,
+      keypath: string | number[],
+      xpubType: string,
+      display: boolean
+    ) => {
+      if (typeof keypath !== 'string')
+        throw new Error('unexpected number path');
+      client.xpubRequests.push({ apiNetwork, keypath, xpubType, display });
+      return master
+        .derivePath(keypath.startsWith('m/') ? keypath.slice(2) : keypath)
+        .neutered()
+        .toBase58();
+    },
+    btcIsScriptConfigRegistered: async () => false,
+    btcRegisterScriptConfig: async (
+      apiNetwork: string,
+      scriptConfig: BitBoxScriptConfig,
+      keypathAccount: string | number[] | undefined,
+      xpubType: string,
+      name?: string
+    ) => {
+      if (keypathAccount !== undefined && typeof keypathAccount !== 'string')
+        throw new Error('unexpected number path');
+      client.registered = {
+        apiNetwork,
+        scriptConfig,
+        keypathAccount,
+        xpubType,
+        name
+      };
+    },
+    btcAddress: async () => 'bcrt1api',
+    btcSignPSBT: async (apiNetwork, psbt, forceScriptConfig, formatUnit) => {
+      void apiNetwork;
+      void forceScriptConfig;
+      void formatUnit;
+      return `${psbt}:signed`;
+    }
+  } satisfies FakeBitBoxApiClient;
 
   return client;
 }
@@ -203,6 +282,78 @@ describe('BitBox helpers', () => {
       })
     ).resolves.toBe('bcrt1multisig');
     expect(client.displayed?.keypath).toBe("m/48'/1'/0'/2'/0/7");
+  });
+
+  test('uses the simplified descriptors-native BitBox client contract', async () => {
+    const testnetMaster = makeMaster(10, NETWORK);
+    const testnetClient = fakeClientFor(testnetMaster);
+    const testnetManager = managerFor(testnetMaster, testnetClient, NETWORK);
+
+    await keyExpression({
+      manager: testnetManager,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/*'
+    });
+
+    expect(testnetClient.xpubRequests[0]).toMatchObject({
+      apiNetwork: 'tbtc',
+      keypath: "m/84'/1'/0'",
+      display: false
+    });
+  });
+
+  test('adapts bitbox-api xpub and registration modes internally', async () => {
+    const testnetMaster = makeMaster(12, NETWORK);
+    const testnetClient = fakeBitBoxApiClientFor(testnetMaster);
+    const testnetManager = connectors.fromBitBoxApiClient({
+      client: testnetClient,
+      state: { masterFingerprint: testnetMaster.fingerprint },
+      Output,
+      network: NETWORK
+    });
+
+    const testnetKey = await keyExpression({
+      manager: testnetManager,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+
+    expect(testnetClient.xpubRequests[0]).toMatchObject({
+      apiNetwork: 'tbtc',
+      keypath: "m/48'/1'/0'/2'",
+      xpubType: 'tpub',
+      display: false
+    });
+
+    await registerWallet({
+      descriptor: `wsh(and_v(v:pk(${testnetKey}),older(5)))`,
+      manager: testnetManager,
+      policyName: 'Test bitbox-api'
+    });
+
+    expect(testnetClient.registered?.xpubType).toBe('autoXpubTpub');
+
+    const mainnetMaster = makeMaster(11, networks.bitcoin);
+    const mainnetClient = fakeBitBoxApiClientFor(mainnetMaster);
+    const mainnetManager = connectors.fromBitBoxApiClient({
+      client: mainnetClient,
+      state: { masterFingerprint: mainnetMaster.fingerprint },
+      Output,
+      network: networks.bitcoin
+    });
+
+    await keyExpression({
+      manager: mainnetManager,
+      originPath: "/84'/0'/0'",
+      keyPath: '/0/*'
+    });
+
+    expect(mainnetClient.xpubRequests[0]).toMatchObject({
+      apiNetwork: 'btc',
+      keypath: "m/84'/0'/0'",
+      xpubType: 'xpub',
+      display: false
+    });
   });
 
   test('displays standard single-sig addresses', async () => {

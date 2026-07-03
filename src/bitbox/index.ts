@@ -43,7 +43,6 @@ export type {
   BitBoxMultisigScriptType,
   BitBoxPolicy,
   BitBoxPolicyScriptConfig,
-  BitBoxRegisterXPubType,
   BitBoxScriptConfig,
   BitBoxScriptConfigWithKeypath,
   BitBoxSimpleType,

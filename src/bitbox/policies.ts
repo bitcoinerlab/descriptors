@@ -20,7 +20,6 @@ import type {
 } from './types';
 import {
   bitboxApiNetwork,
-  bitboxRegisterXpubType,
   bitboxSimpleType,
   getBitBoxMasterFingerprint,
   getBitBoxXpub
@@ -402,7 +401,6 @@ export async function registerBitBoxWallet({
         bitboxApiNetwork(bitboxManager),
         scriptConfig,
         account?.keypathAccount,
-        bitboxRegisterXpubType(bitboxManager),
         policyName
       );
     } catch (error) {

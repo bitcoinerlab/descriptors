@@ -157,7 +157,20 @@ Available BitBox mechanisms are:
 - `bridge`
 - `webhid`
 
-If your app already has a paired BitBox client, use `fromClient(...)`:
+If your app already has a paired raw `bitbox-api` client, use the explicit
+adapter:
+
+```ts
+const manager = connectors.fromBitBoxApiClient({
+  client: pairedBitBox,
+  Output,
+  network: networks.bitcoin,
+  state: bitboxState
+});
+```
+
+If your platform provides a descriptors-compatible BitBox client, use
+`fromClient(...)`:
 
 ```ts
 const manager = connectors.fromClient({
@@ -173,6 +186,11 @@ React Native app can provide its own native BitBox client and inject it here.
 
 Pass a Bitcoin `network`, not a BitBox coin string. The adapter maps mainnet to
 `btc` and test networks, signet and regtest to `tbtc` for the BitBox API.
+
+The adapter also hides legacy xpub encodings from application code. Descriptors
+already carry the script type, so BitBox xpub requests use only `xpub` on
+mainnet and `tpub` on non-mainnet networks. Formats such as `ypub`, `zpub`,
+`upub` or `vpub` are not part of this library's BitBox descriptor flow.
 
 ## Build Standard Descriptors
 
@@ -291,6 +309,20 @@ policies.
 This restriction is about hash preimages. It is separate from Miniscript
 `pkh(KEY)` fragments inside `wsh(...)`. A top-level `pkh(KEY)` account and a
 Miniscript `pkh(KEY)` fragment are not the same thing.
+
+BitBox signing also accepts a display unit preference:
+
+```ts
+const manager = await bitbox.connectors.connect({
+  Output,
+  network: networks.bitcoin,
+  formatUnit: 'sat'
+});
+```
+
+`formatUnit` only affects how amounts are shown on the BitBox screen. It does
+not change the descriptor, PSBT, policy or signatures. If omitted, the adapter
+passes `default`.
 
 ## Ledger Details
 

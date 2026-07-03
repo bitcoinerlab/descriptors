@@ -7,10 +7,10 @@ import type {
   BitBoxFormatUnit,
   BitBoxManager,
   BitBoxApiNetwork,
-  BitBoxRegisterXPubType,
-  BitBoxSimpleType,
-  BitBoxXPubType
+  BitBoxSimpleType
 } from './types';
+
+export type BitBoxApiXPubType = 'tpub' | 'xpub';
 
 export function bitboxApiNetwork(
   bitboxManager: BitBoxManager
@@ -19,16 +19,11 @@ export function bitboxApiNetwork(
   return coinType === 0 ? 'btc' : 'tbtc';
 }
 
-export function bitboxXpubType(bitboxManager: BitBoxManager): BitBoxXPubType {
-  if (bitboxManager.xpubType !== undefined) return bitboxManager.xpubType;
+export function bitboxXpubType(
+  bitboxManager: Pick<BitBoxManager, 'network'>
+): BitBoxApiXPubType {
   const coinType = coinTypeFromNetwork(bitboxManager.network);
   return coinType === 0 ? 'xpub' : 'tpub';
-}
-
-export function bitboxRegisterXpubType(
-  bitboxManager: BitBoxManager
-): BitBoxRegisterXPubType {
-  return bitboxManager.registerXpubType ?? 'autoXpubTpub';
 }
 
 export function bitboxFormatUnit(
@@ -97,13 +92,12 @@ export async function getBitBoxXpub({
 }): Promise<string> {
   const { bitboxClient, bitboxState } = bitboxManager;
   if (!bitboxState.xpubs) bitboxState.xpubs = {};
-  const cacheKey = `${originPath}:${String(bitboxXpubType(bitboxManager))}`;
+  const cacheKey = `${originPath}:${bitboxXpubType(bitboxManager)}`;
   let xpub = bitboxState.xpubs[cacheKey];
   if (!xpub) {
     xpub = await bitboxClient.btcXpub(
       bitboxApiNetwork(bitboxManager),
       `m${originPath}`,
-      bitboxXpubType(bitboxManager),
       display
     );
     bitboxState.xpubs[cacheKey] = xpub;
