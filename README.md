@@ -1,6 +1,6 @@
 # Bitcoin Descriptors Library
 
-This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-key, BIP32 and Hardware Wallets.
+This library is designed to parse and create Bitcoin Descriptors, including Miniscript and Taproot script trees and generate Partially Signed Bitcoin Transactions (PSBTs). It also provides PSBT signers and finalizers for single-key, BIP32 and hardware-wallet flows.
 
 This library uses an underlying Bitcoin library for creating, signing & decoding transactions. Users can pick:
 
@@ -101,7 +101,7 @@ console.log('Push this: ' + psbt.hex);
 - Parses and creates [Bitcoin Descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) (including those based on the [Miniscript language](https://bitcoinerlab.com/modules/miniscript)).
 - Supports Taproot descriptors with trees: `tr(KEY,TREE)` (tapscript).
 - Generates Partially Signed Bitcoin Transactions (PSBTs).
-- Provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets (currently supports Ledger devices; more devices are planned).
+- Provides PSBT finalizers and signers for single-signature, BIP32 and hardware-wallet flows.
 
 ### Version Compatibility
 
@@ -179,9 +179,8 @@ below.
 The root `@bitcoinerlab/descriptors` package still keeps a few 3.x compatibility shims, but they are deprecated and planned for removal in the next major release:
 
 - `DescriptorsFactory()` and `DescriptorsFactory(ecc)` on the root package
-- Root Ledger exports such as `ledger`, `keyExpressionLedger`, `signers.signLedger`, `signers.signInputLedger`, and `scriptExpressions.*Ledger`
 
-For new code, prefer the preset top-level exports directly and use `@bitcoinerlab/descriptors/ledger` for Ledger helpers. `DescriptorsFactory(...)` on `@bitcoinerlab/descriptors` is kept only for 3.x backwards compatibility and is planned to stop being a public preset-package API in the next major release, including the custom `ecc` initialization path.
+For new code, prefer the preset top-level exports directly. `DescriptorsFactory(...)` on `@bitcoinerlab/descriptors` is kept only for 3.x backwards compatibility and is planned to stop being a public preset-package API in the next major release, including the custom `ecc` initialization path.
 
 </details>
 
@@ -192,7 +191,7 @@ The library can be split into four main parts:
 - The `Output` class is the central component for managing descriptors. It facilitates the creation of outputs to receive funds and enables the signing and finalization of PSBTs (Partially Signed Bitcoin Transactions) for spending UTXOs (Unspent Transaction Outputs).
 - PSBT signers and finalizers, which are used to manage the signing and finalization of PSBTs.
 - `keyExpressions` and `scriptExpressions`, which provide functions to create key and standard descriptor expressions (strings) from structured data.
-- Hardware wallet integration, which provides support for interacting with hardware wallets such as Ledger devices.
+- Hardware wallet integration, covered in its own section below.
 
 ### Output class
 
@@ -408,22 +407,18 @@ For a focused walkthrough of constructor choices (including `signersPubKeys`) an
 
 ### Signers and Finalizers
 
-This library encompasses a PSBT finalizer as well as signer helpers for single-key, BIP32 and Ledger flows.
+This library encompasses a PSBT finalizer as well as signer helpers for single-key and BIP32 flows. Device-backed signing uses the same PSBT model, but the device setup is separate.
 
 To incorporate these functionalities, use the following import statement:
 
 ```javascript
-import { signers } from '@bitcoinerlab/descriptors' // or '@bitcoinerlab/descriptors-scure' for scure
-import { signers as ledgerSigners } from '@bitcoinerlab/descriptors/ledger' // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
+import { signers } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
 ```
 
 For signing operations, utilize the methods provided by the [`signers`](https://bitcoinerlab.com/modules/descriptors/api/modules/signers.html):
 
 ```javascript
 // `psbt` here is a bitcoinjs-lib `Psbt` (for example: `const psbt = new Psbt()`)
-
-// For Ledger
-await ledgerSigners.signLedger({ psbt, ledgerManager });
 
 // For BIP32 - https://github.com/bitcoinjs/bip32
 signers.signBIP32({ psbt, masterNode }); // Here, `masterNode` is a bitcoinjs `BIP32Interface` (see examples above)
@@ -445,14 +440,11 @@ signers.signBIP32({ psbt, masterNode }); // Here, `masterNode` is an `HDKey` (se
 // For raw private keys
 signers.signPrivKey({ psbt, privKey }); // Here, `privKey` is a 32-byte `Uint8Array`
 signers.signInputPrivKey({ psbt, index: 0, privKey }); // Same `privKey` type as above
-
-// For Ledger
-await ledgerSigners.signLedger({ psbt, ledgerManager });
 ```
 
 </details>
 
-Detailed information on Ledger integration will be provided in subsequent sections.
+Hardware-wallet signers follow the same pattern after the device manager has been created.
 
 <a name="signers-and-finalizers-finalize-psbt-input"></a>
 
@@ -488,10 +480,9 @@ This library also provides a series of function helpers designed to streamline t
 
 ```javascript
 import { scriptExpressions } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
-import { scriptExpressions as ledgerScriptExpressions } from '@bitcoinerlab/descriptors/ledger'; // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
 ```
 
-Within the root `scriptExpressions` module, there are functions designed to generate descriptors for commonly used BIP32-based scripts, such as `pkhBIP32()`, `shWpkhBIP32()` and `wpkhBIP32()`. Ledger-specific helpers such as `pkhLedger()`, `shWpkhLedger()` and `wpkhLedger()` are exposed from the dedicated `ledgerScriptExpressions` import shown above. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html) for a detailed list and further information.
+Within the root `scriptExpressions` module, there are functions designed to generate descriptors for commonly used BIP32-based scripts, such as `pkhBIP32()`, `shWpkhBIP32()` and `wpkhBIP32()`. Refer to [the API](https://bitcoinerlab.com/modules/descriptors/api/modules/scriptExpressions.html) for a detailed list and further information.
 
 When using BIP32-based descriptors, the following parameters are required for the `scriptExpressions` functions:
 
@@ -524,15 +515,12 @@ pkhBIP32(params: {
 
 </details>
 
-For functions suffixed with _Ledger_ (designed to generate descriptors for Ledger Hardware devices), use the dedicated Ledger entrypoint and replace `masterNode` with `ledgerManager`. Detailed information on Ledger integration is provided in the following section.
-
 The `keyExpressions` category includes functions that generate string representations of key expressions for public keys.
 
-This library includes the following `keyExpressions`: [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) and [`keyExpressionLedger`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionLedger.html). They can be imported as follows:
+This library includes [`keyExpressionBIP32`](https://bitcoinerlab.com/modules/descriptors/api/functions/keyExpressionBIP32.html) for BIP32 key expressions. It can be imported as follows:
 
 ```javascript
 import { keyExpressionBIP32 } from '@bitcoinerlab/descriptors'; // or '@bitcoinerlab/descriptors-scure' for scure
-import { keyExpressionLedger } from '@bitcoinerlab/descriptors/ledger'; // or '@bitcoinerlab/descriptors-scure/ledger' for scure + Ledger
 ```
 
 The parameters required for these functions are:
@@ -543,7 +531,7 @@ function keyExpressionBIP32({
   originPath: string;
   change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
   index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath can also use multipath (e.g. /<0;1>/number)
+  keyPath?: string | undefined;
   isPublic?: boolean;
 });
 ```
@@ -564,9 +552,7 @@ function keyExpressionBIP32({
 
 </details>
 
-For the `keyExpressionLedger` function, use the dedicated Ledger entrypoint and pass `ledgerManager` instead of `masterNode`.
-
-Both functions will generate strings that fully define BIP32 keys. For example:
+This function generates strings that fully define BIP32 keys. For example:
 
 ```text
 [d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*
@@ -576,62 +562,11 @@ Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin
 
 ### Hardware Wallet Integration
 
-This library currently provides integration with Ledger wallets. Support for more devices is planned.
-
-Before we dive in, note that, in addition to the documentation below, it is highly recommended to visit the [Ledger Playground](https://bitcoinerlab.com/guides/ledger-programming) with an interactive code sandbox of this lib interacting with a Ledger device.
-
-To use this library with Ledger devices, you must first install Ledger support:
-
-```bash
-npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-node-hid
-```
-
-For Ledger device signing, import the necessary functions as follows:
-
-```javascript
-import Transport from '@ledgerhq/hw-transport-node-hid'; //or hw-transport-web-hid, for web
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
-import { Output, networks } from '@bitcoinerlab/descriptors';
-import {
-  assertLedgerApp,
-  registerLedgerWallet,
-  type LedgerManager
-} from '@bitcoinerlab/descriptors/ledger';
-```
-
-Then, use the following code to assert that the Ledger app is running Bitcoin Test version 2.1.0 or higher and to create a new Ledger client:
-
-```javascript
-const transport = await Transport.create();
-//Throws if not running Bitcoin Test >= 2.1.0
-await assertLedgerApp({ transport, name: 'Bitcoin Test', minVersion: '2.1.0' });
-
-const ledgerClient = new AppClient(transport);
-const ledgerManager: LedgerManager = {
-  ledgerClient,
-  ledgerState: {},
-  Output,
-  network: networks.testnet
-};
-```
-
-Here, `transport` is an instance of a Transport object that allows communication with Ledger devices. You can use any of the transports [provided by Ledger](https://github.com/LedgerHQ/ledger-live#libs---libraries).
-
-To register the policies of non-standard descriptors on the Ledger device, use the following code:
-
-```javascript
-await registerLedgerWallet({
-  ledgerManager,
-  descriptor: wshDescriptor,
-  policyName: 'BitcoinerLab'
-});
-```
-
-This code will auto-skip the policy registration process if it already exists. Please refer to [Ledger documentation](https://github.com/LedgerHQ/app-bitcoin-new/blob/develop/doc/wallet.md) to learn more about their Wallet Policies registration procedures.
-
-Finally, `ledgerManager.ledgerState` is an object used to store information related to Ledger devices. Although Ledger devices themselves are stateless, this object can be used to store information such as xpubs, master fingerprints and wallet policies. You can pass an initially empty object that will be updated with more information as it is used. The object can be serialized and stored for future use.
-
-The API reference for the dedicated Ledger entrypoints provides the full list of functions related to Ledger Hardware Wallet workflows, along with detailed explanations of their parameters and behavior.
+Hardware-wallet integrations use device-specific entrypoints such as
+`@bitcoinerlab/descriptors/ledger` and `@bitcoinerlab/descriptors/bitbox`. The
+separate [Hardware Wallets](./HARDWARE_WALLETS.md) guide covers connection,
+descriptor creation, policy registration, signing, device-specific limitations
+and manual real-device tests.
 
 <a name="documentation"></a>
 
@@ -702,11 +637,9 @@ npm run test
 
 Integration tests require Docker. Make sure the `docker` command is installed and available in your PATH. When integration tests run, they automatically start or reuse a local container with the regtest services needed by this repository.
 
-And, in case you have a Ledger device:
-
-```bash
-npm run test:integration:ledger
-```
+Hardware-wallet tests require real devices and are not part of the normal test
+pipeline. After building, run `npm run test:ledger` or `npm run test:bitbox` for
+manual device checks.
 
 ### License
 

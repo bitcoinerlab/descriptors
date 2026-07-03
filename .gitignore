@@ -10,4 +10,5 @@ test/**/*.d.ts
 !test/tools/generateBitcoinCoreFixtures.js
 packages/*/dist/
 packages/*/README.md
+packages/*/HARDWARE_WALLETS.md
 .aider*
