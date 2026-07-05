@@ -93,6 +93,9 @@ function addLedgerSignaturesToInput({
   }
 }
 
+/**
+ * @deprecated Use `signInput(...)` instead.
+ */
 export async function signInputLedger({
   psbt,
   index,
@@ -160,6 +163,9 @@ export async function signInput({
   return signInputLedger({ psbt, index, ledgerManager: manager });
 }
 
+/**
+ * @deprecated Use `sign(...)` instead.
+ */
 export async function signLedger({
   psbt,
   ledgerManager

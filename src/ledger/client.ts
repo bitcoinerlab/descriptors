@@ -84,6 +84,8 @@ export async function assertLedgerApp({
 
 /**
  * Retrieves the master fingerprint of a Ledger device.
+ *
+ * @deprecated Use `getMasterFingerprint(...)` from the Ledger entrypoint instead.
  */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
@@ -106,6 +108,8 @@ export async function getLedgerMasterFingerPrint({
 
 /**
  * Retrieves the xpub for a given origin path from a Ledger device.
+ *
+ * @deprecated Use `getXpub(...)` from the Ledger entrypoint instead.
  */
 export async function getLedgerXpub({
   originPath,

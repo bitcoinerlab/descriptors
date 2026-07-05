@@ -8,6 +8,9 @@ import {
   getLedgerXpub
 } from './index';
 
+/**
+ * @deprecated Use `keyExpression(...)` from the Ledger entrypoint instead.
+ */
 export async function keyExpressionLedger({
   ledgerManager,
   originPath,

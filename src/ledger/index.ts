@@ -107,6 +107,8 @@ export {
  *   all addresses (both external and internal).
  * - This means that the registered Ledger Policy is a generalized version of the descriptor,
  *   not assuming specific values for the keyPath.
+ *
+ * @deprecated Use `registerWallet(...)` instead.
  */
 export async function registerLedgerWallet({
   descriptor,

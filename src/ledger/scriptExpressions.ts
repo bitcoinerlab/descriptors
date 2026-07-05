@@ -39,18 +39,22 @@ function standardExpressionsLedgerMaker(
   return standardScriptExpressionLedger;
 }
 
+/** @deprecated Use `pkh(...)` instead. */
 export const pkhLedger = standardExpressionsLedgerMaker(
   44,
   'pkh(KEYEXPRESSION)'
 );
+/** @deprecated Use `shWpkh(...)` instead. */
 export const shWpkhLedger = standardExpressionsLedgerMaker(
   49,
   'sh(wpkh(KEYEXPRESSION))'
 );
+/** @deprecated Use `wpkh(...)` instead. */
 export const wpkhLedger = standardExpressionsLedgerMaker(
   84,
   'wpkh(KEYEXPRESSION)'
 );
+/** @deprecated Use `tr(...)` instead. */
 export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');
 
 function ledgerParamsFromManager<Params extends { manager: LedgerManager }>(

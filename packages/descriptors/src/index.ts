@@ -1,10 +1,10 @@
 /*
  * NOTE: This wrapper is complex for a reason:
  *
- * There's extra code exists to preserve 3.x compatibility for:
+ * Extra code exists to preserve 3.x compatibility for:
  * - DescriptorsFactory() / DescriptorsFactory(ecc)
  * - legacy ledgerManager.ecc normalization
- * - deprecated root Ledger exports
+ * - deprecated root Ledger helper exports
  * - lazy loading of ./ledger so non-Ledger users do not need
  *   @ledgerhq/ledger-bitcoin installed
  *
@@ -87,11 +87,6 @@ type Bound = ReturnType<typeof core.DescriptorsFactory>;
 type LedgerModule = typeof import('./ledger');
 type CompatLedgerParams<Fn> = Fn extends (params: infer Params) => unknown
   ? Omit<Params, 'ledgerManager'> & { ledgerManager: LedgerManager }
-  : never;
-type CompatLedgerManagerParams<Fn> = Fn extends (
-  params: infer Params
-) => unknown
-  ? Omit<Params, 'manager'> & { manager: LedgerManager }
   : never;
 
 /** @deprecated Use `LedgerState` from `@bitcoinerlab/descriptors/ledger`. */
@@ -199,16 +194,6 @@ function normalizeLedgerParams<Params extends { ledgerManager: LedgerManager }>(
   };
 }
 
-function normalizeLedgerManagerParams<
-  Params extends { manager: LedgerManager }
->(params: Params): Omit<Params, 'manager'> & { manager: StrictLedgerManager } {
-  const { manager, ...rest } = params;
-  const { ledgerManager } = normalizeLedgerParams({ ledgerManager: manager });
-  return { ...rest, manager: ledgerManager } as Omit<Params, 'manager'> & {
-    manager: StrictLedgerManager;
-  };
-}
-
 const bound: Bound = DescriptorsFactory(ecc);
 
 const signInputLedger = (
@@ -219,33 +204,9 @@ const signLedger = (
   params: CompatLedgerParams<LedgerModule['signers']['signLedger']>
 ) => getLedgerModule().signers.signLedger(normalizeLedgerParams(params));
 
-const signInput = (
-  params: CompatLedgerManagerParams<LedgerModule['signers']['signInput']>
-) => getLedgerModule().signers.signInput(normalizeLedgerManagerParams(params));
-
-const sign = (
-  params: CompatLedgerManagerParams<LedgerModule['signers']['sign']>
-) => getLedgerModule().signers.sign(normalizeLedgerManagerParams(params));
-
 const deprecatedKeyExpressionLedger = (
   params: CompatLedgerParams<LedgerModule['keyExpressionLedger']>
 ) => getLedgerModule().keyExpressionLedger(normalizeLedgerParams(params));
-
-const keyExpression = (
-  params: CompatLedgerManagerParams<LedgerModule['keyExpression']>
-) => getLedgerModule().keyExpression(normalizeLedgerManagerParams(params));
-
-const registerWallet = (
-  params: CompatLedgerManagerParams<LedgerModule['registerWallet']>
-) => getLedgerModule().registerWallet(normalizeLedgerManagerParams(params));
-
-const getMasterFingerprint = (
-  params: CompatLedgerManagerParams<LedgerModule['getMasterFingerprint']>
-) =>
-  getLedgerModule().getMasterFingerprint(normalizeLedgerManagerParams(params));
-
-const getXpub = (params: CompatLedgerManagerParams<LedgerModule['getXpub']>) =>
-  getLedgerModule().getXpub(normalizeLedgerManagerParams(params));
 
 const pkhLedger = (
   params: CompatLedgerParams<LedgerModule['scriptExpressions']['pkhLedger']>
@@ -269,30 +230,6 @@ const trLedger = (
 ) =>
   getLedgerModule().scriptExpressions.trLedger(normalizeLedgerParams(params));
 
-const pkh = (
-  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['pkh']>
-) =>
-  getLedgerModule().scriptExpressions.pkh(normalizeLedgerManagerParams(params));
-
-const shWpkh = (
-  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['shWpkh']>
-) =>
-  getLedgerModule().scriptExpressions.shWpkh(
-    normalizeLedgerManagerParams(params)
-  );
-
-const wpkh = (
-  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['wpkh']>
-) =>
-  getLedgerModule().scriptExpressions.wpkh(
-    normalizeLedgerManagerParams(params)
-  );
-
-const tr = (
-  params: CompatLedgerManagerParams<LedgerModule['scriptExpressions']['tr']>
-) =>
-  getLedgerModule().scriptExpressions.tr(normalizeLedgerManagerParams(params));
-
 /**
  * Signer helpers.
  *
@@ -301,7 +238,9 @@ const tr = (
  */
 export const signers = {
   ...core.signers,
+  /** @deprecated Use `signers.signInput(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   signInputLedger,
+  /** @deprecated Use `signers.sign(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   signLedger
 };
 
@@ -318,44 +257,41 @@ export const keyExpressionLedger = deprecatedKeyExpressionLedger;
  */
 export const scriptExpressions = {
   ...core.scriptExpressions,
+  /** @deprecated Use `scriptExpressions.pkh(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   pkhLedger,
+  /** @deprecated Use `scriptExpressions.shWpkh(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   shWpkhLedger,
+  /** @deprecated Use `scriptExpressions.wpkh(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   wpkhLedger,
+  /** @deprecated Use `scriptExpressions.tr(...)` from `@bitcoinerlab/descriptors/ledger` instead. */
   trLedger
 };
 
 /**
  * @deprecated Use `@bitcoinerlab/descriptors/ledger`.
  */
-export const ledger: LedgerModule = {
-  assertLedgerApp: params => getLedgerModule().assertLedgerApp(params),
-  getLedgerMasterFingerPrint: params =>
+export const ledger = {
+  assertLedgerApp: (params: Parameters<LedgerModule['assertLedgerApp']>[0]) =>
+    getLedgerModule().assertLedgerApp(params),
+  getLedgerMasterFingerPrint: (
+    params: CompatLedgerParams<LedgerModule['getLedgerMasterFingerPrint']>
+  ) =>
     getLedgerModule().getLedgerMasterFingerPrint(normalizeLedgerParams(params)),
-  getLedgerXpub: params =>
+  getLedgerXpub: (params: CompatLedgerParams<LedgerModule['getLedgerXpub']>) =>
     getLedgerModule().getLedgerXpub(normalizeLedgerParams(params)),
-  registerLedgerWallet: params =>
-    getLedgerModule().registerLedgerWallet(normalizeLedgerParams(params)),
-  registerWallet,
-  getMasterFingerprint,
-  getXpub,
+  registerLedgerWallet: (
+    params: CompatLedgerParams<LedgerModule['registerLedgerWallet']>
+  ) => getLedgerModule().registerLedgerWallet(normalizeLedgerParams(params)),
   signers: {
     signInputLedger,
-    signLedger,
-    signInput,
-    sign
+    signLedger
   },
   keyExpressionLedger: deprecatedKeyExpressionLedger,
-  keyExpression,
-  connectors: getLedgerModule().connectors,
   scriptExpressions: {
     pkhLedger,
     shWpkhLedger,
     wpkhLedger,
-    trLedger,
-    pkh,
-    shWpkh,
-    wpkh,
-    tr
+    trLedger
   }
 };
 
