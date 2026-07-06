@@ -1,13 +1,26 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import * as ledgerBitcoinModule from '@ledgerhq/ledger-bitcoin';
 import { fromHex } from 'uint8array-tools';
 import type { LedgerManager, LedgerSession } from './types';
+
+type LedgerBitcoinModule = typeof import('@ledgerhq/ledger-bitcoin');
 
 export async function importAndValidateLedgerBitcoin(
   ledgerClient?: unknown
 ): Promise<unknown> {
+  let ledgerBitcoinModule: LedgerBitcoinModule;
+  try {
+    // Keep the optional Ledger peer out of module initialization for non-Ledger users.
+    ledgerBitcoinModule =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@ledgerhq/ledger-bitcoin') as LedgerBitcoinModule;
+  } catch (error) {
+    void error;
+    throw new Error(
+      'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using Ledger helpers. Please run "npm install @ledgerhq/ledger-bitcoin" or import only non-Ledger APIs.'
+    );
+  }
   const { AppClient } = ledgerBitcoinModule;
   if (ledgerClient !== undefined && !(ledgerClient instanceof AppClient)) {
     throw new Error('Error: invalid AppClient instance');
