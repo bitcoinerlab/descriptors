@@ -20,6 +20,7 @@ import {
   scriptConfigFromPolicy
 } from './policies';
 import { apiNetwork, simpleType } from './client';
+import { fromUtf8 } from 'uint8array-tools';
 import type { BitBoxPolicy, BitBoxSession, BitBoxState } from './types';
 
 export type {
@@ -59,7 +60,11 @@ export type AddressDisplayParams = {
   index: number;
 };
 
-function outputForDisplay({
+type MessageSigningParams = AddressDisplayParams & {
+  message: string | Uint8Array;
+};
+
+function outputFromDescriptor({
   descriptor,
   session,
   change,
@@ -72,6 +77,19 @@ function outputForDisplay({
     ...(change !== undefined ? { change } : {}),
     network
   });
+}
+
+function messageBytes(message: string | Uint8Array): Uint8Array {
+  return typeof message === 'string' ? fromUtf8(message) : message;
+}
+
+function assertLegacyMessageSignature(
+  signature: Uint8Array,
+  device: string
+): Uint8Array {
+  if (signature.length !== 65)
+    throw new Error(`${device} client returned an invalid message signature`);
+  return signature;
 }
 
 function keyRootOriginPath(keyRoot: string): string | undefined {
@@ -154,7 +172,7 @@ export async function displayAddress({
   change = 0,
   index
 }: AddressDisplayParams): Promise<string | void> {
-  const output = outputForDisplay({ descriptor, session, change, index });
+  const output = outputFromDescriptor({ descriptor, session, change, index });
   const standardPolicy = await policyFromStandard({
     output,
     session
@@ -173,4 +191,48 @@ export async function displayAddress({
   return policy.account
     ? displayMultisigAddress({ policy, session, change, index })
     : displayPolicyAddress({ policy, session, change, index });
+}
+
+export async function signMessage({
+  descriptor,
+  session,
+  message,
+  change = 0,
+  index
+}: MessageSigningParams): Promise<Uint8Array> {
+  const { client } = session;
+  if (typeof client.btcSignMessage !== 'function')
+    throw new Error(`BitBox client does not support message signing`);
+
+  const output = outputFromDescriptor({ descriptor, session, change, index });
+  const policy = await policyFromStandard({ output, session });
+  if (!policy)
+    throw new Error(
+      `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`
+    );
+  if (policy.descriptorTemplate === 'pkh(@0/**)') {
+    throw new Error(
+      `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
+    );
+  }
+  if (policy.descriptorTemplate === 'tr(@0/**)')
+    throw new Error(`BitBox02 does not support Taproot message signing`);
+  if (
+    policy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
+    policy.descriptorTemplate !== 'wpkh(@0/**)'
+  ) {
+    throw new Error(
+      `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`
+    );
+  }
+
+  const result = await client.btcSignMessage(
+    apiNetwork(session),
+    {
+      scriptConfig: scriptConfigFromPolicy({ policy, session }),
+      keypath: addressKeypathFromPolicy({ policy, session, change, index })
+    },
+    messageBytes(message)
+  );
+  return assertLegacyMessageSignature(result.electrumSig65, 'BitBox');
 }

@@ -19,17 +19,30 @@ export type LedgerWalletPolicyLike = {
 };
 
 export type LedgerClient = {
+  getAppAndVersion(): Promise<{
+    name: string;
+    version: string;
+    flags: number | Uint8Array;
+  }>;
   getMasterFingerprint(): Promise<string>;
   getExtendedPubkey(path: string, display?: boolean): Promise<string>;
   registerWallet(
     walletPolicy: LedgerWalletPolicyLike
   ): Promise<readonly [Uint8Array, Uint8Array]>;
+  getWalletAddress(
+    walletPolicy: LedgerWalletPolicyLike,
+    walletHMAC: Uint8Array | null,
+    change: number,
+    addressIndex: number,
+    display: boolean
+  ): Promise<string>;
   signPsbt(
     psbt: string,
     walletPolicy: LedgerWalletPolicyLike,
     walletHMAC: Uint8Array | null,
     progressCallback?: () => void
   ): Promise<[number, LedgerPartialSignature][]>;
+  signMessage?(message: Uint8Array, path: string): Promise<string>;
 };
 
 export type LedgerPolicy = {

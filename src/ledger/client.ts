@@ -101,6 +101,21 @@ export async function getMasterFingerprint({
   return masterFingerprint;
 }
 
+export async function getVersion({
+  session
+}: {
+  session: LedgerSession;
+}): Promise<string> {
+  const { client } = session;
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    client
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  const { version } = await client.getAppAndVersion();
+  return version;
+}
+
 export async function getXpub({
   originPath,
   session

@@ -7,7 +7,7 @@ import { assertLedgerApp, importAndValidateLedgerBitcoin } from './client';
 import type { LedgerClient, LedgerSession, LedgerState } from './types';
 
 type LedgerTransport = {
-  send(cla: number, ins: number, p1: number, p2: number): Promise<Buffer>;
+  send(cla: number, ins: number, p1: number, p2: number): Promise<Uint8Array>;
 };
 
 type LedgerNodeHidTransportModule = {

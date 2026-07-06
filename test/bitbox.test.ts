@@ -3,6 +3,7 @@
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks, Transaction } from 'bitcoinjs-lib';
+import { fromUtf8 } from 'uint8array-tools';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
@@ -14,6 +15,7 @@ import {
   keyExpression,
   registerWallet,
   scriptExpressions,
+  signMessage,
   signers,
   type Session,
   type BitBoxScriptConfig
@@ -23,6 +25,7 @@ const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
 const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
+const MESSAGE_SIGNATURE = new Uint8Array(65).fill(2);
 
 type ProviderClient = Parameters<typeof connectors.fromClient>[0]['client'];
 
@@ -56,6 +59,14 @@ type FakeBitBoxClient = ProviderClient & {
         psbt: string;
         forceScriptConfig: unknown;
         formatUnit: string;
+      }
+    | undefined;
+  messageSigned:
+    | {
+        apiNetwork: string;
+        scriptConfig: BitBoxScriptConfig;
+        keypath: string;
+        message: Uint8Array;
       }
     | undefined;
 };
@@ -108,6 +119,14 @@ function fakeClientFor(master: BIP32InterfaceLike) {
           psbt: string;
           forceScriptConfig: unknown;
           formatUnit: string;
+        }
+      | undefined,
+    messageSigned: undefined as
+      | {
+          apiNetwork: string;
+          scriptConfig: BitBoxScriptConfig;
+          keypath: string;
+          message: Uint8Array;
         }
       | undefined,
     version: () => '9.99.0-test',
@@ -167,6 +186,23 @@ function fakeClientFor(master: BIP32InterfaceLike) {
     ) => {
       client.signed = { apiNetwork, psbt, forceScriptConfig, formatUnit };
       return `${psbt}:signed`;
+    },
+    btcSignMessage: async (
+      apiNetwork: string,
+      {
+        scriptConfig,
+        keypath
+      }: { scriptConfig: BitBoxScriptConfig; keypath: string | number[] },
+      message: Uint8Array
+    ) => {
+      if (typeof keypath !== 'string')
+        throw new Error('unexpected number path');
+      client.messageSigned = { apiNetwork, scriptConfig, keypath, message };
+      return {
+        sig: new Uint8Array([1]),
+        recid: 0n,
+        electrumSig65: new Uint8Array(MESSAGE_SIGNATURE)
+      };
     }
   } satisfies FakeBitBoxClient;
 
@@ -445,6 +481,71 @@ describe('BitBox helpers', () => {
       'cHNidP8BAA=:signed'
     );
     expect(psbt.combine).toHaveBeenCalledWith(signedPsbt);
+  });
+
+  test('signs messages through bitbox-api btcSignMessage', async () => {
+    const bitboxMaster = makeMaster(6);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const descriptor = await scriptExpressions.wpkh({
+      session: bitboxSession,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+
+    await expect(
+      signMessage({
+        session: bitboxSession,
+        message: 'hello',
+        descriptor,
+        change: 0,
+        index: 0
+      })
+    ).resolves.toEqual(MESSAGE_SIGNATURE);
+    expect(client.messageSigned).toEqual({
+      apiNetwork: 'tbtc',
+      scriptConfig: { simpleType: 'p2wpkh' },
+      keypath: "m/84'/1'/0'/0/0",
+      message: fromUtf8('hello')
+    });
+  });
+
+  test('rejects unsupported BitBox message-signing descriptors before calling the device', async () => {
+    const bitboxMaster = makeMaster(12);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const pkhKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/44'/1'/0'",
+      keyPath: '/0/*'
+    });
+    const trDescriptor = await scriptExpressions.tr({
+      session: bitboxSession,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+
+    await expect(
+      signMessage({
+        session: bitboxSession,
+        message: 'hello',
+        descriptor: `pkh(${pkhKey})`,
+        change: 0,
+        index: 0
+      })
+    ).rejects.toThrow('top-level legacy p2pkh');
+    await expect(
+      signMessage({
+        session: bitboxSession,
+        message: 'hello',
+        descriptor: trDescriptor,
+        change: 0,
+        index: 0
+      })
+    ).rejects.toThrow('Taproot message signing');
+    expect(client.messageSigned).toBeUndefined();
   });
 
   test('rejects sha256 Miniscript policy derivation before calling the device', async () => {

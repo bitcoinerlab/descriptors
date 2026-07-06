@@ -43,6 +43,7 @@
  */
 
 import { importAndValidateLedgerBitcoin } from './client';
+import { fromBase64, fromUtf8 } from 'uint8array-tools';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromStandard,
@@ -52,7 +53,12 @@ import {
   keyExpression as keyExpressionFromSession,
   keyExpressionLedger
 } from './keyExpressions';
-import type { LedgerManager, LedgerSession, LedgerState } from './types';
+import type {
+  LedgerClient,
+  LedgerManager,
+  LedgerSession,
+  LedgerState
+} from './types';
 
 export type {
   LedgerClient,
@@ -67,10 +73,60 @@ export type {
 export {
   assertLedgerApp,
   getMasterFingerprint,
+  getVersion,
   getXpub,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './client';
+
+type DefaultDescriptorTemplate =
+  | 'pkh(@0/**)'
+  | 'sh(wpkh(@0/**))'
+  | 'wpkh(@0/**)'
+  | 'tr(@0/**)';
+
+export type AddressDisplayParams = {
+  descriptor: string;
+  session: LedgerSession;
+  change?: number;
+  index: number;
+};
+
+type MessageSigningParams = AddressDisplayParams & {
+  message: string | Uint8Array;
+};
+
+function outputFromDescriptor({
+  descriptor,
+  session,
+  change,
+  index
+}: AddressDisplayParams) {
+  const { Output, network } = session;
+  return new Output({
+    descriptor,
+    ...(descriptor.includes('*') ? { index } : {}),
+    ...(change !== undefined ? { change } : {}),
+    network
+  });
+}
+
+function originPathFromKeyRoot(keyRoot: string): string | undefined {
+  return keyRoot.match(/^\[[0-9a-fA-F]{8}([^\]]*)\]/)?.[1];
+}
+
+function assertLegacyMessageSignature(
+  signature: Uint8Array,
+  device: string
+): Uint8Array {
+  if (signature.length !== 65)
+    throw new Error(`${device} client returned an invalid message signature`);
+  return signature;
+}
+
+function messageBytes(message: string | Uint8Array): Uint8Array {
+  return typeof message === 'string' ? fromUtf8(message) : message;
+}
 
 /**
  * Registers a policy based on a provided descriptor.
@@ -186,6 +242,95 @@ export async function keyExpression({
     change,
     index
   });
+}
+
+export async function displayAddress({
+  descriptor,
+  session,
+  change = 0,
+  index
+}: AddressDisplayParams): Promise<string> {
+  const { client } = session;
+  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
+    (await importAndValidateLedgerBitcoin(
+      client
+    )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  const ledgerClient: LedgerClient = client;
+
+  const output = outputFromDescriptor({ descriptor, session, change, index });
+  const standardPolicy = await ledgerPolicyFromStandard({ output, session });
+  if (standardPolicy) {
+    return ledgerClient.getWalletAddress(
+      new DefaultWalletPolicy(
+        standardPolicy.ledgerTemplate as DefaultDescriptorTemplate,
+        standardPolicy.keyRoots[0]!
+      ),
+      null,
+      change,
+      index,
+      true
+    );
+  }
+
+  const policy = await ledgerPolicyFromState({ output, session });
+  if (!policy)
+    throw new Error(`Ledger policy not registered; call registerWallet first`);
+  if (!policy.policyName || !policy.policyHmac)
+    throw new Error(
+      `Ledger policy missing registration; call registerWallet first`
+    );
+
+  return ledgerClient.getWalletAddress(
+    new WalletPolicy(policy.policyName, policy.ledgerTemplate, policy.keyRoots),
+    policy.policyHmac,
+    change,
+    index,
+    true
+  );
+}
+
+export async function signMessage({
+  descriptor,
+  session,
+  message,
+  change = 0,
+  index
+}: MessageSigningParams): Promise<Uint8Array> {
+  const { client } = session;
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    client
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  const ledgerClient: LedgerClient = client;
+  if (typeof ledgerClient.signMessage !== 'function')
+    throw new Error(`Ledger client does not support message signing`);
+
+  const output = outputFromDescriptor({ descriptor, session, change, index });
+  const policy = await ledgerPolicyFromStandard({ output, session });
+  if (!policy)
+    throw new Error(
+      `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
+    );
+  if (
+    policy.ledgerTemplate !== 'pkh(@0/**)' &&
+    policy.ledgerTemplate !== 'sh(wpkh(@0/**))' &&
+    policy.ledgerTemplate !== 'wpkh(@0/**)'
+  ) {
+    throw new Error(
+      `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
+    );
+  }
+
+  const originPath = originPathFromKeyRoot(policy.keyRoots[0] ?? '');
+  if (!originPath) throw new Error(`Ledger key root missing origin path`);
+  const signature = await ledgerClient.signMessage(
+    messageBytes(message),
+    `m${originPath}/${change}/${index}`
+  );
+  return assertLegacyMessageSignature(fromBase64(signature), 'Ledger');
 }
 
 export * as signers from './signers';

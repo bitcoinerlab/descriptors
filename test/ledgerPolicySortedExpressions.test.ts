@@ -11,13 +11,18 @@ import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
-import type { LedgerSession } from '../dist/ledger/index';
+import {
+  displayAddress,
+  getVersion,
+  signMessage,
+  type LedgerSession
+} from '../dist/ledger/index';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromPsbtInput
 } from '../dist/ledger/policies';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
-import { toHex } from 'uint8array-tools';
+import { fromUtf8, toBase64, toHex } from 'uint8array-tools';
 
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
@@ -342,6 +347,96 @@ describeIfNotScure(
         keyRootNoOrigin(otherMaster),
         keyRootWithOrigin(ledgerMaster)
       ]);
+    });
+
+    test('displays standard addresses through Ledger getWalletAddress', async () => {
+      const ledgerMaster = makeMaster(271);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      Object.assign(session.client, {
+        getWalletAddress: jest.fn(async () => 'bcrt1ledger')
+      });
+
+      await expect(
+        displayAddress({
+          descriptor: `wpkh(${ledgerKey})`,
+          session,
+          change: 0,
+          index: 3
+        })
+      ).resolves.toBe('bcrt1ledger');
+
+      expect(session.client.getWalletAddress).toHaveBeenCalledWith(
+        expect.any(Object),
+        null,
+        0,
+        3,
+        true
+      );
+    });
+
+    test('gets Ledger app version and signs messages', async () => {
+      const ledgerMaster = makeMaster(272);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const signature = new Uint8Array(65).fill(9);
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      Object.assign(session.client, {
+        getAppAndVersion: jest.fn(async () => ({
+          name: 'Bitcoin Test',
+          version: '2.4.0',
+          flags: 0
+        })),
+        signMessage: jest.fn(async () => toBase64(signature))
+      });
+
+      await expect(getVersion({ session })).resolves.toBe('2.4.0');
+      await expect(
+        signMessage({
+          session,
+          message: 'hello',
+          descriptor: `wpkh(${ledgerKey})`,
+          change: 0,
+          index: 0
+        })
+      ).resolves.toEqual(signature);
+      expect(session.client.signMessage).toHaveBeenCalledWith(
+        fromUtf8('hello'),
+        "m/84'/1'/0'/0/0"
+      );
+    });
+
+    test('rejects unsupported Ledger message-signing descriptors before calling the device', async () => {
+      const ledgerMaster = makeMaster(273);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/86'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      Object.assign(session.client, {
+        signMessage: jest.fn(async () => toBase64(new Uint8Array(65)))
+      });
+
+      await expect(
+        signMessage({
+          session,
+          message: 'hello',
+          descriptor: `tr(${ledgerKey})`,
+          change: 0,
+          index: 0
+        })
+      ).rejects.toThrow(
+        'standard single-key pkh, sh(wpkh), and wpkh descriptors'
+      );
+      expect(session.client.signMessage).not.toHaveBeenCalled();
     });
   }
 );

@@ -39,6 +39,15 @@ export type BitBoxClient = {
     forceScriptConfig: BitBoxScriptConfigWithKeypath | undefined,
     formatUnit: BitBoxFormatUnit
   ): Promise<string>;
+  btcSignMessage?(
+    apiNetwork: BitBoxApiNetwork,
+    scriptConfig: BitBoxScriptConfigWithKeypath,
+    message: Uint8Array
+  ): Promise<{
+    sig: Uint8Array;
+    recid: bigint;
+    electrumSig65: Uint8Array;
+  }>;
 };
 
 export type BitBoxFormatUnit = 'default' | 'sat';

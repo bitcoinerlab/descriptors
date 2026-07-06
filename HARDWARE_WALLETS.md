@@ -66,13 +66,30 @@ Use these entrypoints:
 - `@bitcoinerlab/descriptors-scure/ledger`
 - `@bitcoinerlab/descriptors-scure/bitbox`
 
-Each device entrypoint exposes the same recommended names:
+## Common Hardware-Wallet API
 
-- `connectors`
-- `keyExpression`
-- `scriptExpressions`
-- `registerWallet`
-- `signers`
+Ledger and BitBox entrypoints expose the same common API shape:
+
+| API | Purpose |
+| --- | --- |
+| `type Session` | Connected device client plus `Output`, network and app-owned state. |
+| `type State` | Persistable app-owned state for cached keys and wallet policy metadata. |
+| `connectors.fromClient(...)` | Build a session from an already connected device client. |
+| `getVersion({ session })` | Read the device/app version exposed by the vendor API. |
+| `getMasterFingerprint({ session })` | Read and cache the BIP32 master fingerprint. |
+| `getXpub({ session, originPath })` | Read and cache an account xpub. |
+| `keyExpression(...)` | Build a descriptor key expression from device keys. |
+| `scriptExpressions.*(...)` | Build standard account descriptors. |
+| `registerWallet(...)` | Register or locally remember non-standard wallet policies. |
+| `displayAddress(...)` | Ask the device to display an address for verification. |
+| `signers.sign(...)` | Ask the device to sign a PSBT. |
+| `signers.signInput(...)` | Convenience wrapper for single-input signing flows. |
+| `signMessage(...)` | Ask the device to sign a legacy/Electrum Bitcoin message for a descriptor address. |
+
+`signMessage(...)` has the same public shape for Ledger and BitBox:
+`signMessage({ session, message, descriptor, change?, index })`. It returns a
+65-byte `Uint8Array` legacy/Electrum Bitcoin message signature. It does not
+produce BIP322 signatures.
 
 ## Install Device Transports
 
@@ -290,7 +307,40 @@ Prefer passing the full previous transaction as `txHex`. This gives the device
 more information to verify what is being spent. It is especially important for
 Segwit inputs.
 
+## Sign Messages
+
+```ts
+import { signMessage } from '@bitcoinerlab/descriptors/ledger';
+
+const signature = await signMessage({
+  session,
+  message: 'hello',
+  descriptor,
+  change: 0,
+  index: 0
+});
+```
+
+The returned signature is the 65-byte legacy/Electrum Bitcoin message format:
+one header byte followed by the compact ECDSA signature. String messages are
+encoded as UTF-8 before they are passed to the device.
+
+Message signing is intentionally limited to single-key account descriptors:
+
+- Ledger supports `pkh(KEY)`, `sh(wpkh(KEY))` and `wpkh(KEY)`.
+- BitBox supports `sh(wpkh(KEY))` and `wpkh(KEY)`.
+
+Taproot message signing is not exposed. Multisig, Miniscript and other
+non-standard policies are also not supported by this helper.
+
 ## BitBox Details
+
+BitBox adds these device-specific extensions on top of the common API:
+
+- `connectors.connect(...)`, `connectors.auto(...)`, `connectors.bridge(...)`
+  and `connectors.webhid(...)` for built-in `bitbox-api` connection flows.
+- `formatUnit` in connector params and sessions to choose how amounts are shown
+  while signing.
 
 ```ts
 await bitbox.scriptExpressions.wpkh({ session, account: 0, index: '*' });
@@ -306,6 +356,9 @@ await bitbox.scriptExpressions.pkh({ session, account: 0, index: '*' });
 This throws. BitBox02 does not support top-level legacy P2PKH descriptors,
 `pkh(KEY)`, through the simple account flow. Use `sh(wpkh(KEY))`, `wpkh(KEY)` or
 `tr(KEY)` instead.
+
+For message signing, BitBox also rejects top-level `pkh(KEY)` and `tr(KEY)`
+descriptors before calling the device.
 
 BitBox also rejects Miniscript hash preimage fragments before address display or
 signing:
@@ -338,6 +391,19 @@ not change the descriptor, PSBT, policy or signatures. If omitted, the connector
 passes `default`.
 
 ## Ledger Details
+
+Ledger adds these device-specific extensions on top of the common API:
+
+- `connectors.nodeHid(...)` for Node.js HID connections.
+- `assertLedgerApp(...)` to verify the open Ledger app and minimum version when
+  you manage the transport yourself.
+- Deprecated 3.x compatibility names such as `LedgerManager`,
+  `registerLedgerWallet(...)`, `keyExpressionLedger(...)`,
+  `signers.signLedger(...)` and `scriptExpressions.wpkhLedger(...)`.
+
+For message signing, Ledger supports standard single-key `pkh(KEY)`,
+`sh(wpkh(KEY))` and `wpkh(KEY)` descriptors. `tr(KEY)` and non-standard policies
+throw before calling the device.
 
 Ledger wallet policies have stricter key rules than descriptors in general.
 This package checks those rules before asking the device to sign.
