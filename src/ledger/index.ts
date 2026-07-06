@@ -4,13 +4,13 @@
  * Bitcoinjs-ready usage:
  * ```ts
  * import { Output, networks } from '@bitcoinerlab/descriptors';
- * import { registerLedgerWallet, type LedgerManager } from '@bitcoinerlab/descriptors/ledger';
+ * import { registerWallet, type Session } from '@bitcoinerlab/descriptors/ledger';
  * ```
  *
  * Scure-ready usage:
  * ```ts
  * import { Output, networks } from '@bitcoinerlab/descriptors-scure';
- * import { registerLedgerWallet, type LedgerManager } from '@bitcoinerlab/descriptors-scure/ledger';
+ * import { registerWallet, type Session } from '@bitcoinerlab/descriptors-scure/ledger';
  * ```
  *
  * @module ledger
@@ -42,53 +42,32 @@
  * All the conditions above are checked in function ledgerPolicyFromOutput.
  */
 
-import { OutputConstructor } from '../descriptors';
-import type { Network } from '../networks';
 import { importAndValidateLedgerBitcoin } from './client';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromStandard,
   ledgerPolicyFromState
 } from './policies';
-import { keyExpressionLedger } from './keyExpressions';
+import {
+  keyExpression as keyExpressionFromSession,
+  keyExpressionLedger
+} from './keyExpressions';
+import type { LedgerManager, LedgerSession, LedgerState } from './types';
 
-/**
- * Ledger devices operate in a state-less manner. Therefore, policy information
- * needs to be maintained in a separate data structure, `ledgerState`. For optimization,
- * `ledgerState` also stores cached xpubs and the masterFingerprint.
- */
-export type LedgerState = {
-  masterFingerprint?: Uint8Array;
-  policies?: {
-    policyName?: string;
-    ledgerTemplate: string;
-    keyRoots: string[];
-    policyId?: Uint8Array;
-    policyHmac?: Uint8Array;
-  }[];
-  xpubs?: { [key: string]: string };
-};
-
-/**
- * State and helpers needed for Ledger integration.
- *
- * Pass the pre-bound `Output` constructor from the package you are using:
- * - `@bitcoinerlab/descriptors`
- * - `@bitcoinerlab/descriptors-scure`
- */
-export type LedgerManager = {
-  /** Ledger Bitcoin app client instance. */
-  ledgerClient: unknown;
-  /** Mutable cache for fingerprints, xpubs and registered policies. */
-  ledgerState: LedgerState;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
-  /** Bitcoin network used for descriptor and policy interpretation. */
-  network: Network;
-};
+export type {
+  LedgerClient,
+  LedgerManager,
+  LedgerPartialSignature,
+  LedgerPolicy,
+  LedgerSession,
+  LedgerState,
+  LedgerWalletPolicyLike
+} from './types';
 
 export {
   assertLedgerApp,
+  getMasterFingerprint,
+  getXpub,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './client';
@@ -97,7 +76,7 @@ export {
  * Registers a policy based on a provided descriptor.
  *
  * This function will:
- * 1. Store the policy in `ledgerState` inside the `ledgerManager`.
+ * 1. Store the policy in `state` inside the session.
  * 2. Avoid re-registering if the policy was previously registered.
  * 3. Skip registration if the policy is considered "standard".
  *
@@ -108,6 +87,56 @@ export {
  * - This means that the registered Ledger Policy is a generalized version of the descriptor,
  *   not assuming specific values for the keyPath.
  *
+ */
+export async function registerWallet({
+  descriptor,
+  session,
+  policyName
+}: {
+  descriptor: string;
+  session: LedgerSession;
+  /** The Name we want to assign to this specific policy */
+  policyName: string;
+}): Promise<void> {
+  const { client, state, network, Output } = session;
+  const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
+    client
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  const output = new Output({
+    descriptor,
+    ...(descriptor.includes('*') ? { index: 0 } : {}),
+    network
+  });
+  if (await ledgerPolicyFromStandard({ output, session })) return;
+  const result = await ledgerPolicyFromOutput({ output, session });
+  if (await ledgerPolicyFromStandard({ output, session })) return;
+  if (!result) throw new Error(`Error: output does not have a ledger input`);
+  const { ledgerTemplate, keyRoots } = result;
+  if (!state.policies) state.policies = [];
+  let walletPolicy, policyHmac;
+  const policy = await ledgerPolicyFromState({ output, session });
+  if (policy) {
+    if (policy.policyName !== policyName)
+      throw new Error(
+        `Error: policy was already registered with a different name: ${policy.policyName}`
+      );
+  } else {
+    walletPolicy = new WalletPolicy(policyName, ledgerTemplate, keyRoots);
+    let policyId;
+    [policyId, policyHmac] = await client.registerWallet(walletPolicy);
+    state.policies.push({
+      policyName,
+      ledgerTemplate,
+      keyRoots,
+      policyId,
+      policyHmac
+    });
+  }
+}
+
+/**
  * @deprecated Use `registerWallet(...)` instead.
  */
 export async function registerLedgerWallet({
@@ -120,103 +149,43 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  const { ledgerClient, ledgerState, network, Output } = ledgerManager;
-  const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  const output = new Output({
+  return registerWallet({
     descriptor,
-    ...(descriptor.includes('*') ? { index: 0 } : {}),
-    network
-  });
-  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
-  const result = await ledgerPolicyFromOutput({ output, ledgerManager });
-  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
-  if (!result) throw new Error(`Error: output does not have a ledger input`);
-  const { ledgerTemplate, keyRoots } = result;
-  if (!ledgerState.policies) ledgerState.policies = [];
-  let walletPolicy, policyHmac;
-  const policy = await ledgerPolicyFromState({ output, ledgerManager });
-  if (policy) {
-    if (policy.policyName !== policyName)
-      throw new Error(
-        `Error: policy was already registered with a different name: ${policy.policyName}`
-      );
-  } else {
-    walletPolicy = new WalletPolicy(policyName, ledgerTemplate, keyRoots);
-    let policyId;
-    [policyId, policyHmac] = await ledgerClient.registerWallet(walletPolicy);
-    ledgerState.policies.push({
-      policyName,
-      ledgerTemplate,
-      keyRoots,
-      policyId,
-      policyHmac
-    });
-  }
-}
-
-export type Manager = LedgerManager;
-export type State = LedgerState;
-
-export async function registerWallet({
-  descriptor,
-  manager,
-  policyName
-}: {
-  descriptor: string;
-  manager: LedgerManager;
-  policyName: string;
-}): Promise<void> {
-  return registerLedgerWallet({
-    descriptor,
-    ledgerManager: manager,
+    session: {
+      client: ledgerManager.ledgerClient,
+      state: ledgerManager.ledgerState,
+      Output: ledgerManager.Output,
+      network: ledgerManager.network
+    },
     policyName
   });
 }
 
+export type Session = LedgerSession;
+/** @deprecated Use `Session`. */
+export type Manager = LedgerManager;
+export type State = LedgerState;
+
 export async function keyExpression({
-  manager,
+  session,
   originPath,
   keyPath,
   change,
   index
 }: {
-  manager: LedgerManager;
+  session: LedgerSession;
   originPath: string;
   change?: number | undefined;
   index?: number | undefined | '*';
   keyPath?: string | undefined;
 }): Promise<string> {
-  return keyExpressionLedger({
-    ledgerManager: manager,
+  return keyExpressionFromSession({
+    session,
     originPath,
     keyPath,
     change,
     index
   });
-}
-
-export async function getMasterFingerprint({
-  manager
-}: {
-  manager: LedgerManager;
-}): Promise<Uint8Array> {
-  const { getLedgerMasterFingerPrint } = await import('./client');
-  return getLedgerMasterFingerPrint({ ledgerManager: manager });
-}
-
-export async function getXpub({
-  manager,
-  originPath
-}: {
-  manager: LedgerManager;
-  originPath: string;
-}): Promise<string> {
-  const { getLedgerXpub } = await import('./client');
-  return getLedgerXpub({ originPath, ledgerManager: manager });
 }
 
 export * as signers from './signers';

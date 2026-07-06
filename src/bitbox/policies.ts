@@ -5,46 +5,44 @@ import { compare, toHex } from 'uint8array-tools';
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import type { OutputInstance } from '../descriptors';
 import {
-  policyFromOutput,
-  policyFromPsbtInput,
-  policyFromStandard
+  policyFromOutput as hwwPolicyFromOutput,
+  policyFromPsbtInput as hwwPolicyFromPsbtInput,
+  policyFromStandard as hwwPolicyFromStandard
 } from '../hww/policies';
-import type { HardwareWalletPolicyManager, WalletPolicy } from '../hww/types';
+import type { HWWPolicy, HWWPolicyResolver } from '../hww/types';
 import { coinTypeFromNetwork } from '../networkUtils';
 import type {
   BitBoxKeyOriginInfo,
-  BitBoxManager,
   BitBoxMultisigAccount,
   BitBoxPolicy,
-  BitBoxScriptConfig
+  BitBoxScriptConfig,
+  BitBoxSession
 } from './types';
 import {
-  bitboxApiNetwork,
-  bitboxSimpleType,
-  getBitBoxMasterFingerprint,
-  getBitBoxXpub
+  apiNetwork,
+  simpleType,
+  getMasterFingerprint,
+  getXpub
 } from './client';
 
-export function hwwManagerFromBitBoxManager(
-  bitboxManager: BitBoxManager
-): HardwareWalletPolicyManager {
-  const policies = bitboxManager.bitboxState.policies?.map(bitboxPolicy => ({
-    ...(bitboxPolicy.policyName !== undefined
-      ? { policyName: bitboxPolicy.policyName }
+function policyResolverFromSession(session: BitBoxSession): HWWPolicyResolver {
+  const knownPolicies = session.state.policies?.map(policy => ({
+    ...(policy.policyName !== undefined
+      ? { policyName: policy.policyName }
       : {}),
-    descriptorTemplate: bitboxPolicy.descriptorTemplate,
-    keyRoots: bitboxPolicy.keyRoots
+    descriptorTemplate: policy.descriptorTemplate,
+    keyRoots: policy.keyRoots
   }));
   return {
-    Output: bitboxManager.Output,
-    network: bitboxManager.network,
-    ...(policies !== undefined ? { policies } : {}),
-    getMasterFingerprint: () => getBitBoxMasterFingerprint({ bitboxManager }),
-    getXpub: originPath => getBitBoxXpub({ originPath, bitboxManager })
+    Output: session.Output,
+    network: session.network,
+    ...(knownPolicies !== undefined ? { knownPolicies } : {}),
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session })
   };
 }
 
-export function bitboxScriptConfigFromMultisigAccount(
+export function scriptConfigFromMultisigAccount(
   account: BitBoxMultisigAccount
 ): BitBoxScriptConfig {
   return {
@@ -57,7 +55,7 @@ export function bitboxScriptConfigFromMultisigAccount(
   };
 }
 
-function bitboxKeyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
+function keyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
   const parsed = parseKeyRoot(keyRoot);
   return {
     ...(parsed.masterFingerprint
@@ -68,14 +66,14 @@ function bitboxKeyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
   };
 }
 
-export function bitboxOwnOriginPathFromPolicy({
+function ownOriginPathFromPolicy({
   policy,
-  bitboxManager
+  session
 }: {
-  policy: BitBoxPolicy | WalletPolicy;
-  bitboxManager: BitBoxManager;
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
 }): string {
-  const masterFingerprint = bitboxManager.bitboxState.masterFingerprint;
+  const masterFingerprint = session.state.masterFingerprint;
   if (!masterFingerprint)
     throw new Error(`BitBox master fingerprint required for policy`);
 
@@ -92,50 +90,50 @@ export function bitboxOwnOriginPathFromPolicy({
   return ownKeyRoot.originPath;
 }
 
-export function bitboxSigningKeypathFromPolicy({
+export function signingKeypathFromPolicy({
   policy,
-  bitboxManager
+  session
 }: {
-  policy: BitBoxPolicy | WalletPolicy;
-  bitboxManager: BitBoxManager;
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
 }): string {
-  return `m${bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })}`;
+  return `m${ownOriginPathFromPolicy({ policy, session })}`;
 }
 
-export function bitboxAddressKeypathFromPolicy({
+export function addressKeypathFromPolicy({
   policy,
-  bitboxManager,
+  session,
   change,
   index
 }: {
-  policy: BitBoxPolicy | WalletPolicy;
-  bitboxManager: BitBoxManager;
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
   change: number;
   index: number;
 }): string {
-  return `m${bitboxOwnOriginPathFromPolicy({ policy, bitboxManager })}/${change}/${index}`;
+  return `m${ownOriginPathFromPolicy({ policy, session })}/${change}/${index}`;
 }
 
-export function bitboxScriptConfigFromPolicy({
+export function scriptConfigFromPolicy({
   policy,
-  bitboxManager
+  session
 }: {
-  policy: BitBoxPolicy | WalletPolicy;
-  bitboxManager: BitBoxManager;
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
 }): BitBoxScriptConfig {
   if (policy.descriptorTemplate.match(/^wsh\((?:sortedmulti|multi)\(/)) {
     const account =
       'account' in policy && policy.account
         ? policy.account
-        : bitboxAccountFromPolicy({ policy, bitboxManager });
-    return bitboxScriptConfigFromMultisigAccount(account);
+        : accountFromPolicy({ policy, session });
+    return scriptConfigFromMultisigAccount(account);
   }
 
   if (policy.descriptorTemplate.match(/^sh\(wpkh\(@0\/\*\*\)\)$/)) {
     return {
-      simpleType: bitboxSimpleType({
+      simpleType: simpleType({
         descriptorTemplate: policy.descriptorTemplate,
-        bitboxManager
+        session
       })
     };
   }
@@ -148,9 +146,9 @@ export function bitboxScriptConfigFromPolicy({
 
   if (policy.descriptorTemplate.match(/^(wpkh|tr)\(@0\/\*\*\)$/)) {
     return {
-      simpleType: bitboxSimpleType({
+      simpleType: simpleType({
         descriptorTemplate: policy.descriptorTemplate,
-        bitboxManager
+        session
       })
     };
   }
@@ -158,22 +156,21 @@ export function bitboxScriptConfigFromPolicy({
   return {
     policy: {
       policy: policy.descriptorTemplate,
-      keys: policy.keyRoots.map(bitboxKeyOriginInfoFromKeyRoot)
+      keys: policy.keyRoots.map(keyOriginInfoFromKeyRoot)
     }
   };
 }
 
-const unsupportedBitBoxHashFragment =
-  /\b(?:sha256|hash256|hash160|ripemd160)\(/;
+const unsupportedHashFragment = /\b(?:sha256|hash256|hash160|ripemd160)\(/;
 
-export function assertBitBoxPolicyCanDerive(policy: BitBoxPolicy): void {
-  if (!unsupportedBitBoxHashFragment.test(policy.descriptorTemplate)) return;
+export function assertPolicyCanDerive(policy: BitBoxPolicy): void {
+  if (!unsupportedHashFragment.test(policy.descriptorTemplate)) return;
   throw new Error(
     `BitBox generic policy derivation with Miniscript hash fragments is disabled because BitBox02 firmware marks sha256/hash256/hash160/ripemd160 policy fragments unsupported and firmware 9.26.1 has been observed to crash while deriving sha256(...). Avoid hashlocks with BitBox or use another signer until BitBox firmware/API support is confirmed.`
   );
 }
 
-function isBitBoxDuplicateError(error: unknown): boolean {
+function isDuplicateError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -182,7 +179,7 @@ function isBitBoxDuplicateError(error: unknown): boolean {
   );
 }
 
-function walletPolicyToBitBoxPolicy(policy: WalletPolicy): BitBoxPolicy {
+function hwwPolicyToPolicy(policy: HWWPolicy): BitBoxPolicy {
   return {
     ...(policy.policyName !== undefined
       ? { policyName: policy.policyName }
@@ -208,12 +205,12 @@ function parseKeyRoot(keyRoot: string): {
   };
 }
 
-export function bitboxAccountFromPolicy({
+function accountFromPolicy({
   policy,
-  bitboxManager
+  session
 }: {
-  policy: BitBoxPolicy | WalletPolicy;
-  bitboxManager: BitBoxManager;
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
 }): BitBoxMultisigAccount {
   const match = policy.descriptorTemplate.match(
     /^wsh\((?:sortedmulti|multi)\((\d+),(.+)\)\)$/
@@ -235,7 +232,7 @@ export function bitboxAccountFromPolicy({
   }
 
   const parsedKeyRoots = policy.keyRoots.map(parseKeyRoot);
-  const masterFingerprint = bitboxManager.bitboxState.masterFingerprint;
+  const masterFingerprint = session.state.masterFingerprint;
   if (!masterFingerprint)
     throw new Error(`BitBox02 master fingerprint required for multisig policy`);
   const ourXpubIndex = parsedKeyRoots.findIndex(
@@ -250,7 +247,7 @@ export function bitboxAccountFromPolicy({
   if (!ourOriginPath)
     throw new Error(`BitBox02 multisig key must include origin information`);
 
-  const expectedCoinType = coinTypeFromNetwork(bitboxManager.network);
+  const expectedCoinType = coinTypeFromNetwork(session.network);
   const originMatch = ourOriginPath.match(/^\/48'\/([01])'\/(\d+)'\/2'$/);
   if (!originMatch || Number(originMatch[1]) !== expectedCoinType) {
     throw new Error(
@@ -267,61 +264,61 @@ export function bitboxAccountFromPolicy({
   };
 }
 
-export async function bitboxPolicyFromPsbtInput({
+export async function policyFromPsbtInput({
   psbt,
   index,
-  bitboxManager
+  session
 }: {
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<BitBoxPolicy | null> {
-  const policy = await policyFromPsbtInput({
+  const policy = await hwwPolicyFromPsbtInput({
     psbt,
     index,
-    hwwManager: hwwManagerFromBitBoxManager(bitboxManager)
+    policyResolver: policyResolverFromSession(session)
   });
-  return policy ? walletPolicyToBitBoxPolicy(policy) : null;
+  return policy ? hwwPolicyToPolicy(policy) : null;
 }
 
-export async function bitboxPolicyFromOutput({
+async function policyFromOutput({
   output,
-  bitboxManager
+  session
 }: {
   output: OutputInstance;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<{ descriptorTemplate: string; keyRoots: string[] } | null> {
-  return policyFromOutput({
+  return hwwPolicyFromOutput({
     output,
-    hwwManager: hwwManagerFromBitBoxManager(bitboxManager)
+    policyResolver: policyResolverFromSession(session)
   });
 }
 
-export async function bitboxPolicyFromStandard({
+export async function policyFromStandard({
   output,
-  bitboxManager
+  session
 }: {
   output: OutputInstance;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<BitBoxPolicy | null> {
-  const policy = await policyFromStandard({
+  const policy = await hwwPolicyFromStandard({
     output,
-    hwwManager: hwwManagerFromBitBoxManager(bitboxManager)
+    policyResolver: policyResolverFromSession(session)
   });
-  return policy ? walletPolicyToBitBoxPolicy(policy) : null;
+  return policy ? hwwPolicyToPolicy(policy) : null;
 }
 
-export async function bitboxPolicyFromState({
+export async function policyFromState({
   output,
-  bitboxManager
+  session
 }: {
   output: OutputInstance;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<BitBoxPolicy | null> {
-  const result = await bitboxPolicyFromOutput({ output, bitboxManager });
+  const result = await policyFromOutput({ output, session });
   if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
   const { descriptorTemplate, keyRoots } = result;
-  const policies = (bitboxManager.bitboxState.policies || []).filter(policy => {
+  const policies = (session.state.policies || []).filter(policy => {
     if (policy.descriptorTemplate !== descriptorTemplate) return false;
     if (policy.keyRoots.length !== keyRoots.length) return false;
     return policy.keyRoots.every(
@@ -332,16 +329,16 @@ export async function bitboxPolicyFromState({
   return policies[0] ?? null;
 }
 
-export async function registerBitBoxWallet({
+export async function registerWallet({
   descriptor,
-  bitboxManager,
+  session,
   policyName
 }: {
   descriptor: string;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   policyName: string;
 }): Promise<void> {
-  const { bitboxClient, bitboxState, network, Output } = bitboxManager;
+  const { client, state, network, Output } = session;
 
   const output = new Output({
     descriptor,
@@ -350,24 +347,24 @@ export async function registerBitBoxWallet({
     network
   });
 
-  const standardPolicy = await bitboxPolicyFromStandard({
+  const standardPolicy = await policyFromStandard({
     output,
-    bitboxManager
+    session
   });
   if (standardPolicy) {
-    bitboxSimpleType({
+    simpleType({
       descriptorTemplate: standardPolicy.descriptorTemplate,
-      bitboxManager
+      session
     });
     return;
   }
-  const result = await bitboxPolicyFromOutput({ output, bitboxManager });
+  const result = await policyFromOutput({ output, session });
   if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
-  if (!bitboxState.policies) bitboxState.policies = [];
+  if (!state.policies) state.policies = [];
 
-  const existingPolicy = await bitboxPolicyFromState({
+  const existingPolicy = await policyFromState({
     output,
-    bitboxManager
+    session
   });
   if (existingPolicy) {
     if (existingPolicy.policyName !== policyName)
@@ -385,43 +382,34 @@ export async function registerBitBoxWallet({
   const account = policy.descriptorTemplate.match(
     /^wsh\((?:sortedmulti|multi)\(/
   )
-    ? bitboxAccountFromPolicy({ policy, bitboxManager })
+    ? accountFromPolicy({ policy, session })
     : undefined;
   const scriptConfig = account
-    ? bitboxScriptConfigFromMultisigAccount(account)
-    : bitboxScriptConfigFromPolicy({ policy, bitboxManager });
-  const registered = await bitboxClient.btcIsScriptConfigRegistered(
-    bitboxApiNetwork(bitboxManager),
+    ? scriptConfigFromMultisigAccount(account)
+    : scriptConfigFromPolicy({ policy, session });
+  const registered = await client.btcIsScriptConfigRegistered(
+    apiNetwork(session),
     scriptConfig,
     account?.keypathAccount
   );
   if (!registered) {
     try {
-      await bitboxClient.btcRegisterScriptConfig(
-        bitboxApiNetwork(bitboxManager),
+      await client.btcRegisterScriptConfig(
+        apiNetwork(session),
         scriptConfig,
         account?.keypathAccount,
         'autoXpubTpub',
         policyName
       );
     } catch (error) {
-      if (!isBitBoxDuplicateError(error)) throw error;
-      const registeredAfterDuplicate =
-        await bitboxClient.btcIsScriptConfigRegistered(
-          bitboxApiNetwork(bitboxManager),
-          scriptConfig,
-          account?.keypathAccount
-        );
+      if (!isDuplicateError(error)) throw error;
+      const registeredAfterDuplicate = await client.btcIsScriptConfigRegistered(
+        apiNetwork(session),
+        scriptConfig,
+        account?.keypathAccount
+      );
       if (!registeredAfterDuplicate) throw error;
     }
   }
-  bitboxState.policies.push({ ...policy, ...(account ? { account } : {}) });
-}
-
-export function fingerprintHex(
-  bitboxManager: BitBoxManager
-): string | undefined {
-  return bitboxManager.bitboxState.masterFingerprint
-    ? toHex(bitboxManager.bitboxState.masterFingerprint)
-    : undefined;
+  state.policies.push({ ...policy, ...(account ? { account } : {}) });
 }

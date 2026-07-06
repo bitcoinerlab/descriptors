@@ -15,7 +15,7 @@ import { coinTypeFromNetwork } from '../networkUtils';
 import { reOriginPath } from '../re';
 import type { ExpansionMap, KeyInfo } from '../types';
 import type { TapTreeInfoNode } from '../tapTree';
-import type { HardwareWalletPolicyManager, WalletPolicy } from './types';
+import type { HWWPolicy, HWWPolicyResolver } from './types';
 
 export function isStandardPolicy({
   descriptorTemplate,
@@ -47,17 +47,17 @@ export function isStandardPolicy({
 }
 
 export async function policyFromPsbtInput({
-  hwwManager,
+  policyResolver,
   psbt,
   index
 }: {
-  hwwManager: HardwareWalletPolicyManager;
+  policyResolver: HWWPolicyResolver;
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
-}): Promise<WalletPolicy | undefined> {
+}): Promise<HWWPolicy | undefined> {
   const bitcoinLib = getBitcoinLibOrThrow();
   psbt = toPsbt(psbt);
-  const { network, Output } = hwwManager;
+  const { network, Output } = policyResolver;
   const { Transaction } = bitcoinLib;
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);
@@ -85,7 +85,7 @@ export async function policyFromPsbtInput({
       `Input ${index} does not contain bip32 or tapBip32 derivations.`
     );
 
-  const masterFingerprint = await hwwManager.getMasterFingerprint();
+  const masterFingerprint = await policyResolver.getMasterFingerprint();
   for (const keyDerivation of keyDerivations) {
     if (compare(keyDerivation.masterFingerprint, masterFingerprint) === 0) {
       const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
@@ -115,7 +115,7 @@ export async function policyFromPsbtInput({
                   ? 'tr(@0/**)'
                   : undefined;
           if (standardTemplate) {
-            const xpub = await hwwManager.getXpub(originPath);
+            const xpub = await policyResolver.getAccountXpub(originPath);
             standardPolicy = {
               descriptorTemplate: standardTemplate,
               keyRoots: [`[${toHex(masterFingerprint)}${originPath}]${xpub}`]
@@ -123,7 +123,7 @@ export async function policyFromPsbtInput({
           }
         }
 
-        const policies = [...(hwwManager.policies || [])];
+        const policies = [...(policyResolver.knownPolicies || [])];
         if (standardPolicy) policies.push(standardPolicy);
 
         for (const policy of policies) {
@@ -186,10 +186,10 @@ export async function policyFromPsbtInput({
 
 export async function policyFromOutput({
   output,
-  hwwManager
+  policyResolver
 }: {
   output: OutputInstance;
-  hwwManager: HardwareWalletPolicyManager;
+  policyResolver: HWWPolicyResolver;
 }): Promise<{ descriptorTemplate: string; keyRoots: string[] } | null> {
   const expanded = output.expand();
   let expandedExpression = expanded.expandedExpression;
@@ -250,7 +250,7 @@ export async function policyFromOutput({
   if (!expandedExpression || !expansionMap)
     throw new Error(`Error: invalid output`);
 
-  const masterFingerprint = await hwwManager.getMasterFingerprint();
+  const masterFingerprint = await policyResolver.getMasterFingerprint();
 
   const allKeys = Object.keys(expansionMap).sort((a, b) => {
     const aIndex = Number(a.slice(1));
@@ -331,14 +331,14 @@ export async function policyFromOutput({
 
 export async function policyFromStandard({
   output,
-  hwwManager
+  policyResolver
 }: {
   output: OutputInstance;
-  hwwManager: HardwareWalletPolicyManager;
-}): Promise<WalletPolicy | null> {
+  policyResolver: HWWPolicyResolver;
+}): Promise<HWWPolicy | null> {
   const result = await policyFromOutput({
     output,
-    hwwManager
+    policyResolver
   });
   if (!result)
     throw new Error(`Error: descriptor does not have a hardware wallet input`);
@@ -366,7 +366,7 @@ function compareKeyRoots(arr1: string[], arr2: string[]) {
   return true;
 }
 
-export function comparePolicies(policyA: WalletPolicy, policyB: WalletPolicy) {
+export function comparePolicies(policyA: HWWPolicy, policyB: HWWPolicy) {
   return (
     compareKeyRoots(policyA.keyRoots, policyB.keyRoots) &&
     policyA.descriptorTemplate === policyB.descriptorTemplate
@@ -375,19 +375,19 @@ export function comparePolicies(policyA: WalletPolicy, policyB: WalletPolicy) {
 
 export async function policyFromState({
   output,
-  hwwManager
+  policyResolver
 }: {
   output: OutputInstance;
-  hwwManager: HardwareWalletPolicyManager;
-}): Promise<WalletPolicy | null> {
+  policyResolver: HWWPolicyResolver;
+}): Promise<HWWPolicy | null> {
   const result = await policyFromOutput({
     output,
-    hwwManager
+    policyResolver
   });
   if (!result)
     throw new Error(`Error: output does not have a hardware wallet input`);
   const { descriptorTemplate, keyRoots } = result;
-  const policies = (hwwManager.policies || []).filter(policy =>
+  const policies = (policyResolver.knownPolicies || []).filter(policy =>
     comparePolicies(policy, { descriptorTemplate, keyRoots })
   );
   if (policies.length > 1) throw new Error(`Error: duplicated policy`);

@@ -101,7 +101,7 @@ const finalizers = [];
 
 (async () => {
   await ready;
-  const ledgerManager = await ledger.connectors.nodeHid({
+  const ledgerSession = await ledger.connectors.nodeHid({
     Output,
     network: NETWORK,
     appName: 'Bitcoin Test',
@@ -119,7 +119,7 @@ const finalizers = [];
   //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
   const pkhExternalDescriptor: string = await ledger.scriptExpressions.pkh({
-    manager: ledgerManager,
+    session: ledgerSession,
     account: 0,
     change: 0,
     index: 0
@@ -140,7 +140,7 @@ const finalizers = [];
 
   //Repeat the same for another pkh change address:
   const pkhChangeDescriptor = await ledger.scriptExpressions.pkh({
-    manager: ledgerManager,
+    session: ledgerSession,
     account: 0,
     change: 1,
     index: 0
@@ -178,7 +178,7 @@ const finalizers = [];
   //[1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
   //Since WSH_ORIGIN_PATH is a non-standard path, the Ledger will warn the user about this.
   const ledgerKeyExpression: string = await ledger.keyExpression({
-    manager: ledgerManager,
+    session: ledgerSession,
     originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
@@ -226,15 +226,15 @@ const finalizers = [];
 
   //=============
   //Register Ledger policies of non-standard descriptors.
-  //Registration is stored in ledgerState and is a necessary step before
+  //Registration is stored in session state and is a necessary step before
   //signing with non-standard policies when using a Ledger wallet.
-  //registerLedgerWallet internally takes all the necessary steps to register
+  //registerWallet internally takes all the necessary steps to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots.
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
   await ledger.registerWallet({
-    manager: ledgerManager,
+    session: ledgerSession,
     descriptor: miniscriptDescriptor,
     policyName: 'BitcoinerLab'
   });
@@ -244,7 +244,7 @@ const finalizers = [];
   //retrieved from state by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
-  await ledger.signers.sign({ psbt, manager: ledgerManager });
+  await ledger.signers.sign({ psbt, session: ledgerSession });
   //Now sign the PSBT with the BIP32 node (the software wallet)
   signBIP32({ psbt, masterNode });
 

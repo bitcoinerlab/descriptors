@@ -444,7 +444,7 @@ signers.signInputPrivKey({ psbt, index: 0, privKey }); // Same `privKey` type as
 
 </details>
 
-Hardware-wallet signers follow the same pattern after the device manager has been created.
+Hardware-wallet signers follow the same pattern after the device session has been created.
 
 <a name="signers-and-finalizers-finalize-psbt-input"></a>
 

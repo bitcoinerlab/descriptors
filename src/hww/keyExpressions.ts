@@ -3,16 +3,16 @@
 
 import { toHex } from 'uint8array-tools';
 import { assertChangeIndexKeyPath } from '../keyExpressions';
-import type { HardwareWalletPolicyManager } from './types';
+import type { HWWKeySource } from './types';
 
-export async function keyExpressionHardwareWallet({
-  hwwManager,
+export async function keyExpressionHWW({
+  keySource,
   originPath,
   keyPath,
   change,
   index
 }: {
-  hwwManager: HardwareWalletPolicyManager;
+  keySource: HWWKeySource;
   originPath: string;
   change?: number | undefined;
   index?: number | undefined | '*';
@@ -20,9 +20,9 @@ export async function keyExpressionHardwareWallet({
 }): Promise<string> {
   assertChangeIndexKeyPath({ change, index, keyPath });
 
-  const masterFingerprint = await hwwManager.getMasterFingerprint();
+  const masterFingerprint = await keySource.getMasterFingerprint();
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;
-  const xpub = await hwwManager.getXpub(originPath);
+  const xpub = await keySource.getAccountXpub(originPath);
 
   const keyRoot = `${origin}${xpub}`;
   if (keyPath !== undefined) return `${keyRoot}${keyPath}`;

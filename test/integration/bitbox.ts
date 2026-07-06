@@ -48,7 +48,7 @@ import {
   registerWallet,
   scriptExpressions,
   signers,
-  type Manager
+  type Session
 } from '../../dist/bitbox';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
@@ -120,7 +120,7 @@ const SOFT_MNEMONIC =
 
 (async () => {
   await ready;
-  const manager: Manager = await connectors.bridge({
+  const session: Session = await connectors.bridge({
     Output,
     network: NETWORK,
     onClose: () => {
@@ -132,14 +132,14 @@ const SOFT_MNEMONIC =
     }
   });
 
-  const version = await getVersion({ manager });
-  const xpub = await getXpub({ manager, originPath: ORIGIN_PATH });
+  const version = await getVersion({ session });
+  const xpub = await getXpub({ session, originPath: ORIGIN_PATH });
   console.log({ version, originPath: ORIGIN_PATH, xpub });
 
   const standardPsbt = createPsbt(false, NETWORK);
   const standardFinalAddress = regtestUtils.RANDOM_ADDRESS;
   const standardDescriptor = await scriptExpressions.wpkh({
-    manager,
+    session,
     account: 0,
     change: 0,
     index: 0
@@ -168,7 +168,7 @@ const SOFT_MNEMONIC =
   );
 
   console.log('Sign and broadcast standard wpkh spend');
-  await signers.sign({ psbt: standardPsbt, manager });
+  await signers.sign({ psbt: standardPsbt, session });
   finalizeStandard({ psbt: standardPsbt });
   const standardResultSpend = await regtestUtils.broadcast(
     psbtToHex(standardPsbt)
@@ -203,7 +203,7 @@ const SOFT_MNEMONIC =
     index: '*'
   });
   const bitboxKeyExpression = await keyExpression({
-    manager,
+    session,
     originPath: POLICY_ORIGIN_PATH,
     change: 0,
     index: '*'
@@ -241,11 +241,11 @@ const SOFT_MNEMONIC =
   console.log('Register Miniscript policy');
   await registerWallet({
     descriptor: miniscriptDescriptor,
-    manager,
+    session,
     policyName: POLICY_NAME
   });
   console.log('Sign and broadcast Miniscript policy spend');
-  await signers.sign({ psbt: policyPsbt, manager });
+  await signers.sign({ psbt: policyPsbt, session });
   signBIP32({ psbt: policyPsbt, masterNode });
   finalizePolicy({ psbt: policyPsbt });
 
@@ -266,7 +266,7 @@ const SOFT_MNEMONIC =
     tx: psbtToHex(policyPsbt)
   });
 
-  (manager.bitboxClient as Manager['bitboxClient'] & { close(): void }).close();
+  (session.client as Session['client'] & { close(): void }).close();
 })().catch(err => {
   console.error(err);
   process.exit(1);

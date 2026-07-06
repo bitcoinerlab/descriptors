@@ -3,7 +3,7 @@
 
 import { OutputInstance } from '../descriptors';
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
-import type { HardwareWalletPolicyManager, WalletPolicy } from '../hww/types';
+import type { HWWPolicy, HWWPolicyResolver } from '../hww/types';
 import {
   comparePolicies as compareWalletPolicies,
   policyFromOutput,
@@ -11,18 +11,10 @@ import {
   policyFromStandard,
   policyFromState
 } from '../hww/policies';
-import { getLedgerMasterFingerPrint, getLedgerXpub } from './client';
-import type { LedgerManager } from './index';
+import { getMasterFingerprint, getXpub } from './client';
+import type { LedgerPolicy, LedgerSession } from './types';
 
-export type LedgerPolicy = {
-  policyName?: string;
-  ledgerTemplate: string;
-  keyRoots: string[];
-  policyId?: Uint8Array;
-  policyHmac?: Uint8Array;
-};
-
-function ledgerPolicyToWalletPolicy(policy: LedgerPolicy): WalletPolicy {
+function ledgerPolicyToHWWPolicy(policy: LedgerPolicy): HWWPolicy {
   const registration =
     policy.policyId !== undefined || policy.policyHmac !== undefined
       ? {
@@ -43,7 +35,7 @@ function ledgerPolicyToWalletPolicy(policy: LedgerPolicy): WalletPolicy {
   };
 }
 
-function walletPolicyToLedgerPolicy(policy: WalletPolicy): LedgerPolicy {
+function hwwPolicyToLedgerPolicy(policy: HWWPolicy): LedgerPolicy {
   return {
     ledgerTemplate: policy.descriptorTemplate,
     keyRoots: policy.keyRoots,
@@ -59,48 +51,44 @@ function walletPolicyToLedgerPolicy(policy: WalletPolicy): LedgerPolicy {
   };
 }
 
-function hwwManagerFromLedgerManager(
-  ledgerManager: LedgerManager
-): HardwareWalletPolicyManager {
-  const policies = ledgerManager.ledgerState.policies?.map(
-    ledgerPolicyToWalletPolicy
-  );
+function policyResolverFromSession(session: LedgerSession): HWWPolicyResolver {
+  const knownPolicies = session.state.policies?.map(ledgerPolicyToHWWPolicy);
   return {
-    Output: ledgerManager.Output,
-    network: ledgerManager.network,
-    ...(policies !== undefined ? { policies } : {}),
-    getMasterFingerprint: () => getLedgerMasterFingerPrint({ ledgerManager }),
-    getXpub: originPath => getLedgerXpub({ originPath, ledgerManager })
+    Output: session.Output,
+    network: session.network,
+    ...(knownPolicies !== undefined ? { knownPolicies } : {}),
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session })
   };
 }
 
 export async function ledgerPolicyFromPsbtInput({
-  ledgerManager,
+  session,
   psbt,
   index
 }: {
-  ledgerManager: LedgerManager;
+  session: LedgerSession;
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
 }): Promise<LedgerPolicy | undefined> {
   const policy = await policyFromPsbtInput({
-    hwwManager: hwwManagerFromLedgerManager(ledgerManager),
+    policyResolver: policyResolverFromSession(session),
     psbt,
     index
   });
-  return policy ? walletPolicyToLedgerPolicy(policy) : undefined;
+  return policy ? hwwPolicyToLedgerPolicy(policy) : undefined;
 }
 
 export async function ledgerPolicyFromOutput({
   output,
-  ledgerManager
+  session
 }: {
   output: OutputInstance;
-  ledgerManager: LedgerManager;
+  session: LedgerSession;
 }): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
   const policy = await policyFromOutput({
     output,
-    hwwManager: hwwManagerFromLedgerManager(ledgerManager)
+    policyResolver: policyResolverFromSession(session)
   });
   return policy
     ? {
@@ -112,35 +100,35 @@ export async function ledgerPolicyFromOutput({
 
 export async function ledgerPolicyFromStandard({
   output,
-  ledgerManager
+  session
 }: {
   output: OutputInstance;
-  ledgerManager: LedgerManager;
+  session: LedgerSession;
 }): Promise<LedgerPolicy | null> {
   const policy = await policyFromStandard({
     output,
-    hwwManager: hwwManagerFromLedgerManager(ledgerManager)
+    policyResolver: policyResolverFromSession(session)
   });
-  return policy ? walletPolicyToLedgerPolicy(policy) : null;
+  return policy ? hwwPolicyToLedgerPolicy(policy) : null;
 }
 
 export function comparePolicies(policyA: LedgerPolicy, policyB: LedgerPolicy) {
   return compareWalletPolicies(
-    ledgerPolicyToWalletPolicy(policyA),
-    ledgerPolicyToWalletPolicy(policyB)
+    ledgerPolicyToHWWPolicy(policyA),
+    ledgerPolicyToHWWPolicy(policyB)
   );
 }
 
 export async function ledgerPolicyFromState({
   output,
-  ledgerManager
+  session
 }: {
   output: OutputInstance;
-  ledgerManager: LedgerManager;
+  session: LedgerSession;
 }): Promise<LedgerPolicy | null> {
   const policy = await policyFromState({
     output,
-    hwwManager: hwwManagerFromLedgerManager(ledgerManager)
+    policyResolver: policyResolverFromSession(session)
   });
-  return policy ? walletPolicyToLedgerPolicy(policy) : null;
+  return policy ? hwwPolicyToLedgerPolicy(policy) : null;
 }

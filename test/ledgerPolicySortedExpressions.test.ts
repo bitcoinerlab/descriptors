@@ -11,7 +11,7 @@ import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
-import type { LedgerManager } from '../dist/ledger/index';
+import type { LedgerSession } from '../dist/ledger/index';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromPsbtInput
@@ -43,13 +43,13 @@ function manyExternalKeys(startSeed: number, count: number): string[] {
   );
 }
 
-function mockLedgerManager(masterFingerprint: Uint8Array): LedgerManager {
+function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
   const ledgerClient = Object.create(AppClient.prototype) as InstanceType<
     typeof AppClient
   >;
   return {
-    ledgerClient,
-    ledgerState: { masterFingerprint },
+    client: ledgerClient,
+    state: { masterFingerprint },
     Output,
     network: NETWORK
   };
@@ -123,7 +123,7 @@ describeIfNotScure(
 
       const result = await ledgerPolicyFromOutput({
         output,
-        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+        session: mockLedgerSession(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -152,7 +152,7 @@ describeIfNotScure(
 
       const result = await ledgerPolicyFromOutput({
         output,
-        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+        session: mockLedgerSession(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -179,7 +179,7 @@ describeIfNotScure(
 
       const result = await ledgerPolicyFromOutput({
         output,
-        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+        session: mockLedgerSession(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -217,7 +217,7 @@ describeIfNotScure(
 
       const result = await ledgerPolicyFromOutput({
         output,
-        ledgerManager: mockLedgerManager(ledgerMaster.fingerprint)
+        session: mockLedgerSession(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -260,8 +260,8 @@ describeIfNotScure(
         }
       });
 
-      const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
-      ledgerManager.ledgerState.policies = [
+      const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
+      ledgerSession.state.policies = [
         {
           ledgerTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
           keyRoots: [
@@ -272,7 +272,7 @@ describeIfNotScure(
       ];
 
       const policy = await ledgerPolicyFromPsbtInput({
-        ledgerManager,
+        session: ledgerSession,
         psbt,
         index: 0
       });
@@ -316,8 +316,8 @@ describeIfNotScure(
         }
       });
 
-      const ledgerManager = mockLedgerManager(ledgerMaster.fingerprint);
-      ledgerManager.ledgerState.policies = [
+      const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
+      ledgerSession.state.policies = [
         {
           ledgerTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
           keyRoots: [
@@ -329,7 +329,7 @@ describeIfNotScure(
       ];
 
       const policy = await ledgerPolicyFromPsbtInput({
-        ledgerManager,
+        session: ledgerSession,
         psbt,
         index: 0
       });

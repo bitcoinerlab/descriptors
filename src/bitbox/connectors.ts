@@ -6,7 +6,7 @@ import type { Network } from '../networks';
 import type {
   BitBoxClient,
   BitBoxFormatUnit,
-  BitBoxManager,
+  BitBoxSession,
   BitBoxState
 } from './types';
 
@@ -37,7 +37,7 @@ export type FromClientParams = {
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
-  /** Existing mutable cache for fingerprint, xpubs and registered policies. */
+  /** Existing app-owned state for cached keys and wallet policy metadata. */
   state?: BitBoxState;
   /** Optional display unit passed to `btcSignPSBT`. */
   formatUnit?: BitBoxFormatUnit;
@@ -49,15 +49,15 @@ export function fromClient({
   network,
   state,
   formatUnit
-}: FromClientParams): BitBoxManager {
-  const manager: BitBoxManager = {
-    bitboxClient: client,
-    bitboxState: state ?? {},
+}: FromClientParams): BitBoxSession {
+  const session: BitBoxSession = {
+    client,
+    state: state ?? {},
     Output,
     network
   };
-  if (formatUnit !== undefined) manager.formatUnit = formatUnit;
-  return manager;
+  if (formatUnit !== undefined) session.formatUnit = formatUnit;
+  return session;
 }
 
 export type ConnectMechanism = 'auto' | 'bridge' | 'webhid';
@@ -75,7 +75,7 @@ async function connectWith(
     'bitbox02ConnectAuto' | 'bitbox02ConnectBridge' | 'bitbox02ConnectWebHID'
   >,
   params: ConnectParams
-): Promise<BitBoxManager> {
+): Promise<BitBoxSession> {
   const bitboxApi = await importBitBoxApi('bitbox-api');
   const unpaired = await bitboxApi[connectName](params.onClose);
   const pairing = await unpaired.unlockAndPair();
@@ -94,22 +94,22 @@ async function connectWith(
   });
 }
 
-export function auto(params: ConnectParams): Promise<BitBoxManager> {
+export function auto(params: ConnectParams): Promise<BitBoxSession> {
   return connectWith('bitbox02ConnectAuto', params);
 }
 
-export function bridge(params: ConnectParams): Promise<BitBoxManager> {
+export function bridge(params: ConnectParams): Promise<BitBoxSession> {
   return connectWith('bitbox02ConnectBridge', params);
 }
 
-export function webhid(params: ConnectParams): Promise<BitBoxManager> {
+export function webhid(params: ConnectParams): Promise<BitBoxSession> {
   return connectWith('bitbox02ConnectWebHID', params);
 }
 
 export async function connect({
   mechanism = 'auto',
   ...params
-}: ConnectParams & { mechanism?: ConnectMechanism }): Promise<BitBoxManager> {
+}: ConnectParams & { mechanism?: ConnectMechanism }): Promise<BitBoxSession> {
   if (mechanism === 'bridge') return bridge(params);
   if (mechanism === 'webhid') return webhid(params);
   return auto(params);

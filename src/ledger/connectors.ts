@@ -4,7 +4,7 @@
 import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import { assertLedgerApp, importAndValidateLedgerBitcoin } from './client';
-import type { LedgerManager, LedgerState } from './index';
+import type { LedgerClient, LedgerSession, LedgerState } from './types';
 
 type LedgerTransport = {
   send(cla: number, ins: number, p1: number, p2: number): Promise<Buffer>;
@@ -25,12 +25,12 @@ const importModule = new Function('specifier', 'return import(specifier)') as (
 
 export type FromClientParams = {
   /** Ledger Bitcoin app client instance. */
-  client: unknown;
+  client: LedgerClient;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
-  /** Existing mutable cache for fingerprints, xpubs and registered policies. */
+  /** Existing app-owned state for cached keys and wallet policy receipts. */
   state?: LedgerState;
 };
 
@@ -39,10 +39,10 @@ export function fromClient({
   Output,
   network,
   state
-}: FromClientParams): LedgerManager {
+}: FromClientParams): LedgerSession {
   return {
-    ledgerClient: client,
-    ledgerState: state ?? {},
+    client,
+    state: state ?? {},
     Output,
     network
   };
@@ -70,7 +70,7 @@ export async function nodeHid({
   appName = 'Bitcoin',
   minVersion = '2.1.0',
   assertApp = true
-}: NodeHidParams): Promise<LedgerManager> {
+}: NodeHidParams): Promise<LedgerSession> {
   const transportModule = (await importModule(
     '@ledgerhq/hw-transport-node-hid'
   )) as LedgerNodeHidTransportModule;

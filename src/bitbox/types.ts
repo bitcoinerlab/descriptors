@@ -101,17 +101,25 @@ export type BitBoxPolicy = {
   account?: BitBoxMultisigAccount;
 };
 
+/**
+ * App-owned BitBox state.
+ *
+ * `masterFingerprint` and `xpubs` are caches. `policies` is the local wallet
+ * policy mapping this library needs to display addresses and sign later. A
+ * BitBox can confirm whether a script config is registered, but it does not
+ * return the app's descriptor policy list.
+ */
 export type BitBoxState = {
   masterFingerprint?: Uint8Array;
   policies?: BitBoxPolicy[];
   xpubs?: { [key: string]: string };
 };
 
-export type BitBoxManager = {
+export type BitBoxSession = {
   /** Connected and paired BitBox-compatible provider client. */
-  bitboxClient: BitBoxClient;
-  /** Mutable cache for fingerprint, xpubs and registered policies. */
-  bitboxState: BitBoxState;
+  client: BitBoxClient;
+  /** App-owned state for cached keys and registered wallet policy metadata. */
+  state: BitBoxState;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */

@@ -11,154 +11,61 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { OutputConstructor } from '../descriptors';
-import type { Network } from '../networks';
 import {
-  assertBitBoxPolicyCanDerive,
-  bitboxPolicyFromStandard,
-  bitboxPolicyFromState,
-  bitboxAddressKeypathFromPolicy,
-  bitboxScriptConfigFromMultisigAccount,
-  bitboxScriptConfigFromPolicy,
-  registerBitBoxWallet
+  assertPolicyCanDerive,
+  policyFromStandard,
+  policyFromState,
+  addressKeypathFromPolicy,
+  scriptConfigFromMultisigAccount,
+  scriptConfigFromPolicy
 } from './policies';
-import {
-  bitboxApiNetwork,
-  bitboxSimpleType,
-  getBitBoxMasterFingerprint,
-  getBitBoxVersion,
-  getBitBoxXpub
-} from './client';
-import { keyExpressionBitBox } from './keyExpressions';
-import type { BitBoxManager, BitBoxPolicy, BitBoxState } from './types';
+import { apiNetwork, simpleType } from './client';
+import type { BitBoxPolicy, BitBoxSession, BitBoxState } from './types';
 
 export type {
+  BitBoxApiNetwork,
+  BitBoxClient,
   BitBoxFormatUnit,
   BitBoxKeyOriginInfo,
   BitBoxKeypath,
-  BitBoxManager,
   BitBoxMultisigAccount,
   BitBoxMultisigScriptConfig,
   BitBoxMultisigScriptType,
   BitBoxPolicy,
   BitBoxPolicyScriptConfig,
+  BitBoxRegisterXPubType,
   BitBoxScriptConfig,
   BitBoxScriptConfigWithKeypath,
+  BitBoxSession,
   BitBoxSimpleType,
-  BitBoxState
+  BitBoxState,
+  BitBoxXPubType
 } from './types';
 
-export {
-  bitboxAccountFromPolicy,
-  bitboxPolicyFromOutput,
-  bitboxPolicyFromPsbtInput,
-  bitboxPolicyFromStandard,
-  bitboxPolicyFromState,
-  bitboxAddressKeypathFromPolicy,
-  bitboxOwnOriginPathFromPolicy,
-  bitboxSigningKeypathFromPolicy,
-  bitboxScriptConfigFromMultisigAccount,
-  bitboxScriptConfigFromPolicy,
-  fingerprintHex,
-  registerBitBoxWallet
-} from './policies';
-export {
-  getBitBoxMasterFingerprint,
-  getBitBoxVersion,
-  getBitBoxXpub
-} from './client';
-export { keyExpressionBitBox };
+export { registerWallet } from './policies';
+export { getMasterFingerprint, getVersion, getXpub } from './client';
+export { keyExpression } from './keyExpressions';
 export * as scriptExpressions from './scriptExpressions';
 export * as signers from './signers';
 export * as connectors from './connectors';
 
-export type Manager = BitBoxManager;
+export type Session = BitBoxSession;
 export type State = BitBoxState;
 
-export async function getVersion({
-  manager
-}: {
-  manager: BitBoxManager;
-}): Promise<string> {
-  return getBitBoxVersion({ bitboxManager: manager });
-}
-
-export async function getMasterFingerprint({
-  manager
-}: {
-  manager: BitBoxManager;
-}): Promise<Uint8Array> {
-  return getBitBoxMasterFingerprint({ bitboxManager: manager });
-}
-
-export async function getXpub({
-  manager,
-  originPath,
-  display
-}: {
-  manager: BitBoxManager;
-  originPath: string;
-  display?: boolean;
-}): Promise<string> {
-  return getBitBoxXpub({
-    bitboxManager: manager,
-    originPath,
-    ...(display !== undefined ? { display } : {})
-  });
-}
-
-export async function keyExpression({
-  manager,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  manager: BitBoxManager;
-  originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
-}): Promise<string> {
-  return keyExpressionBitBox({
-    bitboxManager: manager,
-    originPath,
-    keyPath,
-    change,
-    index
-  });
-}
-
-export async function registerWallet({
-  descriptor,
-  manager,
-  policyName
-}: {
+export type AddressDisplayParams = {
   descriptor: string;
-  manager: BitBoxManager;
-  policyName: string;
-}): Promise<void> {
-  return registerBitBoxWallet({
-    descriptor,
-    bitboxManager: manager,
-    policyName
-  });
-}
-
-export type BitBoxAddressDisplayParams = {
-  descriptor: string;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   change?: number;
   index: number;
 };
 
 function outputForDisplay({
   descriptor,
-  bitboxManager,
+  session,
   change,
   index
-}: BitBoxAddressDisplayParams) {
-  const { Output, network } = bitboxManager;
+}: AddressDisplayParams) {
+  const { Output, network } = session;
   return new Output({
     descriptor,
     ...(descriptor.includes('*') ? { index } : {}),
@@ -173,25 +80,25 @@ function keyRootOriginPath(keyRoot: string): string | undefined {
 
 async function displayStandardAddress({
   policy,
-  bitboxManager,
+  session,
   change,
   index
 }: {
   policy: BitBoxPolicy;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   change: number;
   index: number;
 }) {
-  const { bitboxClient } = bitboxManager;
+  const { client } = session;
   const originPath = keyRootOriginPath(policy.keyRoots[0] ?? '');
   if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
-  return bitboxClient.btcAddress(
-    bitboxApiNetwork(bitboxManager),
+  return client.btcAddress(
+    apiNetwork(session),
     `m${originPath}/${change}/${index}`,
     {
-      simpleType: bitboxSimpleType({
+      simpleType: simpleType({
         descriptorTemplate: policy.descriptorTemplate,
-        bitboxManager
+        session
       })
     },
     true
@@ -200,99 +107,70 @@ async function displayStandardAddress({
 
 async function displayMultisigAddress({
   policy,
-  bitboxManager,
+  session,
   change,
   index
 }: {
   policy: BitBoxPolicy;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   change: number;
   index: number;
 }) {
-  const { bitboxClient } = bitboxManager;
+  const { client } = session;
   const account = policy.account;
   if (!account)
-    throw new Error(
-      `BitBox policy missing account; call registerBitBoxWallet first`
-    );
-  return bitboxClient.btcAddress(
-    bitboxApiNetwork(bitboxManager),
+    throw new Error(`BitBox policy missing account; call registerWallet first`);
+  return client.btcAddress(
+    apiNetwork(session),
     `${account.keypathAccount}/${change}/${index}`,
-    bitboxScriptConfigFromMultisigAccount(account),
+    scriptConfigFromMultisigAccount(account),
     true
   );
 }
 
 async function displayPolicyAddress({
   policy,
-  bitboxManager,
+  session,
   change,
   index
 }: {
   policy: BitBoxPolicy;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   change: number;
   index: number;
 }) {
-  assertBitBoxPolicyCanDerive(policy);
-  return bitboxManager.bitboxClient.btcAddress(
-    bitboxApiNetwork(bitboxManager),
-    bitboxAddressKeypathFromPolicy({ policy, bitboxManager, change, index }),
-    bitboxScriptConfigFromPolicy({ policy, bitboxManager }),
+  assertPolicyCanDerive(policy);
+  return session.client.btcAddress(
+    apiNetwork(session),
+    addressKeypathFromPolicy({ policy, session, change, index }),
+    scriptConfigFromPolicy({ policy, session }),
     true
   );
 }
 
-export async function displayBitBoxAddress({
+export async function displayAddress({
   descriptor,
-  bitboxManager,
+  session,
   change = 0,
   index
-}: BitBoxAddressDisplayParams): Promise<string | void> {
-  const output = outputForDisplay({ descriptor, bitboxManager, change, index });
-  const standardPolicy = await bitboxPolicyFromStandard({
+}: AddressDisplayParams): Promise<string | void> {
+  const output = outputForDisplay({ descriptor, session, change, index });
+  const standardPolicy = await policyFromStandard({
     output,
-    bitboxManager
+    session
   });
   if (standardPolicy)
     return displayStandardAddress({
       policy: standardPolicy,
-      bitboxManager,
+      session,
       change,
       index
     });
 
-  const policy = await bitboxPolicyFromState({ output, bitboxManager });
+  const policy = await policyFromState({ output, session });
   if (!policy)
-    throw new Error(
-      `BitBox policy not registered; call registerBitBoxWallet first`
-    );
+    throw new Error(`BitBox policy not registered; call registerWallet first`);
   return policy.account
-    ? displayMultisigAddress({ policy, bitboxManager, change, index })
-    : displayPolicyAddress({ policy, bitboxManager, change, index });
+    ? displayMultisigAddress({ policy, session, change, index })
+    : displayPolicyAddress({ policy, session, change, index });
 }
-
-export async function displayAddress({
-  descriptor,
-  manager,
-  change,
-  index
-}: Omit<BitBoxAddressDisplayParams, 'bitboxManager'> & {
-  manager: BitBoxManager;
-}): Promise<string | void> {
-  return displayBitBoxAddress({
-    descriptor,
-    bitboxManager: manager,
-    ...(change !== undefined ? { change } : {}),
-    index
-  });
-}
-
-export type BitBoxManagerParams = {
-  bitboxManager: BitBoxManager;
-};
-
-export type BitBoxManagerShape = {
-  Output: OutputConstructor;
-  network: Network;
-};

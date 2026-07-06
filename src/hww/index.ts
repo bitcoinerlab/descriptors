@@ -12,18 +12,11 @@
 // Distributed under the MIT software license
 
 export type {
-  DisplayAddressRequest,
-  HardwareWalletCapabilities,
-  HardwareWalletClient,
-  HardwareWalletKind,
-  HardwareWalletPolicyManager,
-  HardwareWalletState,
-  KnownHardwareWalletKind,
-  SignedPsbtResult,
-  SignPsbtRequest,
-  WalletPolicy,
-  WalletRegistration
+  HWWKeySource,
+  HWWPolicy,
+  HWWPolicyRegistration,
+  HWWPolicyResolver
 } from './types';
 
-export { keyExpressionHardwareWallet } from './keyExpressions';
+export { keyExpressionHWW } from './keyExpressions';
 export * as policies from './policies';

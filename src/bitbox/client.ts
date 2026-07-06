@@ -5,39 +5,33 @@ import { coinTypeFromNetwork } from '../networkUtils';
 import { fromHex } from 'uint8array-tools';
 import type {
   BitBoxFormatUnit,
-  BitBoxManager,
+  BitBoxSession,
   BitBoxApiNetwork,
   BitBoxSimpleType
 } from './types';
 
-export type BitBoxApiXPubType = 'tpub' | 'xpub';
+type ApiXpubType = 'tpub' | 'xpub';
 
-export function bitboxApiNetwork(
-  bitboxManager: BitBoxManager
-): BitBoxApiNetwork {
-  const coinType = coinTypeFromNetwork(bitboxManager.network);
+export function apiNetwork(session: BitBoxSession): BitBoxApiNetwork {
+  const coinType = coinTypeFromNetwork(session.network);
   return coinType === 0 ? 'btc' : 'tbtc';
 }
 
-export function bitboxXpubType(
-  bitboxManager: Pick<BitBoxManager, 'network'>
-): BitBoxApiXPubType {
-  const coinType = coinTypeFromNetwork(bitboxManager.network);
+function xpubType(session: Pick<BitBoxSession, 'network'>): ApiXpubType {
+  const coinType = coinTypeFromNetwork(session.network);
   return coinType === 0 ? 'xpub' : 'tpub';
 }
 
-export function bitboxFormatUnit(
-  bitboxManager: BitBoxManager
-): BitBoxFormatUnit {
-  return bitboxManager.formatUnit ?? 'default';
+export function formatUnit(session: BitBoxSession): BitBoxFormatUnit {
+  return session.formatUnit ?? 'default';
 }
 
-export function bitboxSimpleType({
+export function simpleType({
   descriptorTemplate,
-  bitboxManager
+  session
 }: {
   descriptorTemplate: string;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): BitBoxSimpleType {
   if (descriptorTemplate === 'pkh(@0/**)') {
     throw new Error(
@@ -56,52 +50,52 @@ export function bitboxSimpleType({
     throw new Error(
       `Descriptor template is not a BitBox02 supported simple type`
     );
-  void bitboxManager;
+  void session;
   return name;
 }
 
-export async function getBitBoxVersion({
-  bitboxManager
+export async function getVersion({
+  session
 }: {
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<string> {
-  return bitboxManager.bitboxClient.version();
+  return session.client.version();
 }
 
-export async function getBitBoxMasterFingerprint({
-  bitboxManager
+export async function getMasterFingerprint({
+  session
 }: {
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<Uint8Array> {
-  const { bitboxClient, bitboxState } = bitboxManager;
-  if (bitboxState.masterFingerprint) return bitboxState.masterFingerprint;
+  const { client, state } = session;
+  if (state.masterFingerprint) return state.masterFingerprint;
 
-  const masterFingerprint = fromHex(await bitboxClient.rootFingerprint());
-  bitboxState.masterFingerprint = masterFingerprint;
+  const masterFingerprint = fromHex(await client.rootFingerprint());
+  state.masterFingerprint = masterFingerprint;
   return masterFingerprint;
 }
 
-export async function getBitBoxXpub({
+export async function getXpub({
   originPath,
-  bitboxManager,
+  session,
   display = false
 }: {
   originPath: string;
-  bitboxManager: BitBoxManager;
+  session: BitBoxSession;
   display?: boolean;
 }): Promise<string> {
-  const { bitboxClient, bitboxState } = bitboxManager;
-  if (!bitboxState.xpubs) bitboxState.xpubs = {};
-  const cacheKey = `${originPath}:${bitboxXpubType(bitboxManager)}`;
-  let xpub = bitboxState.xpubs[cacheKey];
+  const { client, state } = session;
+  if (!state.xpubs) state.xpubs = {};
+  const cacheKey = `${originPath}:${xpubType(session)}`;
+  let xpub = state.xpubs[cacheKey];
   if (!xpub) {
-    xpub = await bitboxClient.btcXpub(
-      bitboxApiNetwork(bitboxManager),
+    xpub = await client.btcXpub(
+      apiNetwork(session),
       `m${originPath}`,
-      bitboxXpubType(bitboxManager),
+      xpubType(session),
       display
     );
-    bitboxState.xpubs[cacheKey] = xpub;
+    state.xpubs[cacheKey] = xpub;
   }
   return xpub;
 }

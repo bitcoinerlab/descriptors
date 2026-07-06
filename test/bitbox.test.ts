@@ -15,7 +15,7 @@ import {
   registerWallet,
   scriptExpressions,
   signers,
-  type Manager,
+  type Session,
   type BitBoxScriptConfig
 } from '../dist/bitbox';
 
@@ -64,7 +64,7 @@ function makeMaster(seed: number, network = NETWORK): BIP32InterfaceLike {
   return BIP32.fromSeed(new Uint8Array(32).fill(seed), network);
 }
 
-function managerFor(
+function sessionFor(
   master: BIP32InterfaceLike,
   client: ProviderClient,
   network = NETWORK
@@ -74,7 +74,7 @@ function managerFor(
     state: { masterFingerprint: master.fingerprint },
     Output,
     network
-  }) satisfies Manager;
+  }) satisfies Session;
 }
 
 function fakeClientFor(master: BIP32InterfaceLike) {
@@ -178,11 +178,11 @@ describe('BitBox helpers', () => {
     const bitboxMaster = makeMaster(1);
     const otherMaster = makeMaster(2);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const originPath = "/48'/1'/0'/2'";
 
     const bitboxKey = await keyExpression({
-      manager: bitboxManager,
+      session: bitboxSession,
       originPath,
       keyPath: '/0/*'
     });
@@ -195,7 +195,7 @@ describe('BitBox helpers', () => {
 
     await registerWallet({
       descriptor,
-      manager: bitboxManager,
+      session: bitboxSession,
       policyName: 'Test BitBox'
     });
 
@@ -214,7 +214,7 @@ describe('BitBox helpers', () => {
     await expect(
       displayAddress({
         descriptor,
-        manager: bitboxManager,
+        session: bitboxSession,
         change: 0,
         index: 7
       })
@@ -225,10 +225,10 @@ describe('BitBox helpers', () => {
   test('passes xpub and registration modes to BitBox-compatible clients', async () => {
     const testnetMaster = makeMaster(10, NETWORK);
     const testnetClient = fakeClientFor(testnetMaster);
-    const testnetManager = managerFor(testnetMaster, testnetClient, NETWORK);
+    const testnetSession = sessionFor(testnetMaster, testnetClient, NETWORK);
 
     await keyExpression({
-      manager: testnetManager,
+      session: testnetSession,
       originPath: "/84'/1'/0'",
       keyPath: '/0/*'
     });
@@ -241,7 +241,7 @@ describe('BitBox helpers', () => {
     });
 
     const testnetKey = await keyExpression({
-      manager: testnetManager,
+      session: testnetSession,
       originPath: "/48'/1'/0'/2'",
       keyPath: '/0/*'
     });
@@ -255,7 +255,7 @@ describe('BitBox helpers', () => {
 
     await registerWallet({
       descriptor: `wsh(and_v(v:pk(${testnetKey}),older(5)))`,
-      manager: testnetManager,
+      session: testnetSession,
       policyName: 'Test provider client'
     });
 
@@ -263,14 +263,14 @@ describe('BitBox helpers', () => {
 
     const mainnetMaster = makeMaster(11, networks.bitcoin);
     const mainnetClient = fakeClientFor(mainnetMaster);
-    const mainnetManager = managerFor(
+    const mainnetSession = sessionFor(
       mainnetMaster,
       mainnetClient,
       networks.bitcoin
     );
 
     await keyExpression({
-      manager: mainnetManager,
+      session: mainnetSession,
       originPath: "/84'/0'/0'",
       keyPath: '/0/*'
     });
@@ -286,16 +286,16 @@ describe('BitBox helpers', () => {
   test('displays standard single-sig addresses', async () => {
     const bitboxMaster = makeMaster(3);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const descriptor = await scriptExpressions.wpkh({
-      manager: bitboxManager,
+      session: bitboxSession,
       account: 0,
       change: 0,
       index: '*'
     });
 
     await expect(
-      displayAddress({ descriptor, manager: bitboxManager, index: 7 })
+      displayAddress({ descriptor, session: bitboxSession, index: 7 })
     ).resolves.toBe('bcrt1simple');
 
     expect(client.displayed).toEqual({
@@ -309,11 +309,11 @@ describe('BitBox helpers', () => {
   test('rejects top-level legacy pkh descriptors before calling the device', async () => {
     const bitboxMaster = makeMaster(8);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
 
     await expect(
       scriptExpressions.pkh({
-        manager: bitboxManager,
+        session: bitboxSession,
         account: 0,
         change: 0,
         index: '*'
@@ -321,14 +321,14 @@ describe('BitBox helpers', () => {
     ).rejects.toThrow('top-level legacy p2pkh');
 
     const bitboxKey = await keyExpression({
-      manager: bitboxManager,
+      session: bitboxSession,
       originPath: "/44'/1'/0'",
       keyPath: '/0/*'
     });
     await expect(
       registerWallet({
         descriptor: `pkh(${bitboxKey})`,
-        manager: bitboxManager,
+        session: bitboxSession,
         policyName: 'Test pkh'
       })
     ).rejects.toThrow('top-level legacy p2pkh');
@@ -340,9 +340,9 @@ describe('BitBox helpers', () => {
   test('does not reject Miniscript pkh fragments as legacy addresses', async () => {
     const bitboxMaster = makeMaster(9);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const bitboxKey = await keyExpression({
-      manager: bitboxManager,
+      session: bitboxSession,
       originPath: "/48'/1'/0'/2'",
       keyPath: '/0/*'
     });
@@ -350,7 +350,7 @@ describe('BitBox helpers', () => {
 
     await registerWallet({
       descriptor,
-      manager: bitboxManager,
+      session: bitboxSession,
       policyName: 'Test Miniscript pkh'
     });
 
@@ -362,10 +362,10 @@ describe('BitBox helpers', () => {
   test('registers and displays P2WSH Miniscript policies', async () => {
     const bitboxMaster = makeMaster(5);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const originPath = "/48'/1'/1'/2'";
     const bitboxKey = await keyExpression({
-      manager: bitboxManager,
+      session: bitboxSession,
       originPath,
       keyPath: '/0/*'
     });
@@ -373,7 +373,7 @@ describe('BitBox helpers', () => {
 
     await registerWallet({
       descriptor,
-      manager: bitboxManager,
+      session: bitboxSession,
       policyName: 'Test Policy'
     });
 
@@ -389,7 +389,7 @@ describe('BitBox helpers', () => {
     ).toBe(1);
 
     await expect(
-      displayAddress({ descriptor, manager: bitboxManager, index: 9 })
+      displayAddress({ descriptor, session: bitboxSession, index: 9 })
     ).resolves.toBe('bcrt1policy');
     expect(client.displayed?.keypath).toBe("m/48'/1'/1'/2'/0/9");
     expect(client.displayed?.scriptConfig).toMatchObject({
@@ -400,7 +400,7 @@ describe('BitBox helpers', () => {
   test('signs PSBTs through bitbox-api btcSignPSBT', async () => {
     const bitboxMaster = makeMaster(4);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const signedPsbt = { signed: true };
     const psbtConstructor = {
       fromBuffer: jest.fn(() => signedPsbt),
@@ -432,7 +432,7 @@ describe('BitBox helpers', () => {
       toBase64: () => 'cHNidP8BAA='
     };
 
-    await expect(signers.sign({ psbt, manager: bitboxManager })).resolves.toBe(
+    await expect(signers.sign({ psbt, session: bitboxSession })).resolves.toBe(
       'cHNidP8BAA=:signed'
     );
     expect(client.signed).toEqual({
@@ -450,9 +450,9 @@ describe('BitBox helpers', () => {
   test('rejects sha256 Miniscript policy derivation before calling the device', async () => {
     const bitboxMaster = makeMaster(7);
     const client = fakeClientFor(bitboxMaster);
-    const bitboxManager = managerFor(bitboxMaster, client);
+    const bitboxSession = sessionFor(bitboxMaster, client);
     const bitboxKey = await keyExpression({
-      manager: bitboxManager,
+      session: bitboxSession,
       originPath: "/48'/1'/0'/2'",
       keyPath: '/0/*'
     });
@@ -471,11 +471,11 @@ describe('BitBox helpers', () => {
     });
     await registerWallet({
       descriptor,
-      manager: bitboxManager,
+      session: bitboxSession,
       policyName: 'Test sha256'
     });
     await expect(
-      displayAddress({ descriptor, manager: bitboxManager, index: 0 })
+      displayAddress({ descriptor, session: bitboxSession, index: 0 })
     ).rejects.toThrow('sha256/hash256/hash160/ripemd160');
     expect(client.displayed).toBeUndefined();
     const fundingTx = new Transaction();
@@ -486,7 +486,7 @@ describe('BitBox helpers', () => {
     output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
 
     await expect(
-      signers.sign({ psbt, manager: bitboxManager })
+      signers.sign({ psbt, session: bitboxSession })
     ).rejects.toThrow('sha256/hash256/hash160/ripemd160');
     expect(client.signed).toBeUndefined();
   });

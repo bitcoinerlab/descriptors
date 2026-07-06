@@ -3,17 +3,17 @@
 
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
-import { bitboxFormatUnit, bitboxApiNetwork } from './client';
+import { formatUnit, apiNetwork } from './client';
 import {
-  assertBitBoxPolicyCanDerive,
-  bitboxPolicyFromPsbtInput,
-  bitboxSigningKeypathFromPolicy,
-  bitboxScriptConfigFromPolicy
+  assertPolicyCanDerive,
+  policyFromPsbtInput,
+  signingKeypathFromPolicy,
+  scriptConfigFromPolicy
 } from './policies';
 import type {
-  BitBoxManager,
   BitBoxPolicy,
-  BitBoxScriptConfigWithKeypath
+  BitBoxScriptConfigWithKeypath,
+  BitBoxSession
 } from './types';
 
 type MergeablePsbt = PsbtLike & {
@@ -31,13 +31,13 @@ function samePolicy(left: BitBoxPolicy, right: BitBoxPolicy): boolean {
 
 function policyWithCachedAccount({
   policy,
-  manager
+  session
 }: {
   policy: BitBoxPolicy;
-  manager: BitBoxManager;
+  session: BitBoxSession;
 }): BitBoxPolicy {
   return (
-    manager.bitboxState.policies?.find(cachedPolicy =>
+    session.state.policies?.find(cachedPolicy =>
       samePolicy(cachedPolicy, policy)
     ) ?? policy
   );
@@ -45,39 +45,39 @@ function policyWithCachedAccount({
 
 async function forcedScriptConfigForPsbt({
   psbt,
-  manager
+  session
 }: {
   psbt: PsbtLike;
-  manager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<BitBoxScriptConfigWithKeypath | undefined> {
   const configs = new Map<string, BitBoxScriptConfigWithKeypath>();
 
   for (let index = 0; index < psbt.data.inputs.length; index++) {
-    const policy = await bitboxPolicyFromPsbtInput({
+    const policy = await policyFromPsbtInput({
       psbt,
       index,
-      bitboxManager: manager
+      session
     });
     if (!policy) continue;
 
-    const policyWithAccount = policyWithCachedAccount({ policy, manager });
-    assertBitBoxPolicyCanDerive(policyWithAccount);
-    const scriptConfig = bitboxScriptConfigFromPolicy({
+    const policyWithAccount = policyWithCachedAccount({ policy, session });
+    assertPolicyCanDerive(policyWithAccount);
+    const scriptConfig = scriptConfigFromPolicy({
       policy: policyWithAccount,
-      bitboxManager: manager
+      session
     });
     if (!('multisig' in scriptConfig) && !('policy' in scriptConfig)) continue;
 
     const keypath =
       'multisig' in scriptConfig
         ? policyWithAccount.account?.keypathAccount
-        : bitboxSigningKeypathFromPolicy({
+        : signingKeypathFromPolicy({
             policy: policyWithAccount,
-            bitboxManager: manager
+            session
           });
     if (!keypath)
       throw new Error(
-        `BitBox policy missing account; call registerBitBoxWallet first`
+        `BitBox policy missing account; call registerWallet first`
       );
     const forcedScriptConfig = { scriptConfig, keypath };
     configs.set(JSON.stringify(forcedScriptConfig), forcedScriptConfig);
@@ -109,18 +109,18 @@ function mergeSignedPsbtIfPossible({
 
 export async function sign({
   psbt,
-  manager
+  session
 }: {
   psbt: PsbtLike | ScureTransactionLike;
-  manager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<string> {
   psbt = toPsbt(psbt);
-  const forcedScriptConfig = await forcedScriptConfigForPsbt({ psbt, manager });
-  const signedPsbt = await manager.bitboxClient.btcSignPSBT(
-    bitboxApiNetwork(manager),
+  const forcedScriptConfig = await forcedScriptConfigForPsbt({ psbt, session });
+  const signedPsbt = await session.client.btcSignPSBT(
+    apiNetwork(session),
     psbt.toBase64(),
     forcedScriptConfig,
-    bitboxFormatUnit(manager)
+    formatUnit(session)
   );
   mergeSignedPsbtIfPossible({ psbt, signedPsbt });
   return signedPsbt;
@@ -129,11 +129,11 @@ export async function sign({
 export async function signInput({
   psbt,
   index,
-  manager
+  session
 }: {
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
-  manager: BitBoxManager;
+  session: BitBoxSession;
 }): Promise<string> {
   psbt = toPsbt(psbt);
   if (!psbt.data.inputs[index])
@@ -142,5 +142,5 @@ export async function signInput({
     throw new Error(
       `BitBox btcSignPSBT signs a whole PSBT; signInput is only supported for single-input PSBTs`
     );
-  return sign({ psbt, manager });
+  return sign({ psbt, session });
 }

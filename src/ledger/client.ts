@@ -3,7 +3,7 @@
 
 import * as ledgerBitcoinModule from '@ledgerhq/ledger-bitcoin';
 import { fromHex } from 'uint8array-tools';
-import type { LedgerManager } from './index';
+import type { LedgerManager, LedgerSession } from './types';
 
 export async function importAndValidateLedgerBitcoin(
   ledgerClient?: unknown
@@ -82,6 +82,54 @@ export async function assertLedgerApp({
   }
 }
 
+export async function getMasterFingerprint({
+  session
+}: {
+  session: LedgerSession;
+}): Promise<Uint8Array> {
+  const { client, state } = session;
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    client
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  let masterFingerprint = state.masterFingerprint;
+  if (!masterFingerprint) {
+    masterFingerprint = fromHex(await client.getMasterFingerprint());
+    state.masterFingerprint = masterFingerprint;
+  }
+  return masterFingerprint;
+}
+
+export async function getXpub({
+  originPath,
+  session
+}: {
+  originPath: string;
+  session: LedgerSession;
+}): Promise<string> {
+  const { client, state } = session;
+  const { AppClient } = (await importAndValidateLedgerBitcoin(
+    client
+  )) as typeof import('@ledgerhq/ledger-bitcoin');
+  if (!(client instanceof AppClient))
+    throw new Error(`Error: pass a valid Ledger client`);
+  if (!state.xpubs) state.xpubs = {};
+  let xpub = state.xpubs[originPath];
+  if (!xpub) {
+    try {
+      xpub = await client.getExtendedPubkey(`m${originPath}`, false);
+    } catch (err) {
+      void err;
+      xpub = await client.getExtendedPubkey(`m${originPath}`, true);
+    }
+    if (typeof xpub !== 'string')
+      throw new Error(`Error: Ledger client did not return a valid xpub`);
+    state.xpubs[originPath] = xpub;
+  }
+  return xpub;
+}
+
 /**
  * Retrieves the master fingerprint of a Ledger device.
  *
@@ -92,18 +140,14 @@ export async function getLedgerMasterFingerPrint({
 }: {
   ledgerManager: LedgerManager;
 }): Promise<Uint8Array> {
-  const { ledgerClient, ledgerState } = ledgerManager;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  let masterFingerprint = ledgerState.masterFingerprint;
-  if (!masterFingerprint) {
-    masterFingerprint = fromHex(await ledgerClient.getMasterFingerprint());
-    ledgerState.masterFingerprint = masterFingerprint;
-  }
-  return masterFingerprint;
+  return getMasterFingerprint({
+    session: {
+      client: ledgerManager.ledgerClient,
+      state: ledgerManager.ledgerState,
+      Output: ledgerManager.Output,
+      network: ledgerManager.network
+    }
+  });
 }
 
 /**
@@ -118,24 +162,13 @@ export async function getLedgerXpub({
   originPath: string;
   ledgerManager: LedgerManager;
 }): Promise<string> {
-  const { ledgerClient, ledgerState } = ledgerManager;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  if (!ledgerState.xpubs) ledgerState.xpubs = {};
-  let xpub = ledgerState.xpubs[originPath];
-  if (!xpub) {
-    try {
-      xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, false);
-    } catch (err) {
-      void err;
-      xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, true);
+  return getXpub({
+    originPath,
+    session: {
+      client: ledgerManager.ledgerClient,
+      state: ledgerManager.ledgerState,
+      Output: ledgerManager.Output,
+      network: ledgerManager.network
     }
-    if (typeof xpub !== 'string')
-      throw new Error(`Error: ledgerClient did not return a valid xpub`);
-    ledgerState.xpubs[originPath] = xpub;
-  }
-  return xpub;
+  });
 }

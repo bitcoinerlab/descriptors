@@ -9,20 +9,20 @@ import {
   signers
 } from '@bitcoinerlab/descriptors/ledger';
 
-const manager = await connectors.nodeHid({
+const session = await connectors.nodeHid({
   Output,
   network: networks.bitcoin
 });
 
 const descriptor = await scriptExpressions.wpkh({
-  manager,
+  session,
   account: 0,
   change: 0,
   index: '*'
 });
 
 await registerWallet({
-  manager,
+  session,
   descriptor,
   policyName: 'Savings'
 });
@@ -31,12 +31,12 @@ const psbt = new Psbt();
 // Add inputs and outputs with Output.updatePsbtAsInput(...)
 // and Output.updatePsbtAsOutput(...).
 
-await signers.sign({ psbt, manager });
+await signers.sign({ psbt, session });
 ```
 
 That is the basic shape of a hardware-wallet integration in this library:
 
-1. Connect to the device and create a `manager`.
+1. Connect to the device and create a `session`.
 2. Ask the device for keys and build a descriptor.
 3. Register the wallet policy when the device needs it.
 4. Build a PSBT with the normal `Output` APIs.
@@ -101,7 +101,7 @@ import { connectors } from '@bitcoinerlab/descriptors/ledger';
 
 const ledgerState = {};
 
-const manager = await connectors.nodeHid({
+const session = await connectors.nodeHid({
   Output,
   network: networks.bitcoin,
   state: ledgerState,
@@ -110,18 +110,14 @@ const manager = await connectors.nodeHid({
 });
 ```
 
-The `manager` contains the connected Ledger client, the Bitcoin network, the
+The `session` contains the connected Ledger client, the Bitcoin network, the
 `Output` constructor for your backend, and a mutable `state` object.
-
-Keep the `state` object around if your app has a wallet database. It caches
-fingerprints, xpubs and registered policies, so the app does not need to repeat
-work every time.
 
 If your app already created a Ledger Bitcoin app client with another transport,
 use `fromClient(...)` instead:
 
 ```ts
-const manager = connectors.fromClient({
+const session = connectors.fromClient({
   client: ledgerClient,
   Output,
   network: networks.bitcoin,
@@ -135,13 +131,13 @@ const manager = connectors.fromClient({
 import { Output, networks } from '@bitcoinerlab/descriptors';
 import { connectors } from '@bitcoinerlab/descriptors/bitbox';
 
-const bitboxState = {};
+const state = {};
 
-const manager = await connectors.connect({
+const session = await connectors.connect({
   mechanism: 'auto',
   Output,
   network: networks.bitcoin,
-  state: bitboxState,
+  state,
   onPairingCode: pairingCode => {
     console.log(`Confirm this pairing code on the BitBox: ${pairingCode}`);
   }
@@ -163,11 +159,11 @@ runtimes. For example, a React Native app can provide its own native BitBox
 client and inject it here.
 
 ```ts
-const manager = connectors.fromClient({
-  client: bitboxClient,
+const session = connectors.fromClient({
+  client,
   Output,
   network: networks.bitcoin,
-  state: bitboxState
+  state
 });
 ```
 
@@ -179,11 +175,41 @@ already carry the script type, so BitBox xpub requests use only `xpub` on
 mainnet and `tpub` on non-mainnet networks. Formats such as `ypub`, `zpub`,
 `upub` or `vpub` are not part of this library's BitBox descriptor flow.
 
+## Keep Session State
+
+Do not store a `session` itself. A session contains a live device client. Store
+the `state` object instead, then pass that state back when you create the next
+session.
+
+The state object has two jobs:
+
+- It caches the master fingerprint and xpubs so the app does not need to ask the
+  device every time.
+- It stores wallet policy metadata that this library needs later to display
+  addresses or sign PSBTs for non-standard wallets.
+
+The details are slightly different by device:
+
+- Ledger state stores the registration receipt returned by the Ledger app
+  (`policyId` and `policyHmac`). Keep it with your wallet record. Without it,
+  the app cannot reuse that registered Ledger policy without registering again.
+- BitBox state stores the app-side policy mapping, including multisig account
+  data when needed. The BitBox can tell whether a script config is already
+  registered, but it does not give this library a list of wallet policies to
+  rebuild that mapping later.
+
+If you drop BitBox state, you can call `registerWallet(...)` again for each
+wallet descriptor after reconnecting. The helper checks the device first, avoids
+duplicate on-device registration when possible, and repopulates local state.
+
+If you serialize state as JSON, encode byte arrays such as fingerprints and
+Ledger policy ids/hmacs as hex or base64 in your app database.
+
 ## Build Standard Descriptors
 
 ```ts
 const descriptor = await scriptExpressions.wpkh({
-  manager,
+  session,
   account: 0,
   change: 0,
   index: '*'
@@ -212,7 +238,7 @@ import {
 } from '@bitcoinerlab/descriptors/bitbox';
 
 const key = await keyExpression({
-  manager,
+  session,
   originPath: "/84'/0'/0'",
   keyPath: '/0/*'
 });
@@ -220,7 +246,7 @@ const key = await keyExpression({
 const descriptor = `wsh(and_v(v:pk(${key}),older(10)))`;
 
 await registerWallet({
-  manager,
+  session,
   descriptor,
   policyName: 'CSV Savings'
 });
@@ -231,7 +257,7 @@ descriptor key expression with origin information and an xpub from the device.
 
 Many hardware wallets need to register non-standard wallet policies before they
 can display addresses or sign. `registerWallet(...)` stores what the device
-returns in the manager state. If registration is not needed, or the policy is
+returns in the session state. If registration is not needed, or the policy is
 already known, the helper skips the extra device step when possible.
 
 ## Sign And Finalize
@@ -252,7 +278,7 @@ const recipient = new Output({
 
 recipient.updatePsbtAsOutput({ psbt, value: 10000n });
 
-await signers.sign({ psbt, manager });
+await signers.sign({ psbt, session });
 finalizeInput({ psbt });
 ```
 
@@ -267,14 +293,14 @@ Segwit inputs.
 ## BitBox Details
 
 ```ts
-await bitbox.scriptExpressions.wpkh({ manager, account: 0, index: '*' });
-await bitbox.scriptExpressions.tr({ manager, account: 0, index: '*' });
+await bitbox.scriptExpressions.wpkh({ session, account: 0, index: '*' });
+await bitbox.scriptExpressions.tr({ session, account: 0, index: '*' });
 ```
 
 These are good standard choices for BitBox single-key accounts.
 
 ```ts
-await bitbox.scriptExpressions.pkh({ manager, account: 0, index: '*' });
+await bitbox.scriptExpressions.pkh({ session, account: 0, index: '*' });
 ```
 
 This throws. BitBox02 does not support top-level legacy P2PKH descriptors,
@@ -300,7 +326,7 @@ Miniscript `pkh(KEY)` fragment are not the same thing.
 BitBox signing also accepts a display unit preference:
 
 ```ts
-const manager = await bitbox.connectors.connect({
+const session = await bitbox.connectors.connect({
   Output,
   network: networks.bitcoin,
   formatUnit: 'sat'

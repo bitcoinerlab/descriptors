@@ -35,12 +35,12 @@ function assert(condition: boolean, message: string): void {
 async function runSpendScenario({
   name,
   output,
-  ledgerManager,
+  ledgerSession,
   expectScriptPath
 }: {
   name: string;
   output: InstanceType<typeof Output>;
-  ledgerManager: ledger.Manager;
+  ledgerSession: ledger.Session;
   expectScriptPath: boolean;
 }) {
   const destinationAddress = regtestUtils.RANDOM_ADDRESS;
@@ -72,7 +72,7 @@ async function runSpendScenario({
     value: BigInt(UTXO_VALUE - FEE)
   });
 
-  await ledger.signers.sign({ psbt, manager: ledgerManager });
+  await ledger.signers.sign({ psbt, session: ledgerSession });
 
   const afterSignInput = psbt.data.inputs[0];
   if (!afterSignInput)
@@ -110,7 +110,7 @@ async function runSpendScenario({
 }
 
 (async () => {
-  const ledgerManager = await ledger.connectors.nodeHid({
+  const ledgerSession = await ledger.connectors.nodeHid({
     Output,
     network: NETWORK,
     appName: 'Bitcoin Test',
@@ -119,7 +119,7 @@ async function runSpendScenario({
 
   // Scenario 1: Taproot key-path using standard Ledger BIP86 descriptor
   const trKeyPathDescriptor = await ledger.scriptExpressions.tr({
-    manager: ledgerManager,
+    session: ledgerSession,
     account: 0,
     change: 0,
     index: 0
@@ -128,7 +128,7 @@ async function runSpendScenario({
   await runSpendScenario({
     name: 'ledger taproot key-path spend',
     output: new Output({ descriptor: trKeyPathDescriptor, network: NETWORK }),
-    ledgerManager,
+    ledgerSession,
     expectScriptPath: false
   });
 
@@ -144,7 +144,7 @@ async function runSpendScenario({
     .toBase58();
   const internalKeyExpression = `${softXpub}/0/0`;
   const ledgerLeafExpression = await ledger.keyExpression({
-    manager: ledgerManager,
+    session: ledgerSession,
     originPath,
     change: 0,
     index: 0
@@ -152,7 +152,7 @@ async function runSpendScenario({
   const scriptPathDescriptor = `tr(${internalKeyExpression},pk(${ledgerLeafExpression}))`;
 
   await ledger.registerWallet({
-    manager: ledgerManager,
+    session: ledgerSession,
     descriptor: scriptPathDescriptor,
     policyName: 'Taproot ScriptPath'
   });
@@ -165,7 +165,7 @@ async function runSpendScenario({
         network: NETWORK,
         taprootSpendPath: 'script'
       }),
-      ledgerManager,
+      ledgerSession,
       expectScriptPath: true
     });
   } catch (err) {
