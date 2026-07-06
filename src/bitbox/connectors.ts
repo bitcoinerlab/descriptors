@@ -25,10 +25,53 @@ type BitBoxApiModule = {
   bitbox02ConnectWebHID(onCloseCb?: () => void): Promise<BitBoxConnection>;
 };
 
-const importBitBoxApi = new Function(
-  'specifier',
-  'return import(specifier)'
-) as (specifier: string) => Promise<BitBoxApiModule>;
+type ImportBitBoxApi = (specifier: string) => Promise<BitBoxApiModule>;
+
+let importBitBoxApi: ImportBitBoxApi | undefined;
+
+// bitbox-api is ESM and loads a WASM file, so require('bitbox-api') does not
+// work from this CommonJS build. This helper creates a native dynamic import
+// function only when auto/bridge/webhid connectors are used, keeping simple
+// fromClient(...) imports safe for React Native users that provide their own
+// connected client.
+function getImportBitBoxApi(): ImportBitBoxApi {
+  if (!importBitBoxApi) {
+    try {
+      importBitBoxApi = new Function(
+        'specifier',
+        'return import(specifier)'
+      ) as ImportBitBoxApi;
+    } catch (error) {
+      void error;
+      throw new Error(
+        'BitBox auto/bridge/webhid connectors require native dynamic import support. In React Native, use connectors.fromClient(...) with a platform provider instead.'
+      );
+    }
+  }
+  return importBitBoxApi;
+}
+
+async function importAndValidateBitBoxApi(): Promise<BitBoxApiModule> {
+  try {
+    return await getImportBitBoxApi()('bitbox-api');
+  } catch (error) {
+    const errorCode =
+      error instanceof Error && 'code' in error
+        ? (error as Error & { code?: string }).code
+        : undefined;
+    if (
+      error instanceof Error &&
+      (errorCode === 'MODULE_NOT_FOUND' ||
+        errorCode === 'ERR_MODULE_NOT_FOUND' ||
+        error.message.includes('bitbox-api'))
+    ) {
+      throw new Error(
+        'Could not import "bitbox-api". This peer dependency is required when using BitBox auto/bridge/webhid connectors. Please run "npm install bitbox-api" or use connectors.fromClient(...).'
+      );
+    }
+    throw error;
+  }
+}
 
 export type FromClientParams = {
   /** Connected and paired BitBox-compatible provider client. */
@@ -76,7 +119,7 @@ async function connectWith(
   >,
   params: ConnectParams
 ): Promise<BitBoxSession> {
-  const bitboxApi = await importBitBoxApi('bitbox-api');
+  const bitboxApi = await importAndValidateBitBoxApi();
   const unpaired = await bitboxApi[connectName](params.onClose);
   const pairing = await unpaired.unlockAndPair();
   const pairingCode = pairing.getPairingCode();

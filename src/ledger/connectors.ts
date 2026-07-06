@@ -19,9 +19,29 @@ type LedgerNodeHidTransportModule = {
   };
 };
 
-const importModule = new Function('specifier', 'return import(specifier)') as (
-  specifier: string
-) => Promise<unknown>;
+function importAndValidateNodeHidTransport(): LedgerNodeHidTransportModule {
+  try {
+    return (
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@ledgerhq/hw-transport-node-hid') as LedgerNodeHidTransportModule
+    );
+  } catch (error) {
+    const errorCode =
+      error instanceof Error && 'code' in error
+        ? (error as Error & { code?: string }).code
+        : undefined;
+    if (
+      error instanceof Error &&
+      (errorCode === 'MODULE_NOT_FOUND' ||
+        error.message.includes('@ledgerhq/hw-transport-node-hid'))
+    ) {
+      throw new Error(
+        'Could not import "@ledgerhq/hw-transport-node-hid". This peer dependency is required when using Ledger nodeHid connector. Please run "npm install @ledgerhq/hw-transport-node-hid" or use connectors.fromClient(...).'
+      );
+    }
+    throw error;
+  }
+}
 
 export type FromClientParams = {
   /** Ledger Bitcoin app client instance. */
@@ -71,9 +91,7 @@ export async function nodeHid({
   minVersion = '2.1.0',
   assertApp = true
 }: NodeHidParams): Promise<LedgerSession> {
-  const transportModule = (await importModule(
-    '@ledgerhq/hw-transport-node-hid'
-  )) as LedgerNodeHidTransportModule;
+  const transportModule = importAndValidateNodeHidTransport();
   const ledgerBitcoin =
     (await importAndValidateLedgerBitcoin()) as typeof import('@ledgerhq/ledger-bitcoin');
 
