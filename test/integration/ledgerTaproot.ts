@@ -110,7 +110,8 @@ async function runSpendScenario({
 }
 
 (async () => {
-  const ledgerSession = await ledger.connectors.nodeHid({
+  const ledgerSession = await ledger.connectors.connect({
+    mode: 'node-hid',
     Output,
     network: NETWORK,
     appName: 'Bitcoin Test',

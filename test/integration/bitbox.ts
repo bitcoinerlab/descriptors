@@ -120,7 +120,8 @@ const SOFT_MNEMONIC =
 
 (async () => {
   await ready;
-  const session: Session = await connectors.bridge({
+  const session: Session = await connectors.connect({
+    mode: 'bridge',
     Output,
     network: NETWORK,
     onClose: () => {

@@ -9,7 +9,8 @@ import {
   signers
 } from '@bitcoinerlab/descriptors/ledger';
 
-const session = await connectors.nodeHid({
+const session = await connectors.connect({
+  mode: 'node-hid',
   Output,
   network: networks.bitcoin
 });
@@ -74,6 +75,7 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | --- | --- |
 | `type Session` | Connected device client plus `Output`, network and app-owned state. |
 | `type State` | Persistable app-owned state for cached keys and wallet policy metadata. |
+| `connectors.connect(...)` | Build a session with a built-in explicit transport mode. |
 | `connectors.fromClient(...)` | Build a session from an already connected device client. |
 | `getVersion({ session })` | Read the device/app version exposed by the vendor API. |
 | `getMasterFingerprint({ session })` | Read and cache the BIP32 master fingerprint. |
@@ -93,18 +95,35 @@ produce BIP322 signatures.
 
 ## Install Device Transports
 
+Ledger built-in modes require `@ledgerhq/ledger-bitcoin` plus the transport for
+the mode you use:
+
+| Ledger mode | Install |
+| --- | --- |
+| `node-hid` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-node-hid` |
+| `webhid` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-webhid` |
+| `webusb` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-webusb` |
+
 ```bash
 npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-node-hid
 ```
 
-Install these packages if you want to connect to a Ledger from Node.js with HID.
+This installs Ledger support for Node.js HID.
+
+BitBox built-in modes all use `bitbox-api`:
+
+| BitBox mode | Install |
+| --- | --- |
+| `webhid` | `npm install bitbox-api` |
+| `bridge` | `npm install bitbox-api` |
+| `webhid-or-bridge` | `npm install bitbox-api` |
 
 ```bash
 npm install bitbox-api
 ```
 
-Install `bitbox-api` if you want to use the built-in BitBox browser, WebHID or
-BitBoxBridge connector.
+This installs support for the built-in BitBox browser WebHID and BitBoxBridge
+connectors.
 
 You do not need these packages if your app already has a connected device
 client. In that case, use `connectors.fromClient(...)` and pass the client to
@@ -118,17 +137,31 @@ import { connectors } from '@bitcoinerlab/descriptors/ledger';
 
 const ledgerState = {};
 
-const session = await connectors.nodeHid({
+const session = await connectors.connect({
+  mode: 'node-hid',
   Output,
   network: networks.bitcoin,
   state: ledgerState,
   appName: 'Bitcoin',
-  minVersion: '2.1.0'
+  minVersion: '2.1.0',
+  openTimeout: 3000,
+  listenTimeout: 3000
 });
 ```
 
 The `session` contains the connected Ledger client, the Bitcoin network, the
 `Output` constructor for your backend, and a mutable `state` object.
+
+Available Ledger modes are:
+
+- `node-hid`
+- `webhid`
+- `webusb`
+
+WebHID and WebUSB are browser transports. They must be called from a browser
+context that can show the device permission prompt, usually from a user gesture.
+`openTimeout` and `listenTimeout` are only for `node-hid`; browser modes use the
+Ledger browser transport defaults.
 
 If your app already created a Ledger Bitcoin app client with another transport,
 use `fromClient(...)` instead:
@@ -151,7 +184,7 @@ import { connectors } from '@bitcoinerlab/descriptors/bitbox';
 const state = {};
 
 const session = await connectors.connect({
-  mechanism: 'auto',
+  mode: 'webhid-or-bridge',
   Output,
   network: networks.bitcoin,
   state,
@@ -164,11 +197,15 @@ const session = await connectors.connect({
 `connectors.connect(...)` uses `bitbox-api` lazily. It does not import BitBox
 code unless you call the connector.
 
-Available BitBox mechanisms are:
+Available BitBox modes are:
 
-- `auto`
-- `bridge`
 - `webhid`
+- `bridge`
+- `webhid-or-bridge`
+
+`webhid-or-bridge` is the `bitbox-api` fallback flow: it tries WebHID when
+available and otherwise attempts BitBoxBridge. For React Native and other native
+apps, use `fromClient(...)` instead of a built-in mode.
 
 If your app already has a paired BitBox-compatible provider client, use
 `fromClient(...)`. This is the right path for mobile apps and other native
@@ -337,8 +374,8 @@ non-standard policies are also not supported by this helper.
 
 BitBox adds these device-specific extensions on top of the common API:
 
-- `connectors.connect(...)`, `connectors.auto(...)`, `connectors.bridge(...)`
-  and `connectors.webhid(...)` for built-in `bitbox-api` connection flows.
+- `connectors.connect(...)` with `webhid`, `bridge` or `webhid-or-bridge` mode
+  for built-in `bitbox-api` connection flows.
 - `formatUnit` in connector params and sessions to choose how amounts are shown
   while signing.
 
@@ -380,6 +417,7 @@ BitBox signing also accepts a display unit preference:
 
 ```ts
 const session = await bitbox.connectors.connect({
+  mode: 'webhid-or-bridge',
   Output,
   network: networks.bitcoin,
   formatUnit: 'sat'
@@ -394,7 +432,8 @@ passes `default`.
 
 Ledger adds these device-specific extensions on top of the common API:
 
-- `connectors.nodeHid(...)` for Node.js HID connections.
+- `connectors.connect(...)` with `node-hid`, `webhid` or `webusb` mode for
+  built-in Ledger connection flows.
 - `assertLedgerApp(...)` to verify the open Ledger app and minimum version when
   you manage the transport yourself.
 - Deprecated 3.x compatibility names such as `LedgerManager`,
