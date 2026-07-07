@@ -17,7 +17,7 @@ import type { ExpansionMap, KeyInfo } from '../types';
 import type { TapTreeInfoNode } from '../tapTree';
 import type { HWWPolicy, HWWPolicyResolver } from './types';
 
-export function isStandardPolicy({
+function isStandardPolicy({
   descriptorTemplate,
   keyRoots,
   network
