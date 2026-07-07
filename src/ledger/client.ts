@@ -100,18 +100,18 @@ export async function getMasterFingerprint({
 }: {
   session: LedgerSession;
 }): Promise<Uint8Array> {
-  const { client, state } = session;
+  const { client, store } = session;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     client
   )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(client instanceof AppClient))
     throw new Error(`Error: pass a valid Ledger client`);
-  let masterFingerprint = state.masterFingerprint;
+  let masterFingerprint = store.masterFingerprint;
   if (!masterFingerprint) {
-    masterFingerprint = fromHex(await client.getMasterFingerprint());
-    state.masterFingerprint = masterFingerprint;
+    masterFingerprint = await client.getMasterFingerprint();
+    store.masterFingerprint = masterFingerprint;
   }
-  return masterFingerprint;
+  return fromHex(masterFingerprint);
 }
 
 export async function getVersion({
@@ -136,14 +136,14 @@ export async function getXpub({
   originPath: string;
   session: LedgerSession;
 }): Promise<string> {
-  const { client, state } = session;
+  const { client, store } = session;
   const { AppClient } = (await importAndValidateLedgerBitcoin(
     client
   )) as typeof import('@ledgerhq/ledger-bitcoin');
   if (!(client instanceof AppClient))
     throw new Error(`Error: pass a valid Ledger client`);
-  if (!state.xpubs) state.xpubs = {};
-  let xpub = state.xpubs[originPath];
+  if (!store.xpubs) store.xpubs = {};
+  let xpub = store.xpubs[originPath];
   if (!xpub) {
     try {
       xpub = await client.getExtendedPubkey(`m${originPath}`, false);
@@ -153,7 +153,7 @@ export async function getXpub({
     }
     if (typeof xpub !== 'string')
       throw new Error(`Error: Ledger client did not return a valid xpub`);
-    state.xpubs[originPath] = xpub;
+    store.xpubs[originPath] = xpub;
   }
   return xpub;
 }
@@ -171,7 +171,7 @@ export async function getLedgerMasterFingerPrint({
   return getMasterFingerprint({
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     }
@@ -194,7 +194,7 @@ export async function getLedgerXpub({
     originPath,
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     }

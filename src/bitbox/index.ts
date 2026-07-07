@@ -14,14 +14,13 @@
 import {
   assertPolicyCanDerive,
   policyFromStandard,
-  policyFromState,
+  policyFromStore,
   addressKeypathFromPolicy,
-  scriptConfigFromMultisigAccount,
   scriptConfigFromPolicy
 } from './policies';
 import { apiNetwork, simpleType } from './client';
 import { fromUtf8 } from 'uint8array-tools';
-import type { BitBoxPolicy, BitBoxSession, BitBoxState } from './types';
+import type { BitBoxPolicy, BitBoxSession, BitBoxStore } from './types';
 
 export type {
   BitBoxApiNetwork,
@@ -29,7 +28,6 @@ export type {
   BitBoxFormatUnit,
   BitBoxKeyOriginInfo,
   BitBoxKeypath,
-  BitBoxMultisigAccount,
   BitBoxMultisigScriptConfig,
   BitBoxMultisigScriptType,
   BitBoxPolicy,
@@ -39,11 +37,11 @@ export type {
   BitBoxScriptConfigWithKeypath,
   BitBoxSession,
   BitBoxSimpleType,
-  BitBoxState,
+  BitBoxStore,
   BitBoxXPubType
 } from './types';
 
-export { registerWallet } from './policies';
+export { registerWalletPolicy } from './policies';
 export { getMasterFingerprint, getVersion, getXpub } from './client';
 export { keyExpression } from './keyExpressions';
 export * as scriptExpressions from './scriptExpressions';
@@ -51,7 +49,7 @@ export * as signers from './signers';
 export * as connectors from './connectors';
 
 export type Session = BitBoxSession;
-export type State = BitBoxState;
+export type Store = BitBoxStore;
 
 export type AddressDisplayParams = {
   descriptor: string;
@@ -123,29 +121,6 @@ async function displayStandardAddress({
   );
 }
 
-async function displayMultisigAddress({
-  policy,
-  session,
-  change,
-  index
-}: {
-  policy: BitBoxPolicy;
-  session: BitBoxSession;
-  change: number;
-  index: number;
-}) {
-  const { client } = session;
-  const account = policy.account;
-  if (!account)
-    throw new Error(`BitBox policy missing account; call registerWallet first`);
-  return client.btcAddress(
-    apiNetwork(session),
-    `${account.keypathAccount}/${change}/${index}`,
-    scriptConfigFromMultisigAccount(account),
-    true
-  );
-}
-
 async function displayPolicyAddress({
   policy,
   session,
@@ -185,12 +160,12 @@ export async function displayAddress({
       index
     });
 
-  const policy = await policyFromState({ output, session });
+  const policy = await policyFromStore({ output, session });
   if (!policy)
-    throw new Error(`BitBox policy not registered; call registerWallet first`);
-  return policy.account
-    ? displayMultisigAddress({ policy, session, change, index })
-    : displayPolicyAddress({ policy, session, change, index });
+    throw new Error(
+      `BitBox policy not registered; call registerWalletPolicy first`
+    );
+  return displayPolicyAddress({ policy, session, change, index });
 }
 
 export async function signMessage({

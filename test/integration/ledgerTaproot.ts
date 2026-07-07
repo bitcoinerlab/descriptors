@@ -114,6 +114,7 @@ async function runSpendScenario({
     mode: 'node-hid',
     Output,
     network: NETWORK,
+    store: {},
     appName: 'Bitcoin Test',
     minVersion: '2.1.0'
   });
@@ -152,10 +153,10 @@ async function runSpendScenario({
   });
   const scriptPathDescriptor = `tr(${internalKeyExpression},pk(${ledgerLeafExpression}))`;
 
-  await ledger.registerWallet({
+  await ledger.registerWalletPolicy({
     session: ledgerSession,
     descriptor: scriptPathDescriptor,
-    policyName: 'Taproot ScriptPath'
+    name: 'Taproot ScriptPath'
   });
 
   try {

@@ -3,7 +3,7 @@
 
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks, Transaction } from 'bitcoinjs-lib';
-import { fromUtf8 } from 'uint8array-tools';
+import { fromUtf8, toHex } from 'uint8array-tools';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
@@ -13,7 +13,7 @@ import {
   connectors,
   displayAddress,
   keyExpression,
-  registerWallet,
+  registerWalletPolicy,
   scriptExpressions,
   signMessage,
   signers,
@@ -82,7 +82,7 @@ function sessionFor(
 ) {
   return connectors.fromClient({
     client,
-    state: { masterFingerprint: master.fingerprint },
+    store: { masterFingerprint: toHex(master.fingerprint) },
     Output,
     network
   }) satisfies Session;
@@ -210,7 +210,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
 }
 
 describe('BitBox helpers', () => {
-  test('builds key expressions and registers P2WSH multisig accounts', async () => {
+  test('builds key expressions and registers P2WSH multisig policies', async () => {
     const bitboxMaster = makeMaster(1);
     const otherMaster = makeMaster(2);
     const client = fakeClientFor(bitboxMaster);
@@ -229,22 +229,22 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(sortedmulti(1,${bitboxKey},${otherKey}))`;
 
-    await registerWallet({
+    await registerWalletPolicy({
       descriptor,
       session: bitboxSession,
-      policyName: 'Test BitBox'
+      name: 'Test BitBox'
     });
 
     expect(client.registered?.name).toBe('Test BitBox');
     expect(client.registered?.apiNetwork).toBe('tbtc');
-    expect(client.registered?.keypathAccount).toBe("m/48'/1'/0'/2'");
+    expect(client.registered?.keypathAccount).toBeUndefined();
     expect(client.registered?.scriptConfig).toMatchObject({
-      multisig: { threshold: 1, ourXpubIndex: 0, scriptType: 'p2wsh' }
+      policy: { policy: 'wsh(sortedmulti(1,@0/**,@1/**))' }
     });
     expect(
       client.registered &&
-        'multisig' in client.registered.scriptConfig &&
-        client.registered.scriptConfig.multisig.xpubs.length
+        'policy' in client.registered.scriptConfig &&
+        client.registered.scriptConfig.policy.keys.length
     ).toBe(2);
 
     await expect(
@@ -254,7 +254,7 @@ describe('BitBox helpers', () => {
         change: 0,
         index: 7
       })
-    ).resolves.toBe('bcrt1multisig');
+    ).resolves.toBe('bcrt1policy');
     expect(client.displayed?.keypath).toBe("m/48'/1'/0'/2'/0/7");
   });
 
@@ -289,10 +289,10 @@ describe('BitBox helpers', () => {
       display: false
     });
 
-    await registerWallet({
+    await registerWalletPolicy({
       descriptor: `wsh(and_v(v:pk(${testnetKey}),older(5)))`,
       session: testnetSession,
-      policyName: 'Test provider client'
+      name: 'Test provider client'
     });
 
     expect(testnetClient.registered?.xpubType).toBe('autoXpubTpub');
@@ -362,10 +362,10 @@ describe('BitBox helpers', () => {
       keyPath: '/0/*'
     });
     await expect(
-      registerWallet({
+      registerWalletPolicy({
         descriptor: `pkh(${bitboxKey})`,
         session: bitboxSession,
-        policyName: 'Test pkh'
+        name: 'Test pkh'
       })
     ).rejects.toThrow('top-level legacy p2pkh');
     expect(client.registered).toBeUndefined();
@@ -384,10 +384,10 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(pkh(${bitboxKey}))`;
 
-    await registerWallet({
+    await registerWalletPolicy({
       descriptor,
       session: bitboxSession,
-      policyName: 'Test Miniscript pkh'
+      name: 'Test Miniscript pkh'
     });
 
     expect(client.registered?.scriptConfig).toMatchObject({
@@ -407,10 +407,10 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(and_v(v:pk(${bitboxKey}),older(5)))`;
 
-    await registerWallet({
+    await registerWalletPolicy({
       descriptor,
       session: bitboxSession,
-      policyName: 'Test Policy'
+      name: 'Test Policy'
     });
 
     expect(client.registered?.name).toBe('Test Policy');
@@ -570,10 +570,10 @@ describe('BitBox helpers', () => {
       ],
       network: NETWORK
     });
-    await registerWallet({
+    await registerWalletPolicy({
       descriptor,
       session: bitboxSession,
-      policyName: 'Test sha256'
+      name: 'Test sha256'
     });
     await expect(
       displayAddress({ descriptor, session: bitboxSession, index: 0 })

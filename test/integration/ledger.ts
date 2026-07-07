@@ -105,6 +105,7 @@ const finalizers = [];
     mode: 'node-hid',
     Output,
     network: NETWORK,
+    store: {},
     appName: 'Bitcoin Test',
     minVersion: '2.1.0'
   });
@@ -227,22 +228,22 @@ const finalizers = [];
 
   //=============
   //Register Ledger policies of non-standard descriptors.
-  //Registration is stored in session state and is a necessary step before
+  //Registration is stored in session store and is a necessary step before
   //signing with non-standard policies when using a Ledger wallet.
-  //registerWallet internally takes all the necessary steps to register
+  //registerWalletPolicy internally takes all the necessary steps to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots.
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
-  await ledger.registerWallet({
+  await ledger.registerWalletPolicy({
     session: ledgerSession,
     descriptor: miniscriptDescriptor,
-    policyName: 'BitcoinerLab'
+    name: 'BitcoinerLab'
   });
 
   //=============
   //Sign the psbt with the Ledger. The relevant wallet policy is automatically
-  //retrieved from state by parsing the descriptors of each input and retrieving
+  //retrieved from store by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
   await ledger.signers.sign({ psbt, session: ledgerSession });

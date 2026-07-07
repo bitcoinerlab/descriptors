@@ -7,7 +7,7 @@ import type {
   BitBoxClient,
   BitBoxFormatUnit,
   BitBoxSession,
-  BitBoxState
+  BitBoxStore
 } from './types';
 
 type BitBoxConnection = {
@@ -80,8 +80,8 @@ export type FromClientParams = {
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
-  /** Existing app-owned state for cached keys and wallet policy metadata. */
-  state?: BitBoxState;
+  /** App-owned JSON store for cached keys and wallet policy metadata. */
+  store: BitBoxStore;
   /** Optional display unit passed to `btcSignPSBT`. */
   formatUnit?: BitBoxFormatUnit;
 };
@@ -95,12 +95,12 @@ export function fromClient({
   client,
   Output,
   network,
-  state,
+  store,
   formatUnit
 }: FromClientParams): BitBoxSession {
   const session: BitBoxSession = {
     client,
-    state: state ?? {},
+    store,
     Output,
     network
   };
@@ -161,7 +161,7 @@ async function connectWith(
     client,
     Output: params.Output,
     network: params.network,
-    ...(params.state !== undefined ? { state: params.state } : {}),
+    store: params.store,
     ...(params.formatUnit !== undefined
       ? { formatUnit: params.formatUnit }
       : {})

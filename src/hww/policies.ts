@@ -373,7 +373,7 @@ export function comparePolicies(policyA: HWWPolicy, policyB: HWWPolicy) {
   );
 }
 
-export async function policyFromState({
+export async function policyFromStore({
   output,
   policyResolver
 }: {

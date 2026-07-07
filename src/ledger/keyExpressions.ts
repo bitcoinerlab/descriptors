@@ -49,7 +49,7 @@ export async function keyExpressionLedger({
   return keyExpression({
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     },

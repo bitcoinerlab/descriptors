@@ -10,38 +10,12 @@ import {
   signingKeypathFromPolicy,
   scriptConfigFromPolicy
 } from './policies';
-import type {
-  BitBoxPolicy,
-  BitBoxScriptConfigWithKeypath,
-  BitBoxSession
-} from './types';
+import type { BitBoxScriptConfigWithKeypath, BitBoxSession } from './types';
 
 type MergeablePsbt = PsbtLike & {
   combine(...psbts: PsbtLike[]): unknown;
   constructor: { fromBase64?(psbt: string): PsbtLike };
 };
-
-function samePolicy(left: BitBoxPolicy, right: BitBoxPolicy): boolean {
-  return (
-    left.descriptorTemplate === right.descriptorTemplate &&
-    left.keyRoots.length === right.keyRoots.length &&
-    left.keyRoots.every((keyRoot, index) => keyRoot === right.keyRoots[index])
-  );
-}
-
-function policyWithCachedAccount({
-  policy,
-  session
-}: {
-  policy: BitBoxPolicy;
-  session: BitBoxSession;
-}): BitBoxPolicy {
-  return (
-    session.state.policies?.find(cachedPolicy =>
-      samePolicy(cachedPolicy, policy)
-    ) ?? policy
-  );
-}
 
 async function forcedScriptConfigForPsbt({
   psbt,
@@ -60,25 +34,14 @@ async function forcedScriptConfigForPsbt({
     });
     if (!policy) continue;
 
-    const policyWithAccount = policyWithCachedAccount({ policy, session });
-    assertPolicyCanDerive(policyWithAccount);
+    assertPolicyCanDerive(policy);
     const scriptConfig = scriptConfigFromPolicy({
-      policy: policyWithAccount,
+      policy,
       session
     });
-    if (!('multisig' in scriptConfig) && !('policy' in scriptConfig)) continue;
+    if (!('policy' in scriptConfig)) continue;
 
-    const keypath =
-      'multisig' in scriptConfig
-        ? policyWithAccount.account?.keypathAccount
-        : signingKeypathFromPolicy({
-            policy: policyWithAccount,
-            session
-          });
-    if (!keypath)
-      throw new Error(
-        `BitBox policy missing account; call registerWallet first`
-      );
+    const keypath = signingKeypathFromPolicy({ policy, session });
     const forcedScriptConfig = { scriptConfig, keypath };
     configs.set(JSON.stringify(forcedScriptConfig), forcedScriptConfig);
   }

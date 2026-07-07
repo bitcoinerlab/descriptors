@@ -4,7 +4,7 @@
 import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import { assertLedgerApp, importAndValidateLedgerBitcoin } from './client';
-import type { LedgerClient, LedgerSession, LedgerState } from './types';
+import type { LedgerClient, LedgerSession, LedgerStore } from './types';
 
 type LedgerTransport = {
   send(cla: number, ins: number, p1: number, p2: number): Promise<Uint8Array>;
@@ -64,8 +64,8 @@ export type FromClientParams = {
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
-  /** Existing app-owned state for cached keys and wallet policy receipts. */
-  state?: LedgerState;
+  /** App-owned JSON store for cached keys and wallet policy receipts. */
+  store: LedgerStore;
 };
 
 /**
@@ -78,11 +78,11 @@ export function fromClient({
   client,
   Output,
   network,
-  state
+  store
 }: FromClientParams): LedgerSession {
   return {
     client,
-    state: state ?? {},
+    store,
     Output,
     network
   };
@@ -164,7 +164,7 @@ export async function connect(params: ConnectParams): Promise<LedgerSession> {
   const {
     Output,
     network,
-    state,
+    store,
     appName = 'Bitcoin',
     minVersion = '2.1.0',
     assertApp = true
@@ -182,6 +182,6 @@ export async function connect(params: ConnectParams): Promise<LedgerSession> {
     ),
     Output,
     network,
-    ...(state !== undefined ? { state } : {})
+    store
   });
 }

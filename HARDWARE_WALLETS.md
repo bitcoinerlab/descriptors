@@ -4,15 +4,18 @@
 import { Output, Psbt, networks } from '@bitcoinerlab/descriptors';
 import {
   connectors,
-  registerWallet,
+  registerWalletPolicy,
   scriptExpressions,
   signers
 } from '@bitcoinerlab/descriptors/ledger';
 
+const store = {};
+
 const session = await connectors.connect({
   mode: 'node-hid',
   Output,
-  network: networks.bitcoin
+  network: networks.bitcoin,
+  store
 });
 
 const descriptor = await scriptExpressions.wpkh({
@@ -22,10 +25,10 @@ const descriptor = await scriptExpressions.wpkh({
   index: '*'
 });
 
-await registerWallet({
+await registerWalletPolicy({
   session,
   descriptor,
-  policyName: 'Savings'
+  name: 'Savings'
 });
 
 const psbt = new Psbt();
@@ -73,8 +76,8 @@ Ledger and BitBox entrypoints expose the same common API shape:
 
 | API | Purpose |
 | --- | --- |
-| `type Session` | Connected device client plus `Output`, network and app-owned state. |
-| `type State` | Persistable app-owned state for cached keys and wallet policy metadata. |
+| `type Session` | Connected device client plus `Output`, network and app-owned store. |
+| `type Store` | JSON-safe app-owned store for cached keys and wallet policy metadata. |
 | `connectors.connect(...)` | Build a session with a built-in explicit transport mode. |
 | `connectors.fromClient(...)` | Build a session from an already connected device client. |
 | `getVersion({ session })` | Read the device/app version exposed by the vendor API. |
@@ -82,7 +85,7 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `getXpub({ session, originPath })` | Read and cache an account xpub. |
 | `keyExpression(...)` | Build a descriptor key expression from device keys. |
 | `scriptExpressions.*(...)` | Build standard account descriptors. |
-| `registerWallet(...)` | Register or locally remember non-standard wallet policies. |
+| `registerWalletPolicy(...)` | Register or locally remember non-standard wallet policies. |
 | `displayAddress(...)` | Ask the device to display an address for verification. |
 | `signers.sign(...)` | Ask the device to sign a PSBT. |
 | `signers.signInput(...)` | Convenience wrapper for single-input signing flows. |
@@ -135,13 +138,13 @@ this library.
 import { Output, networks } from '@bitcoinerlab/descriptors';
 import { connectors } from '@bitcoinerlab/descriptors/ledger';
 
-const ledgerState = {};
+const ledgerStore = {};
 
 const session = await connectors.connect({
   mode: 'node-hid',
   Output,
   network: networks.bitcoin,
-  state: ledgerState,
+  store: ledgerStore,
   appName: 'Bitcoin',
   minVersion: '2.1.0',
   openTimeout: 3000,
@@ -150,7 +153,7 @@ const session = await connectors.connect({
 ```
 
 The `session` contains the connected Ledger client, the Bitcoin network, the
-`Output` constructor for your backend, and a mutable `state` object.
+`Output` constructor for your backend, and a mutable `store` object.
 
 Available Ledger modes are:
 
@@ -171,7 +174,7 @@ const session = connectors.fromClient({
   client: ledgerClient,
   Output,
   network: networks.bitcoin,
-  state: ledgerState
+  store: ledgerStore
 });
 ```
 
@@ -181,13 +184,13 @@ const session = connectors.fromClient({
 import { Output, networks } from '@bitcoinerlab/descriptors';
 import { connectors } from '@bitcoinerlab/descriptors/bitbox';
 
-const state = {};
+const store = {};
 
 const session = await connectors.connect({
   mode: 'webhid-or-bridge',
   Output,
   network: networks.bitcoin,
-  state,
+  store,
   onPairingCode: pairingCode => {
     console.log(`Confirm this pairing code on the BitBox: ${pairingCode}`);
   }
@@ -217,7 +220,7 @@ const session = connectors.fromClient({
   client,
   Output,
   network: networks.bitcoin,
-  state
+  store
 });
 ```
 
@@ -229,35 +232,39 @@ already carry the script type, so BitBox xpub requests use only `xpub` on
 mainnet and `tpub` on non-mainnet networks. Formats such as `ypub`, `zpub`,
 `upub` or `vpub` are not part of this library's BitBox descriptor flow.
 
-## Keep Session State
+## Persist Store
 
 Do not store a `session` itself. A session contains a live device client. Store
-the `state` object instead, then pass that state back when you create the next
+the `store` object instead, then pass that store back when you create the next
 session.
 
-The state object has two jobs:
+The store object has two jobs:
 
 - It caches the master fingerprint and xpubs so the app does not need to ask the
   device every time.
 - It stores wallet policy metadata that this library needs later to display
   addresses or sign PSBTs for non-standard wallets.
 
+The store is plain JSON. Persist it directly with `JSON.stringify(store)` and
+load it with `JSON.parse(...)` before creating the next session.
+
 The details are slightly different by device:
 
-- Ledger state stores the registration receipt returned by the Ledger app
+- Ledger store stores the registration receipt returned by the Ledger app
   (`policyId` and `policyHmac`). Keep it with your wallet record. Without it,
   the app cannot reuse that registered Ledger policy without registering again.
-- BitBox state stores the app-side policy mapping, including multisig account
-  data when needed. The BitBox can tell whether a script config is already
-  registered, but it does not give this library a list of wallet policies to
-  rebuild that mapping later.
+- BitBox store stores the app-side policy mapping. The BitBox can tell whether a
+  script config is already registered, but it does not give this library a list
+  of wallet policies to rebuild that mapping later.
 
-If you drop BitBox state, you can call `registerWallet(...)` again for each
+If you drop BitBox store, you can call `registerWalletPolicy(...)` again for each
 wallet descriptor after reconnecting. The helper checks the device first, avoids
-duplicate on-device registration when possible, and repopulates local state.
+duplicate on-device registration when possible, and repopulates local store.
 
-If you serialize state as JSON, encode byte arrays such as fingerprints and
-Ledger policy ids/hmacs as hex or base64 in your app database.
+BitBox non-standard descriptors, including multisig, are registered through the
+generic BitBox policy config. Native BitBox multisig registration may be used
+internally later if real-device UX requires it, but the public store remains the
+same generic descriptor policy mapping.
 
 ## Build Standard Descriptors
 
@@ -288,7 +295,7 @@ sign a descriptor type, the helper throws early.
 ```ts
 import {
   keyExpression,
-  registerWallet
+  registerWalletPolicy
 } from '@bitcoinerlab/descriptors/bitbox';
 
 const key = await keyExpression({
@@ -299,10 +306,10 @@ const key = await keyExpression({
 
 const descriptor = `wsh(and_v(v:pk(${key}),older(10)))`;
 
-await registerWallet({
+await registerWalletPolicy({
   session,
   descriptor,
-  policyName: 'CSV Savings'
+  name: 'CSV Savings'
 });
 ```
 
@@ -310,8 +317,8 @@ Use `keyExpression(...)` when the standard helpers are not enough. It returns a
 descriptor key expression with origin information and an xpub from the device.
 
 Many hardware wallets need to register non-standard wallet policies before they
-can display addresses or sign. `registerWallet(...)` stores what the device
-returns in the session state. If registration is not needed, or the policy is
+can display addresses or sign. `registerWalletPolicy(...)` stores what the device
+returns in the session store. If registration is not needed, or the policy is
 already known, the helper skips the extra device step when possible.
 
 ## Sign And Finalize
@@ -416,10 +423,13 @@ Miniscript `pkh(KEY)` fragment are not the same thing.
 BitBox signing also accepts a display unit preference:
 
 ```ts
+const store = {};
+
 const session = await bitbox.connectors.connect({
   mode: 'webhid-or-bridge',
   Output,
   network: networks.bitcoin,
+  store,
   formatUnit: 'sat'
 });
 ```

@@ -4,12 +4,13 @@
 import { OutputInstance } from '../descriptors';
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import type { HWWPolicy, HWWPolicyResolver } from '../hww/types';
+import { fromHex, toHex } from 'uint8array-tools';
 import {
   comparePolicies as compareWalletPolicies,
   policyFromOutput,
   policyFromPsbtInput,
   policyFromStandard,
-  policyFromState
+  policyFromStore
 } from '../hww/policies';
 import { getMasterFingerprint, getXpub } from './client';
 import type { LedgerPolicy, LedgerSession } from './types';
@@ -18,41 +19,39 @@ function ledgerPolicyToHWWPolicy(policy: LedgerPolicy): HWWPolicy {
   const registration =
     policy.policyId !== undefined || policy.policyHmac !== undefined
       ? {
-          ...(policy.policyId !== undefined ? { id: policy.policyId } : {}),
+          ...(policy.policyId !== undefined
+            ? { id: fromHex(policy.policyId) }
+            : {}),
           ...(policy.policyHmac !== undefined
-            ? { hmac: policy.policyHmac }
+            ? { hmac: fromHex(policy.policyHmac) }
             : {})
         }
       : undefined;
 
   return {
-    descriptorTemplate: policy.ledgerTemplate,
+    descriptorTemplate: policy.descriptorTemplate,
     keyRoots: policy.keyRoots,
-    ...(policy.policyName !== undefined
-      ? { policyName: policy.policyName }
-      : {}),
+    ...(policy.name !== undefined ? { name: policy.name } : {}),
     ...(registration !== undefined ? { registration } : {})
   };
 }
 
 function hwwPolicyToLedgerPolicy(policy: HWWPolicy): LedgerPolicy {
   return {
-    ledgerTemplate: policy.descriptorTemplate,
+    descriptorTemplate: policy.descriptorTemplate,
     keyRoots: policy.keyRoots,
-    ...(policy.policyName !== undefined
-      ? { policyName: policy.policyName }
-      : {}),
+    ...(policy.name !== undefined ? { name: policy.name } : {}),
     ...(policy.registration?.id !== undefined
-      ? { policyId: policy.registration.id }
+      ? { policyId: toHex(policy.registration.id) }
       : {}),
     ...(policy.registration?.hmac !== undefined
-      ? { policyHmac: policy.registration.hmac }
+      ? { policyHmac: toHex(policy.registration.hmac) }
       : {})
   };
 }
 
 function policyResolverFromSession(session: LedgerSession): HWWPolicyResolver {
-  const knownPolicies = session.state.policies?.map(ledgerPolicyToHWWPolicy);
+  const knownPolicies = session.store.policies?.map(ledgerPolicyToHWWPolicy);
   return {
     Output: session.Output,
     network: session.network,
@@ -85,14 +84,14 @@ export async function ledgerPolicyFromOutput({
 }: {
   output: OutputInstance;
   session: LedgerSession;
-}): Promise<{ ledgerTemplate: string; keyRoots: string[] } | null> {
+}): Promise<{ descriptorTemplate: string; keyRoots: string[] } | null> {
   const policy = await policyFromOutput({
     output,
     policyResolver: policyResolverFromSession(session)
   });
   return policy
     ? {
-        ledgerTemplate: policy.descriptorTemplate,
+        descriptorTemplate: policy.descriptorTemplate,
         keyRoots: policy.keyRoots
       }
     : null;
@@ -119,14 +118,14 @@ export function comparePolicies(policyA: LedgerPolicy, policyB: LedgerPolicy) {
   );
 }
 
-export async function ledgerPolicyFromState({
+export async function ledgerPolicyFromStore({
   output,
   session
 }: {
   output: OutputInstance;
   session: LedgerSession;
 }): Promise<LedgerPolicy | null> {
-  const policy = await policyFromState({
+  const policy = await policyFromStore({
     output,
     policyResolver: policyResolverFromSession(session)
   });

@@ -4,13 +4,13 @@
  * Bitcoinjs-ready usage:
  * ```ts
  * import { Output, networks } from '@bitcoinerlab/descriptors';
- * import { registerWallet, type Session } from '@bitcoinerlab/descriptors/ledger';
+ * import { registerWalletPolicy, type Session } from '@bitcoinerlab/descriptors/ledger';
  * ```
  *
  * Scure-ready usage:
  * ```ts
  * import { Output, networks } from '@bitcoinerlab/descriptors-scure';
- * import { registerWallet, type Session } from '@bitcoinerlab/descriptors-scure/ledger';
+ * import { registerWalletPolicy, type Session } from '@bitcoinerlab/descriptors-scure/ledger';
  * ```
  *
  * @module ledger
@@ -43,11 +43,11 @@
  */
 
 import { importAndValidateLedgerBitcoin } from './client';
-import { fromBase64, fromUtf8 } from 'uint8array-tools';
+import { fromBase64, fromHex, fromUtf8, toHex } from 'uint8array-tools';
 import {
   ledgerPolicyFromOutput,
   ledgerPolicyFromStandard,
-  ledgerPolicyFromState
+  ledgerPolicyFromStore
 } from './policies';
 import {
   keyExpression as keyExpressionFromSession,
@@ -57,7 +57,8 @@ import type {
   LedgerClient,
   LedgerManager,
   LedgerSession,
-  LedgerState
+  LedgerState,
+  LedgerStore
 } from './types';
 
 export type {
@@ -67,6 +68,7 @@ export type {
   LedgerPolicy,
   LedgerSession,
   LedgerState,
+  LedgerStore,
   LedgerWalletPolicyLike
 } from './types';
 
@@ -132,7 +134,7 @@ function messageBytes(message: string | Uint8Array): Uint8Array {
  * Registers a policy based on a provided descriptor.
  *
  * This function will:
- * 1. Store the policy in `state` inside the session.
+ * 1. Store the policy in `store` inside the session.
  * 2. Avoid re-registering if the policy was previously registered.
  * 3. Skip registration if the policy is considered "standard".
  *
@@ -144,17 +146,17 @@ function messageBytes(message: string | Uint8Array): Uint8Array {
  *   not assuming specific values for the keyPath.
  *
  */
-export async function registerWallet({
+export async function registerWalletPolicy({
   descriptor,
   session,
-  policyName
+  name
 }: {
   descriptor: string;
   session: LedgerSession;
-  /** The Name we want to assign to this specific policy */
-  policyName: string;
-}): Promise<void> {
-  const { client, state, network, Output } = session;
+  /** Name shown by the device for this policy. */
+  name: string;
+}): Promise<LedgerStore> {
+  const { client, store, network, Output } = session;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     client
   )) as typeof import('@ledgerhq/ledger-bitcoin');
@@ -165,35 +167,50 @@ export async function registerWallet({
     ...(descriptor.includes('*') ? { index: 0 } : {}),
     network
   });
-  if (await ledgerPolicyFromStandard({ output, session })) return;
+  if (await ledgerPolicyFromStandard({ output, session })) return store;
   const result = await ledgerPolicyFromOutput({ output, session });
-  if (await ledgerPolicyFromStandard({ output, session })) return;
+  if (await ledgerPolicyFromStandard({ output, session })) return store;
   if (!result) throw new Error(`Error: output does not have a ledger input`);
-  const { ledgerTemplate, keyRoots } = result;
-  if (!state.policies) state.policies = [];
-  let walletPolicy, policyHmac;
-  const policy = await ledgerPolicyFromState({ output, session });
+  const { descriptorTemplate, keyRoots } = result;
+  if (!store.policies) store.policies = [];
+  const policy = await ledgerPolicyFromStore({ output, session });
   if (policy) {
-    if (policy.policyName !== policyName)
+    if (policy.name !== name)
       throw new Error(
-        `Error: policy was already registered with a different name: ${policy.policyName}`
+        `Error: policy was already registered with a different name: ${policy.name}`
       );
   } else {
-    walletPolicy = new WalletPolicy(policyName, ledgerTemplate, keyRoots);
-    let policyId;
-    [policyId, policyHmac] = await client.registerWallet(walletPolicy);
-    state.policies.push({
-      policyName,
-      ledgerTemplate,
+    const walletPolicy = new WalletPolicy(name, descriptorTemplate, keyRoots);
+    const [policyId, policyHmac] = await client.registerWallet(walletPolicy);
+    store.policies.push({
+      name,
+      descriptorTemplate,
       keyRoots,
-      policyId,
-      policyHmac
+      policyId: toHex(policyId),
+      policyHmac: toHex(policyHmac)
     });
   }
+  return store;
 }
 
 /**
- * @deprecated Use `registerWallet(...)` instead.
+ * @deprecated Use `registerWalletPolicy(...)` instead.
+ */
+export async function registerWallet({
+  descriptor,
+  session,
+  policyName
+}: {
+  descriptor: string;
+  session: LedgerSession;
+  /** Name shown by the device for this policy. */
+  policyName: string;
+}): Promise<LedgerStore> {
+  return registerWalletPolicy({ descriptor, session, name: policyName });
+}
+
+/**
+ * @deprecated Use `registerWalletPolicy(...)` instead.
  */
 export async function registerLedgerWallet({
   descriptor,
@@ -205,21 +222,23 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  return registerWallet({
+  await registerWalletPolicy({
     descriptor,
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     },
-    policyName
+    name: policyName
   });
 }
 
 export type Session = LedgerSession;
 /** @deprecated Use `Session`. */
 export type Manager = LedgerManager;
+export type Store = LedgerStore;
+/** @deprecated Use `Store`. */
 export type State = LedgerState;
 
 export async function keyExpression({
@@ -264,7 +283,7 @@ export async function displayAddress({
   if (standardPolicy) {
     return ledgerClient.getWalletAddress(
       new DefaultWalletPolicy(
-        standardPolicy.ledgerTemplate as DefaultDescriptorTemplate,
+        standardPolicy.descriptorTemplate as DefaultDescriptorTemplate,
         standardPolicy.keyRoots[0]!
       ),
       null,
@@ -274,17 +293,19 @@ export async function displayAddress({
     );
   }
 
-  const policy = await ledgerPolicyFromState({ output, session });
+  const policy = await ledgerPolicyFromStore({ output, session });
   if (!policy)
-    throw new Error(`Ledger policy not registered; call registerWallet first`);
-  if (!policy.policyName || !policy.policyHmac)
     throw new Error(
-      `Ledger policy missing registration; call registerWallet first`
+      `Ledger policy not registered; call registerWalletPolicy first`
+    );
+  if (!policy.name || !policy.policyHmac)
+    throw new Error(
+      `Ledger policy missing registration; call registerWalletPolicy first`
     );
 
   return ledgerClient.getWalletAddress(
-    new WalletPolicy(policy.policyName, policy.ledgerTemplate, policy.keyRoots),
-    policy.policyHmac,
+    new WalletPolicy(policy.name, policy.descriptorTemplate, policy.keyRoots),
+    fromHex(policy.policyHmac),
     change,
     index,
     true
@@ -315,9 +336,9 @@ export async function signMessage({
       `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
     );
   if (
-    policy.ledgerTemplate !== 'pkh(@0/**)' &&
-    policy.ledgerTemplate !== 'sh(wpkh(@0/**))' &&
-    policy.ledgerTemplate !== 'wpkh(@0/**)'
+    policy.descriptorTemplate !== 'pkh(@0/**)' &&
+    policy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
+    policy.descriptorTemplate !== 'wpkh(@0/**)'
   ) {
     throw new Error(
       `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`

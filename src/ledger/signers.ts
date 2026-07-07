@@ -6,6 +6,7 @@ import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
 import { importAndValidateLedgerBitcoin } from './client';
 import { comparePolicies, ledgerPolicyFromPsbtInput } from './policies';
+import { fromHex } from 'uint8array-tools';
 import type {
   LedgerManager,
   LedgerPolicy,
@@ -111,14 +112,14 @@ export async function signInput({
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
   let ledgerSignatures;
-  if (policy.policyName && policy.policyHmac && policy.policyId) {
+  if (policy.name && policy.policyHmac && policy.policyId) {
     const walletPolicy = new WalletPolicy(
-      policy.policyName,
-      policy.ledgerTemplate,
+      policy.name,
+      policy.descriptorTemplate,
       policy.keyRoots
     );
 
-    const walletHmac = policy.policyHmac as unknown as Parameters<
+    const walletHmac = fromHex(policy.policyHmac) as unknown as Parameters<
       typeof client.signPsbt
     >[2];
     ledgerSignatures = await client.signPsbt(
@@ -130,7 +131,7 @@ export async function signInput({
     ledgerSignatures = await client.signPsbt(
       psbt.toBase64(),
       new DefaultWalletPolicy(
-        policy.ledgerTemplate as DefaultDescriptorTemplate,
+        policy.descriptorTemplate as DefaultDescriptorTemplate,
         policy.keyRoots[0]!
       ),
       null
@@ -157,7 +158,7 @@ export async function signInputLedger({
     index,
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     }
@@ -204,20 +205,16 @@ export async function sign({
 
   for (const uniquePolicy of uniquePolicies) {
     let ledgerSignatures;
-    if (
-      uniquePolicy.policyName &&
-      uniquePolicy.policyHmac &&
-      uniquePolicy.policyId
-    ) {
+    if (uniquePolicy.name && uniquePolicy.policyHmac && uniquePolicy.policyId) {
       const walletPolicy = new WalletPolicy(
-        uniquePolicy.policyName,
-        uniquePolicy.ledgerTemplate,
+        uniquePolicy.name,
+        uniquePolicy.descriptorTemplate,
         uniquePolicy.keyRoots
       );
 
-      const walletHmac = uniquePolicy.policyHmac as unknown as Parameters<
-        typeof client.signPsbt
-      >[2];
+      const walletHmac = fromHex(
+        uniquePolicy.policyHmac
+      ) as unknown as Parameters<typeof client.signPsbt>[2];
       ledgerSignatures = await client.signPsbt(
         psbt.toBase64(),
         walletPolicy,
@@ -227,7 +224,7 @@ export async function sign({
       ledgerSignatures = await client.signPsbt(
         psbt.toBase64(),
         new DefaultWalletPolicy(
-          uniquePolicy.ledgerTemplate as DefaultDescriptorTemplate,
+          uniquePolicy.descriptorTemplate as DefaultDescriptorTemplate,
           uniquePolicy.keyRoots[0]!
         ),
         null
@@ -257,7 +254,7 @@ export async function signLedger({
     psbt,
     session: {
       client: ledgerManager.ledgerClient,
-      state: ledgerManager.ledgerState,
+      store: ledgerManager.ledgerState,
       Output: ledgerManager.Output,
       network: ledgerManager.network
     }

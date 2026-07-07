@@ -8,7 +8,6 @@ import type { Network } from '../networks';
  * Device data returned when a wallet policy is registered.
  *
  * Ledger uses these fields to sign later with the same registered policy.
- * BitBox keeps its extra account data in its own `BitBoxPolicy` state instead.
  */
 export type HWWPolicyRegistration = {
   /** Device policy id, when the device returns one. */
@@ -27,7 +26,7 @@ export type HWWPolicyRegistration = {
  */
 export type HWWPolicy = {
   /** Human-readable policy name shown by the device when supported. */
-  policyName?: string;
+  name?: string;
   /** Descriptor template with `@0`, `@1`, ... placeholders. */
   descriptorTemplate: string;
   /** Xpub roots used by the descriptor template placeholders. */

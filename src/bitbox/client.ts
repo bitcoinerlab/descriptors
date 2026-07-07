@@ -67,12 +67,12 @@ export async function getMasterFingerprint({
 }: {
   session: BitBoxSession;
 }): Promise<Uint8Array> {
-  const { client, state } = session;
-  if (state.masterFingerprint) return state.masterFingerprint;
+  const { client, store } = session;
+  if (store.masterFingerprint) return fromHex(store.masterFingerprint);
 
-  const masterFingerprint = fromHex(await client.rootFingerprint());
-  state.masterFingerprint = masterFingerprint;
-  return masterFingerprint;
+  const masterFingerprint = await client.rootFingerprint();
+  store.masterFingerprint = masterFingerprint;
+  return fromHex(masterFingerprint);
 }
 
 export async function getXpub({
@@ -84,10 +84,10 @@ export async function getXpub({
   session: BitBoxSession;
   display?: boolean;
 }): Promise<string> {
-  const { client, state } = session;
-  if (!state.xpubs) state.xpubs = {};
+  const { client, store } = session;
+  if (!store.xpubs) store.xpubs = {};
   const cacheKey = `${originPath}:${xpubType(session)}`;
-  let xpub = state.xpubs[cacheKey];
+  let xpub = store.xpubs[cacheKey];
   if (!xpub) {
     xpub = await client.btcXpub(
       apiNetwork(session),
@@ -95,7 +95,7 @@ export async function getXpub({
       xpubType(session),
       display
     );
-    state.xpubs[cacheKey] = xpub;
+    store.xpubs[cacheKey] = xpub;
   }
   return xpub;
 }

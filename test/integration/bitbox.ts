@@ -45,7 +45,7 @@ import {
   getVersion,
   getXpub,
   keyExpression,
-  registerWallet,
+  registerWalletPolicy,
   scriptExpressions,
   signers,
   type Session
@@ -124,6 +124,7 @@ const SOFT_MNEMONIC =
     mode: 'bridge',
     Output,
     network: NETWORK,
+    store: {},
     onClose: () => {
       console.log('BitBox02 connection closed');
     },
@@ -191,7 +192,7 @@ const SOFT_MNEMONIC =
     compilePolicy(POLICY);
   if (!issane) throw new Error(`Error: miniscript not sane`);
   console.log({
-    policyName: POLICY_NAME,
+    name: POLICY_NAME,
     policyOriginPath: POLICY_ORIGIN_PATH,
     miniscript
   });
@@ -240,10 +241,10 @@ const SOFT_MNEMONIC =
   );
 
   console.log('Register Miniscript policy');
-  await registerWallet({
+  await registerWalletPolicy({
     descriptor: miniscriptDescriptor,
     session,
-    policyName: POLICY_NAME
+    name: POLICY_NAME
   });
   console.log('Sign and broadcast Miniscript policy spend');
   await signers.sign({ psbt: policyPsbt, session });

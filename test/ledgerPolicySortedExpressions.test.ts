@@ -54,7 +54,7 @@ function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
   >;
   return {
     client: ledgerClient,
-    state: { masterFingerprint },
+    store: { masterFingerprint: toHex(masterFingerprint) },
     Output,
     network: NETWORK
   };
@@ -132,7 +132,9 @@ describeIfNotScure(
       });
       if (!result) throw new Error('expected a ledger policy');
 
-      expect(result.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
+      expect(result.descriptorTemplate).toEqual(
+        'wsh(sortedmulti(1,@0/**,@1/**))'
+      );
       expect(result.keyRoots.length).toBe(2);
     });
 
@@ -161,7 +163,7 @@ describeIfNotScure(
       });
       if (!result) throw new Error('expected a ledger policy');
 
-      expect(result.ledgerTemplate).toEqual(
+      expect(result.descriptorTemplate).toEqual(
         'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
       );
       expect(result.keyRoots.length).toBe(3);
@@ -188,13 +190,15 @@ describeIfNotScure(
       });
       if (!result) throw new Error('expected a ledger policy');
 
-      expect(result.ledgerTemplate.startsWith('wsh(sortedmulti(1,')).toBe(true);
-      expect(result.ledgerTemplate).not.toContain('/**/**');
-      expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
+      expect(result.descriptorTemplate.startsWith('wsh(sortedmulti(1,')).toBe(
+        true
+      );
+      expect(result.descriptorTemplate).not.toContain('/**/**');
+      expect(result.descriptorTemplate).not.toMatch(/@\d+\/\*\*\d/);
 
       for (let index = 0; index <= 10; index++) {
         const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
-        const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
+        const matches = result.descriptorTemplate.match(placeholderRegex) ?? [];
         expect(matches.length).toBe(1);
       }
       expect(result.keyRoots.length).toBe(11);
@@ -227,14 +231,14 @@ describeIfNotScure(
       if (!result) throw new Error('expected a ledger policy');
 
       expect(
-        result.ledgerTemplate.startsWith('tr(@0/**,sortedmulti_a(1,')
+        result.descriptorTemplate.startsWith('tr(@0/**,sortedmulti_a(1,')
       ).toBe(true);
-      expect(result.ledgerTemplate).not.toContain('/**/**');
-      expect(result.ledgerTemplate).not.toMatch(/@\d+\/\*\*\d/);
+      expect(result.descriptorTemplate).not.toContain('/**/**');
+      expect(result.descriptorTemplate).not.toMatch(/@\d+\/\*\*\d/);
 
       for (let index = 0; index <= 11; index++) {
         const placeholderRegex = new RegExp(`@${index}/\\*\\*`, 'g');
-        const matches = result.ledgerTemplate.match(placeholderRegex) ?? [];
+        const matches = result.descriptorTemplate.match(placeholderRegex) ?? [];
         expect(matches.length).toBe(1);
       }
       expect(result.keyRoots.length).toBe(12);
@@ -266,9 +270,9 @@ describeIfNotScure(
       });
 
       const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
-      ledgerSession.state.policies = [
+      ledgerSession.store.policies = [
         {
-          ledgerTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
+          descriptorTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
           keyRoots: [
             keyRootWithOrigin(ledgerMaster),
             keyRootNoOrigin(otherMaster)
@@ -282,7 +286,9 @@ describeIfNotScure(
         index: 0
       });
 
-      expect(policy?.ledgerTemplate).toEqual('wsh(sortedmulti(1,@0/**,@1/**))');
+      expect(policy?.descriptorTemplate).toEqual(
+        'wsh(sortedmulti(1,@0/**,@1/**))'
+      );
       expect(policy?.keyRoots).toEqual([
         keyRootWithOrigin(ledgerMaster),
         keyRootNoOrigin(otherMaster)
@@ -322,9 +328,9 @@ describeIfNotScure(
       });
 
       const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
-      ledgerSession.state.policies = [
+      ledgerSession.store.policies = [
         {
-          ledgerTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
+          descriptorTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
           keyRoots: [
             keyRootNoOrigin(internalMaster),
             keyRootNoOrigin(otherMaster),
@@ -339,7 +345,7 @@ describeIfNotScure(
         index: 0
       });
 
-      expect(policy?.ledgerTemplate).toEqual(
+      expect(policy?.descriptorTemplate).toEqual(
         'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))'
       );
       expect(policy?.keyRoots).toEqual([

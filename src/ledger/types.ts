@@ -46,25 +46,29 @@ export type LedgerClient = {
 };
 
 export type LedgerPolicy = {
-  policyName?: string;
-  ledgerTemplate: string;
+  name?: string;
+  descriptorTemplate: string;
   keyRoots: string[];
-  policyId?: Uint8Array;
-  policyHmac?: Uint8Array;
+  /** Hex-encoded Ledger policy id. */
+  policyId?: string;
+  /** Hex-encoded Ledger policy HMAC. Persist this to reuse the policy. */
+  policyHmac?: string;
 };
 
 /**
- * App-owned Ledger state.
+ * App-owned Ledger store. This is plain JSON and should be persisted by the app.
  *
- * `masterFingerprint` and `xpubs` are caches. `policies` stores Ledger wallet
- * policy registration receipts (`policyId` and `policyHmac`) so the app can
- * reuse a registered policy without registering it again.
+ * `masterFingerprint` is hex. `xpubs` are caches. `policies` stores Ledger
+ * wallet policy registration receipts so the app can reuse a registered policy.
  */
-export type LedgerState = {
-  masterFingerprint?: Uint8Array;
+export type LedgerStore = {
+  masterFingerprint?: string;
   policies?: LedgerPolicy[];
   xpubs?: { [key: string]: string };
 };
+
+/** @deprecated Use `LedgerStore`. */
+export type LedgerState = LedgerStore;
 
 /**
  * Connected Ledger session plus the descriptor backend needed by this package.
@@ -72,8 +76,8 @@ export type LedgerState = {
 export type LedgerSession = {
   /** Ledger Bitcoin app client instance. */
   client: LedgerClient;
-  /** App-owned state for cached keys and registered wallet policy receipts. */
-  state: LedgerState;
+  /** App-owned JSON store. Persist this, not the session. */
+  store: LedgerStore;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
@@ -86,8 +90,8 @@ export type LedgerSession = {
 export type LedgerManager = {
   /** Ledger Bitcoin app client instance. */
   ledgerClient: LedgerClient;
-  /** App-owned state for cached keys and registered wallet policy receipts. */
-  ledgerState: LedgerState;
+  /** App-owned store for cached keys and registered wallet policy receipts. */
+  ledgerState: LedgerStore;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
