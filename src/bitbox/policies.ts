@@ -12,10 +12,12 @@ import {
 import type { HWWPolicy, HWWPolicyResolver } from '../hww/types';
 import type {
   BitBoxKeyOriginInfo,
+  BitBoxMultisigScriptType,
   BitBoxPolicy,
   BitBoxScriptConfig,
   BitBoxSession
 } from './types';
+import { coinTypeFromNetwork } from '../networkUtils';
 import {
   apiNetwork,
   simpleType,
@@ -46,6 +48,88 @@ function keyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
       : {}),
     ...(parsed.originPath ? { keypath: `m${parsed.originPath}` } : {}),
     xpub: parsed.xpub
+  };
+}
+
+type NativeMultisigPolicyDetails = {
+  accountKeypath: string;
+  threshold: number;
+  xpubs: string[];
+  ourXpubIndex: number;
+  scriptType: BitBoxMultisigScriptType;
+};
+
+/** Turns native multisig details into the BitBox API script config. */
+function scriptConfigFromNativeMultisigDetails(
+  details: NativeMultisigPolicyDetails
+): BitBoxScriptConfig {
+  return {
+    multisig: {
+      threshold: details.threshold,
+      xpubs: details.xpubs,
+      ourXpubIndex: details.ourXpubIndex,
+      scriptType: details.scriptType
+    }
+  };
+}
+
+/** Extracts native BitBox multisig details from a stored policy. */
+function nativeMultisigDetailsFromPolicy({
+  policy,
+  session
+}: {
+  policy: BitBoxPolicy | HWWPolicy;
+  session: BitBoxSession;
+}): NativeMultisigPolicyDetails {
+  const match = policy.descriptorTemplate.match(
+    /^wsh\((?:sortedmulti|multi)\((\d+),(.+)\)\)$/
+  );
+  if (!match)
+    throw new Error(
+      `BitBox02 native multisig supports only wsh(sortedmulti(...)) or wsh(multi(...)) policies`
+    );
+
+  const threshold = Number(match[1]);
+  const keyTokens = match[2]!.split(',').map(token => token.trim());
+  if (!Number.isInteger(threshold) || threshold < 1)
+    throw new Error(`Invalid BitBox02 multisig threshold`);
+  if (keyTokens.length !== policy.keyRoots.length)
+    throw new Error(`BitBox02 policy key count mismatch`);
+  for (let i = 0; i < keyTokens.length; i++) {
+    if (keyTokens[i] !== `@${i}/**`)
+      throw new Error(`BitBox02 multisig key ${i} must be @${i}/**`);
+  }
+
+  const masterFingerprint = session.store.masterFingerprint;
+  if (!masterFingerprint)
+    throw new Error(`BitBox02 master fingerprint required for multisig policy`);
+  const parsedKeyRoots = policy.keyRoots.map(parseKeyRoot);
+  const ourXpubIndex = parsedKeyRoots.findIndex(
+    keyRoot =>
+      keyRoot.masterFingerprint &&
+      compare(keyRoot.masterFingerprint, fromHex(masterFingerprint)) === 0
+  );
+  if (ourXpubIndex === -1)
+    throw new Error(`BitBox02 multisig policy does not contain this device`);
+
+  const ourOriginPath = parsedKeyRoots[ourXpubIndex]!.originPath;
+  if (!ourOriginPath)
+    throw new Error(`BitBox02 multisig key must include origin information`);
+
+  const expectedCoinType = coinTypeFromNetwork(session.network);
+  const originMatch = ourOriginPath.match(/^\/48'\/([01])'\/(\d+)'\/2'$/);
+  if (!originMatch || Number(originMatch[1]) !== expectedCoinType) {
+    throw new Error(
+      `BitBox02 native multisig supports only m/48'/${expectedCoinType}'/<account>'/2'`
+    );
+  }
+
+  return {
+    accountKeypath: `m${ourOriginPath}`,
+    threshold,
+    xpubs: parsedKeyRoots.map(keyRoot => keyRoot.xpub),
+    ourXpubIndex,
+    scriptType: 'p2wsh'
   };
 }
 
@@ -104,6 +188,12 @@ export function scriptConfigFromPolicy({
   policy: BitBoxPolicy | HWWPolicy;
   session: BitBoxSession;
 }): BitBoxScriptConfig {
+  if (policy.descriptorTemplate.match(/^wsh\((?:sortedmulti|multi)\(/)) {
+    return scriptConfigFromNativeMultisigDetails(
+      nativeMultisigDetailsFromPolicy({ policy, session })
+    );
+  }
+
   if (policy.descriptorTemplate.match(/^sh\(wpkh\(@0\/\*\*\)\)$/)) {
     return {
       simpleType: simpleType({
@@ -292,18 +382,26 @@ export async function registerWalletPolicy({
     descriptorTemplate: result.descriptorTemplate,
     keyRoots: result.keyRoots
   };
-  const scriptConfig = scriptConfigFromPolicy({ policy, session });
+  const nativeMultisigDetails = policy.descriptorTemplate.match(
+    /^wsh\((?:sortedmulti|multi)\(/
+  )
+    ? nativeMultisigDetailsFromPolicy({ policy, session })
+    : undefined;
+  const scriptConfig = nativeMultisigDetails
+    ? scriptConfigFromNativeMultisigDetails(nativeMultisigDetails)
+    : scriptConfigFromPolicy({ policy, session });
+  const accountKeypath = nativeMultisigDetails?.accountKeypath;
   const registered = await client.btcIsScriptConfigRegistered(
     apiNetwork(session),
     scriptConfig,
-    undefined
+    accountKeypath
   );
   if (!registered) {
     try {
       await client.btcRegisterScriptConfig(
         apiNetwork(session),
         scriptConfig,
-        undefined,
+        accountKeypath,
         'autoXpubTpub',
         name
       );
@@ -312,7 +410,7 @@ export async function registerWalletPolicy({
       const registeredAfterDuplicate = await client.btcIsScriptConfigRegistered(
         apiNetwork(session),
         scriptConfig,
-        undefined
+        accountKeypath
       );
       if (!registeredAfterDuplicate) throw error;
     }

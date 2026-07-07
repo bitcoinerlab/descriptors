@@ -210,7 +210,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
 }
 
 describe('BitBox helpers', () => {
-  test('builds key expressions and registers P2WSH multisig policies', async () => {
+  test('builds key expressions and registers P2WSH multisig natively', async () => {
     const bitboxMaster = makeMaster(1);
     const otherMaster = makeMaster(2);
     const client = fakeClientFor(bitboxMaster);
@@ -237,15 +237,20 @@ describe('BitBox helpers', () => {
 
     expect(client.registered?.name).toBe('Test BitBox');
     expect(client.registered?.apiNetwork).toBe('tbtc');
-    expect(client.registered?.keypathAccount).toBeUndefined();
+    expect(client.registered?.keypathAccount).toBe("m/48'/1'/0'/2'");
     expect(client.registered?.scriptConfig).toMatchObject({
-      policy: { policy: 'wsh(sortedmulti(1,@0/**,@1/**))' }
+      multisig: { threshold: 1, ourXpubIndex: 0, scriptType: 'p2wsh' }
     });
     expect(
       client.registered &&
-        'policy' in client.registered.scriptConfig &&
-        client.registered.scriptConfig.policy.keys.length
+        'multisig' in client.registered.scriptConfig &&
+        client.registered.scriptConfig.multisig.xpubs.length
     ).toBe(2);
+    expect(bitboxSession.store.policies?.[0]).toEqual({
+      name: 'Test BitBox',
+      descriptorTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
+      keyRoots: expect.any(Array)
+    });
 
     await expect(
       displayAddress({
@@ -254,8 +259,27 @@ describe('BitBox helpers', () => {
         change: 0,
         index: 7
       })
-    ).resolves.toBe('bcrt1policy');
+    ).resolves.toBe('bcrt1multisig');
     expect(client.displayed?.keypath).toBe("m/48'/1'/0'/2'/0/7");
+    expect(client.displayed?.scriptConfig).toMatchObject({
+      multisig: { threshold: 1, ourXpubIndex: 0, scriptType: 'p2wsh' }
+    });
+
+    const output = new Output({ descriptor, index: 0, network: NETWORK });
+    const fundingTx = new Transaction();
+    fundingTx.version = 2;
+    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
+    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), BigInt(20_000));
+    const psbt = createPsbt(false, NETWORK);
+    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+
+    await signers.sign({ psbt, session: bitboxSession });
+    expect(client.signed?.forceScriptConfig).toMatchObject({
+      scriptConfig: {
+        multisig: { threshold: 1, ourXpubIndex: 0, scriptType: 'p2wsh' }
+      },
+      keypath: "m/48'/1'/0'/2'"
+    });
   });
 
   test('passes xpub and registration modes to BitBox-compatible clients', async () => {

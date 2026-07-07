@@ -261,10 +261,9 @@ If you drop BitBox store, you can call `registerWalletPolicy(...)` again for eac
 wallet descriptor after reconnecting. The helper checks the device first, avoids
 duplicate on-device registration when possible, and repopulates local store.
 
-BitBox non-standard descriptors, including multisig, are registered through the
-generic BitBox policy config. Native BitBox multisig registration may be used
-internally later if real-device UX requires it, but the public store remains the
-same generic descriptor policy mapping.
+BitBox native multisig may be used internally for `wsh(sortedmulti(...))` and
+`wsh(multi(...))`. Other non-standard descriptors use generic BitBox policy
+configs. The public store remains the same generic descriptor policy mapping.
 
 ## Build Standard Descriptors
 

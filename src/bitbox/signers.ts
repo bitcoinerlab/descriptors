@@ -39,7 +39,7 @@ async function forcedScriptConfigForPsbt({
       policy,
       session
     });
-    if (!('policy' in scriptConfig)) continue;
+    if (!('multisig' in scriptConfig) && !('policy' in scriptConfig)) continue;
 
     const keypath = signingKeypathFromPolicy({ policy, session });
     const forcedScriptConfig = { scriptConfig, keypath };
