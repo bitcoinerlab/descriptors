@@ -50,7 +50,6 @@ export async function keyExpressionLedger({
     session: {
       client: ledgerManager.ledgerClient,
       store: ledgerManager.ledgerState,
-      Output: ledgerManager.Output,
       network: ledgerManager.network
     },
     originPath,

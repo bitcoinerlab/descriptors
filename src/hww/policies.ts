@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { OutputInstance } from '../descriptors';
+import {
+  getOutputConstructorOrThrow,
+  type OutputInstance
+} from '../descriptors';
 import {
   PsbtLike,
   ScureTransactionLike,
@@ -89,7 +92,8 @@ export async function policyForPsbtInput({
 }): Promise<HWWPolicy | undefined> {
   const bitcoinLib = getBitcoinLibOrThrow();
   psbt = toPsbt(psbt);
-  const { network, Output } = policyResolver;
+  const { network } = policyResolver;
+  const Output = getOutputConstructorOrThrow();
   const { Transaction } = bitcoinLib;
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);

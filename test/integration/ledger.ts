@@ -103,7 +103,6 @@ const finalizers = [];
   await ready;
   const ledgerSession = await ledger.connectors.connect({
     mode: 'node-hid',
-    Output,
     network: NETWORK,
     store: {},
     appName: 'Bitcoin Test',

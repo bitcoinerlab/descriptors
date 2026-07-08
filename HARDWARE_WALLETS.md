@@ -13,7 +13,6 @@ const store = {};
 
 const session = await connectors.connect({
   mode: 'node-hid',
-  Output,
   network: networks.bitcoin,
   store
 });
@@ -76,7 +75,7 @@ Ledger and BitBox entrypoints expose the same common API shape:
 
 | API | Purpose |
 | --- | --- |
-| `type Session` | Connected device client plus `Output`, network and app-owned store. |
+| `type Session` | Connected device client plus network and app-owned store. |
 | `type Store` | JSON-safe app-owned store for cached keys and wallet policy metadata. |
 | `connectors.connect(...)` | Build a session with a built-in explicit transport mode. |
 | `connectors.fromClient(...)` | Build a session from an already connected device client. |
@@ -135,14 +134,13 @@ this library.
 ## Connect To A Ledger
 
 ```ts
-import { Output, networks } from '@bitcoinerlab/descriptors';
+import { networks } from '@bitcoinerlab/descriptors';
 import { connectors } from '@bitcoinerlab/descriptors/ledger';
 
 const ledgerStore = {};
 
 const session = await connectors.connect({
   mode: 'node-hid',
-  Output,
   network: networks.bitcoin,
   store: ledgerStore,
   appName: 'Bitcoin',
@@ -152,8 +150,8 @@ const session = await connectors.connect({
 });
 ```
 
-The `session` contains the connected Ledger client, the Bitcoin network, the
-`Output` constructor for your backend, and a mutable `store` object.
+The `session` contains the connected Ledger client, the Bitcoin network, and a
+mutable `store` object.
 
 Available Ledger modes are:
 
@@ -172,7 +170,6 @@ use `fromClient(...)` instead:
 ```ts
 const session = connectors.fromClient({
   client: ledgerClient,
-  Output,
   network: networks.bitcoin,
   store: ledgerStore
 });
@@ -181,14 +178,13 @@ const session = connectors.fromClient({
 ## Connect To A BitBox
 
 ```ts
-import { Output, networks } from '@bitcoinerlab/descriptors';
+import { networks } from '@bitcoinerlab/descriptors';
 import { connectors } from '@bitcoinerlab/descriptors/bitbox';
 
 const store = {};
 
 const session = await connectors.connect({
   mode: 'webhid-or-bridge',
-  Output,
   network: networks.bitcoin,
   store,
   onPairingCode: pairingCode => {
@@ -218,7 +214,6 @@ client and inject it here.
 ```ts
 const session = connectors.fromClient({
   client,
-  Output,
   network: networks.bitcoin,
   store
 });
@@ -455,7 +450,6 @@ const store = {};
 
 const session = await bitbox.connectors.connect({
   mode: 'webhid-or-bridge',
-  Output,
   network: networks.bitcoin,
   store,
   formatUnit: 'sat'

@@ -66,7 +66,6 @@ function makeStandardExpressionLedger(purpose: number, scriptTemplate: string) {
       session: {
         client: ledgerManager.ledgerClient,
         store: ledgerManager.ledgerState,
-        Output: ledgerManager.Output,
         network: ledgerManager.network
       }
     });

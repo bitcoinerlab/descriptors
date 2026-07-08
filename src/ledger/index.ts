@@ -3,13 +3,13 @@
  *
  * Bitcoinjs-ready usage:
  * ```ts
- * import { Output, networks } from '@bitcoinerlab/descriptors';
+ * import { networks } from '@bitcoinerlab/descriptors';
  * import { registerPolicy, type Session } from '@bitcoinerlab/descriptors/ledger';
  * ```
  *
  * Scure-ready usage:
  * ```ts
- * import { Output, networks } from '@bitcoinerlab/descriptors-scure';
+ * import { networks } from '@bitcoinerlab/descriptors-scure';
  * import { registerPolicy, type Session } from '@bitcoinerlab/descriptors-scure/ledger';
  * ```
  *
@@ -130,7 +130,7 @@ export async function registerPolicy({
   /** Name shown by the device for this policy. */
   name: string;
 }): Promise<LedgerStore> {
-  const { client, store, network, Output } = session;
+  const { client, store, network } = session;
   const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
     client
   )) as typeof import('@ledgerhq/ledger-bitcoin');
@@ -138,7 +138,6 @@ export async function registerPolicy({
     throw new Error(`Error: pass a valid Ledger client`);
   const output = outputFromDescriptor({
     descriptor,
-    Output,
     network,
     index: 0
   });
@@ -221,7 +220,6 @@ export async function registerLedgerWallet({
     session: {
       client: ledgerManager.ledgerClient,
       store: ledgerManager.ledgerState,
-      Output: ledgerManager.Output,
       network: ledgerManager.network
     },
     name: policyName
@@ -274,7 +272,6 @@ export async function displayAddress({
 
   const output = outputFromDescriptor({
     descriptor,
-    Output: session.Output,
     network: session.network,
     change,
     index
@@ -336,7 +333,6 @@ export async function signMessage({
 
   const output = outputFromDescriptor({
     descriptor,
-    Output: session.Output,
     network: session.network,
     change,
     index

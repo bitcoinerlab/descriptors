@@ -57,7 +57,6 @@ function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
   return {
     client: ledgerClient,
     store: { masterFingerprint: toHex(masterFingerprint) },
-    Output,
     network: NETWORK
   };
 }
@@ -70,7 +69,6 @@ function mockPolicyResolver({
   knownPolicies?: HWWPolicy[];
 }): HWWPolicyResolver {
   return {
-    Output,
     network: NETWORK,
     ...(knownPolicies !== undefined ? { knownPolicies } : {}),
     getMasterFingerprint: async () => masterFingerprint,

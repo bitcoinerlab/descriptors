@@ -78,10 +78,9 @@ export async function registerPolicy({
   /** Name shown by the device for this policy. */
   name: string;
 }): Promise<BitBoxStore> {
-  const { client, store, network, Output } = session;
+  const { client, store, network } = session;
   const output = outputFromDescriptor({
     descriptor,
-    Output,
     network,
     ...(descriptor.includes('/<') ? { change: 0 } : {}),
     index: 0
@@ -217,7 +216,6 @@ export async function displayAddress({
 }: AddressDisplayParams): Promise<string | void> {
   const output = outputFromDescriptor({
     descriptor,
-    Output: session.Output,
     network: session.network,
     change,
     index
@@ -254,7 +252,6 @@ export async function signMessage({
 
   const output = outputFromDescriptor({
     descriptor,
-    Output: session.Output,
     network: session.network,
     change,
     index

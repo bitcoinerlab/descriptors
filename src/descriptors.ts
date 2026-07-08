@@ -2382,6 +2382,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 
   const nativeKeys = isBitcoinJsLib(bitcoinLib);
 
+  activeOutput = Output;
+
   return {
     Output,
     parseKeyExpression,
@@ -2401,6 +2403,17 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 }
 
 type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
+let activeOutput: OutputConstructor | undefined;
+
+/** Returns the process-wide `Output` constructor used by internal HWW helpers. */
+export function getOutputConstructorOrThrow(): OutputConstructor {
+  if (!activeOutput)
+    throw new Error(
+      `Error: Output constructor not initialized. Initialize descriptors-core first with DescriptorsFactory(...), or import through a preset package such as @bitcoinerlab/descriptors or @bitcoinerlab/descriptors-scure.`
+    );
+  return activeOutput;
+}
+
 /**
  * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally
  * creates and returns the `Output` class.

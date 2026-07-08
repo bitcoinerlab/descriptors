@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 
 /**
@@ -38,12 +37,10 @@ export type HWWKeySource = {
 /**
  * Small adapter used by shared policy-matching code.
  *
- * It combines device keys, known policies, the Bitcoin network, and the bound
- * `Output` constructor needed to rebuild scripts from descriptors.
+ * It combines device keys, known policies, and the Bitcoin network used to
+ * rebuild scripts from descriptors.
  */
 export type HWWPolicyResolver = HWWKeySource & {
-  /** Bound `Output` constructor from the selected backend package. */
-  Output: OutputConstructor;
   /** Bitcoin network used to parse descriptors and standard account paths. */
   network: Network;
   /** Policies already known by the app or registered with the device. */

@@ -2,7 +2,10 @@
 // Distributed under the MIT software license
 
 import { fromHex, fromUtf8, toHex } from 'uint8array-tools';
-import type { OutputConstructor, OutputInstance } from '../descriptors';
+import {
+  getOutputConstructorOrThrow,
+  type OutputInstance
+} from '../descriptors';
 import { assertChangeIndexKeyPath } from '../keyExpressions';
 import type { Network } from '../networks';
 import type { HWWKeySource } from './types';
@@ -10,17 +13,16 @@ import type { HWWKeySource } from './types';
 /** Builds an Output from a descriptor and optional address position. */
 export function outputFromDescriptor({
   descriptor,
-  Output,
   network,
   change,
   index
 }: {
   descriptor: string;
-  Output: OutputConstructor;
   network: Network;
   change?: number;
   index?: number;
 }): OutputInstance {
+  const Output = getOutputConstructorOrThrow();
   return new Output({
     descriptor,
     ...(descriptor.includes('*') && index !== undefined ? { index } : {}),

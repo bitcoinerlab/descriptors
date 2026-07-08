@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import type {
   BitBoxClient,
@@ -77,18 +76,17 @@ async function importAndValidateBitBoxApi(): Promise<BitBoxApiModule> {
  * Build a BitBox session from an already paired client.
  *
  * Use this in React Native or when your app owns the BitBox transport.
+ * Preset packages bind the descriptor backend before this function runs. Direct
+ * core users must call `DescriptorsFactory(...)` first.
  */
 export function fromClient({
   client,
-  Output,
   network,
   store,
   formatUnit
 }: {
   /** Connected and paired BitBox-compatible provider client. */
   client: BitBoxClient;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
   /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
@@ -99,7 +97,6 @@ export function fromClient({
   const session: BitBoxSession = {
     client,
     store,
-    Output,
     network
   };
   if (formatUnit !== undefined) session.formatUnit = formatUnit;
@@ -110,11 +107,12 @@ export function fromClient({
  * Connect to a BitBox with `bitbox-api` and build a session.
  *
  * Install `bitbox-api` before calling this. Use `fromClient(...)` if your app
- * already has a paired BitBox client.
+ * already has a paired BitBox client. Preset packages bind the descriptor
+ * backend before this function runs. Direct core users must call
+ * `DescriptorsFactory(...)` first.
  */
 export async function connect({
   mode,
-  Output,
   network,
   store,
   formatUnit,
@@ -129,8 +127,6 @@ export async function connect({
    * back to BitBoxBridge.
    */
   mode: 'webhid' | 'bridge' | 'webhid-or-bridge';
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
   /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
@@ -156,7 +152,6 @@ export async function connect({
 
   return fromClient({
     client,
-    Output,
     network,
     store,
     ...(formatUnit !== undefined ? { formatUnit } : {})

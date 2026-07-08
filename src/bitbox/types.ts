@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { OutputConstructor } from '../descriptors';
 import type { HWWPolicy } from '../hww/types';
 import type { Network } from '../networks';
 
@@ -114,13 +113,12 @@ export type BitBoxStore = {
   xpubs?: { [key: string]: string };
 };
 
+/** Connected BitBox session. Persist the store, not the session. */
 export type BitBoxSession = {
   /** Connected and paired BitBox-compatible provider client. */
   client: BitBoxClient;
   /** App-owned JSON store. Persist this, not the session. */
   store: BitBoxStore;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
   /** Optional display unit passed to `btcSignPSBT`. */

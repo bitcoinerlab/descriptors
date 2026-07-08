@@ -83,7 +83,6 @@ function sessionFor(
   return connectors.fromClient({
     client,
     store: { masterFingerprint: toHex(master.fingerprint) },
-    Output,
     network
   }) satisfies Session;
 }

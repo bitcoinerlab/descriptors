@@ -12,10 +12,10 @@
  * this file can be exactly this:
  *
  * ```ts
- * import * as core from '@bitcoinerlab/descriptors-core';
  * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
  * import * as ecc from '@bitcoinerlab/secp256k1';
  * import { Psbt } from 'bitcoinjs-lib';
+ * import { bound } from './backend';
  *
  * export type {
  *   Expansion,
@@ -44,7 +44,6 @@
  *
  * export { ecc, Psbt };
  *
- * const bound = core.DescriptorsFactory(createBitcoinjsLib(ecc));
  * export const { Output, parseKeyExpression, expand, ECPair, BIP32 } = bound;
  * ```
  */
@@ -53,6 +52,7 @@ import * as core from '@bitcoinerlab/descriptors-core';
 import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { Psbt } from 'bitcoinjs-lib';
+import { bound } from './backend';
 import type {
   LedgerManager as StrictLedgerManager,
   LedgerState as StrictLedgerState
@@ -99,7 +99,8 @@ export type LedgerState = StrictLedgerState;
  */
 export type LedgerManager =
   | StrictLedgerManager
-  | (Omit<StrictLedgerManager, 'Output'> & {
+  | (StrictLedgerManager & {
+      /** @deprecated Ignored by modern helpers; backend binding is package-wide. */
       Output?: Bound['Output'];
       ecc: Ecc;
     });
@@ -179,22 +180,10 @@ function getLedgerModule() {
 function normalizeLedgerParams<Params extends { ledgerManager: LedgerManager }>(
   params: Params
 ): Omit<Params, 'ledgerManager'> & { ledgerManager: StrictLedgerManager } {
-  if (params.ledgerManager.Output || !('ecc' in params.ledgerManager)) {
-    return params as Omit<Params, 'ledgerManager'> & {
-      ledgerManager: StrictLedgerManager;
-    };
-  }
-
-  return {
-    ...params,
-    ledgerManager: {
-      ...params.ledgerManager,
-      Output: DescriptorsFactory(params.ledgerManager.ecc).Output
-    }
+  return params as Omit<Params, 'ledgerManager'> & {
+    ledgerManager: StrictLedgerManager;
   };
 }
-
-const bound: Bound = DescriptorsFactory(ecc);
 
 const signInputLedger = (
   params: CompatLedgerParams<LedgerModule['signers']['signInputLedger']>

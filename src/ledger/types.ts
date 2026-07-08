@@ -74,16 +74,12 @@ export type LedgerStore = {
 /** @deprecated Use `LedgerStore`. */
 export type LedgerState = LedgerStore;
 
-/**
- * Connected Ledger session plus the descriptor backend needed by this package.
- */
+/** Connected Ledger session. Persist the store, not the session. */
 export type LedgerSession = {
   /** Ledger Bitcoin app client instance. */
   client: LedgerClient;
   /** App-owned JSON store. Persist this, not the session. */
   store: LedgerStore;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
 };
@@ -96,8 +92,8 @@ export type LedgerManager = {
   ledgerClient: LedgerClient;
   /** App-owned store for cached keys and registered Ledger policy receipts. */
   ledgerState: LedgerStore;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
+  /** @deprecated Ignored by modern helpers; backend binding is package-wide. */
+  Output?: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
 };

@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 import { assertLedgerApp, importAndValidateLedgerBitcoin } from './client';
 import type { LedgerClient, LedgerSession, LedgerStore } from './types';
@@ -52,18 +51,17 @@ function importAndValidateTransport({
  * Build a Ledger session from an existing Ledger Bitcoin app client.
  *
  * Use this when your app owns the transport, for example React Native, BLE,
- * WebUSB/WebHID handled outside this package, or a custom provider.
+ * WebUSB/WebHID handled outside this package, or a custom provider. Preset
+ * packages bind the descriptor backend before this function runs. Direct core
+ * users must call `DescriptorsFactory(...)` first.
  */
 export function fromClient({
   client,
-  Output,
   network,
   store
 }: {
   /** Ledger Bitcoin app client instance. */
   client: LedgerClient;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
   /** App-owned JSON store for cached keys and Ledger policy receipts. */
@@ -72,7 +70,6 @@ export function fromClient({
   return {
     client,
     store,
-    Output,
     network
   };
 }
@@ -82,6 +79,8 @@ export function fromClient({
  *
  * Install `@ledgerhq/ledger-bitcoin` plus the transport package for the selected
  * mode. Use `fromClient(...)` if your app already has a Ledger Bitcoin client.
+ * Preset packages bind the descriptor backend before this function runs. Direct
+ * core users must call `DescriptorsFactory(...)` first.
  */
 export async function connect(
   params:
@@ -91,8 +90,6 @@ export async function connect(
          * `@ledgerhq/hw-transport-node-hid`.
          */
         mode: 'node-hid';
-        /** Pre-bound `Output` constructor from the package/backend you are using. */
-        Output: OutputConstructor;
         /** Bitcoin network used for descriptor and policy interpretation. */
         network: Network;
         /** App-owned JSON store for cached keys and Ledger policy receipts. */
@@ -114,8 +111,6 @@ export async function connect(
          * `@ledgerhq/hw-transport-webhid`.
          */
         mode: 'webhid';
-        /** Pre-bound `Output` constructor from the package/backend you are using. */
-        Output: OutputConstructor;
         /** Bitcoin network used for descriptor and policy interpretation. */
         network: Network;
         /** App-owned JSON store for cached keys and Ledger policy receipts. */
@@ -133,8 +128,6 @@ export async function connect(
          * `@ledgerhq/hw-transport-webusb`.
          */
         mode: 'webusb';
-        /** Pre-bound `Output` constructor from the package/backend you are using. */
-        Output: OutputConstructor;
         /** Bitcoin network used for descriptor and policy interpretation. */
         network: Network;
         /** App-owned JSON store for cached keys and Ledger policy receipts. */
@@ -148,7 +141,6 @@ export async function connect(
       }
 ): Promise<LedgerSession> {
   const {
-    Output,
     network,
     store,
     appName = 'Bitcoin',
@@ -181,7 +173,6 @@ export async function connect(
     client: new ledgerBitcoin.AppClient(
       transport as ConstructorParameters<typeof ledgerBitcoin.AppClient>[0]
     ),
-    Output,
     network,
     store
   });

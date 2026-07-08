@@ -11,7 +11,6 @@ export function policyResolverFromSession(
 ): HWWPolicyResolver {
   const knownPolicies = session.store.policies;
   return {
-    Output: session.Output,
     network: session.network,
     ...(knownPolicies !== undefined ? { knownPolicies } : {}),
     getMasterFingerprint: () => getMasterFingerprint({ session }),
