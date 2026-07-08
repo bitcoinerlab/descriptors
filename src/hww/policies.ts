@@ -18,7 +18,25 @@ import { coinTypeFromNetwork } from '../networkUtils';
 import { reOriginPath } from '../re';
 import type { ExpansionMap, KeyInfo } from '../types';
 import type { TapTreeInfoNode } from '../tapTree';
-import type { HWWPolicy, HWWPolicyResolver } from './types';
+
+/**
+ * Descriptor policy used by shared hardware-wallet helpers.
+ *
+ * `descriptorTemplate` is the device policy template, for example
+ * `wsh(sortedmulti(2,@0/**,@1/**))`.
+ *
+ * `keyRoots` contains the xpub roots that replace `@0`, `@1`, and so on.
+ * `name` is optional because standard policies and freshly derived policies do
+ * not have a device registration name.
+ */
+export type HWWPolicy = {
+  /** Human-readable policy name shown by the device when supported. */
+  name?: string;
+  /** Descriptor template with `@0`, `@1`, ... placeholders. */
+  descriptorTemplate: string;
+  /** Xpub roots used by the descriptor template placeholders. */
+  keyRoots: string[];
+};
 
 function isStandardPolicy({
   descriptorTemplate,
@@ -82,17 +100,26 @@ export function parseP2wshSortedmultiPolicy(policy: HWWPolicy): {
 
 /** Finds the hardware-wallet policy that matches a PSBT input. */
 export async function policyForPsbtInput({
-  policyResolver,
+  getMasterFingerprint,
+  getAccountXpub,
+  knownPolicies,
+  network,
   psbt,
   index
 }: {
-  policyResolver: HWWPolicyResolver;
+  /** Reads the connected device master fingerprint. */
+  getMasterFingerprint(): Promise<Uint8Array>;
+  /** Reads an account xpub when a standard policy must be reconstructed. */
+  getAccountXpub(originPath: string): Promise<string>;
+  /** Policies already known by the app or registered with the device. */
+  knownPolicies?: HWWPolicy[];
+  /** Bitcoin network used to identify standard paths and rebuild scripts. */
+  network: Network;
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
 }): Promise<HWWPolicy | undefined> {
   const bitcoinLib = getBitcoinLibOrThrow();
   psbt = toPsbt(psbt);
-  const { network } = policyResolver;
   const Output = getOutputConstructorOrThrow();
   const { Transaction } = bitcoinLib;
   const input = psbt.data.inputs[index];
@@ -121,7 +148,7 @@ export async function policyForPsbtInput({
       `Input ${index} does not contain bip32 or tapBip32 derivations.`
     );
 
-  const masterFingerprint = await policyResolver.getMasterFingerprint();
+  const masterFingerprint = await getMasterFingerprint();
   for (const keyDerivation of keyDerivations) {
     if (compare(keyDerivation.masterFingerprint, masterFingerprint) === 0) {
       const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
@@ -151,7 +178,7 @@ export async function policyForPsbtInput({
                   ? 'tr(@0/**)'
                   : undefined;
           if (standardTemplate) {
-            const xpub = await policyResolver.getAccountXpub(originPath);
+            const xpub = await getAccountXpub(originPath);
             standardPolicy = {
               descriptorTemplate: standardTemplate,
               keyRoots: [`[${toHex(masterFingerprint)}${originPath}]${xpub}`]
@@ -159,7 +186,7 @@ export async function policyForPsbtInput({
           }
         }
 
-        const policies = [...(policyResolver.knownPolicies || [])];
+        const policies = [...(knownPolicies || [])];
         if (standardPolicy) policies.push(standardPolicy);
 
         for (const policy of policies) {
@@ -223,10 +250,11 @@ export async function policyForPsbtInput({
 /** Builds the descriptor policy for an output that contains this device. */
 export async function derivePolicyFromOutput({
   output,
-  policyResolver
+  getMasterFingerprint
 }: {
   output: OutputInstance;
-  policyResolver: HWWPolicyResolver;
+  /** Reads the connected device master fingerprint. */
+  getMasterFingerprint(): Promise<Uint8Array>;
 }): Promise<{ descriptorTemplate: string; keyRoots: string[] } | null> {
   const expanded = output.expand();
   let expandedExpression = expanded.expandedExpression;
@@ -287,7 +315,7 @@ export async function derivePolicyFromOutput({
   if (!expandedExpression || !expansionMap)
     throw new Error(`Error: invalid output`);
 
-  const masterFingerprint = await policyResolver.getMasterFingerprint();
+  const masterFingerprint = await getMasterFingerprint();
 
   const allKeys = Object.keys(expansionMap).sort((a, b) => {
     const aIndex = Number(a.slice(1));
@@ -369,14 +397,15 @@ export async function derivePolicyFromOutput({
 /** Returns a standard single-key policy for an output, or `null`. */
 export async function standardPolicyFromOutput({
   output,
-  policyResolver
+  getMasterFingerprint
 }: {
   output: OutputInstance;
-  policyResolver: HWWPolicyResolver;
+  /** Reads the connected device master fingerprint. */
+  getMasterFingerprint(): Promise<Uint8Array>;
 }): Promise<HWWPolicy | null> {
   const result = await derivePolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint
   });
   if (!result)
     throw new Error(`Error: descriptor does not have a hardware wallet input`);
@@ -415,19 +444,23 @@ export function samePolicy(policyA: HWWPolicy, policyB: HWWPolicy) {
 /** Finds a known policy matching an output. */
 export async function knownPolicyFromOutput({
   output,
-  policyResolver
+  getMasterFingerprint,
+  knownPolicies
 }: {
   output: OutputInstance;
-  policyResolver: HWWPolicyResolver;
+  /** Reads the connected device master fingerprint. */
+  getMasterFingerprint(): Promise<Uint8Array>;
+  /** Policies already known by the app or registered with the device. */
+  knownPolicies?: HWWPolicy[];
 }): Promise<HWWPolicy | null> {
   const result = await derivePolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint
   });
   if (!result)
     throw new Error(`Error: output does not have a hardware wallet input`);
   const { descriptorTemplate, keyRoots } = result;
-  const policies = (policyResolver.knownPolicies || []).filter(policy =>
+  const policies = (knownPolicies || []).filter(policy =>
     samePolicy(policy, { descriptorTemplate, keyRoots })
   );
   if (policies.length > 1) throw new Error(`Error: duplicated policy`);

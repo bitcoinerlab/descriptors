@@ -19,10 +19,8 @@ export async function keyExpression({
   keyPath?: string | undefined;
 }): Promise<string> {
   return keyExpressionHWW({
-    keySource: {
-      getMasterFingerprint: () => getMasterFingerprint({ session }),
-      getAccountXpub: originPath => getXpub({ originPath, session })
-    },
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session }),
     originPath,
     keyPath,
     change,

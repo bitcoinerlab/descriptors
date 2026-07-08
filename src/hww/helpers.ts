@@ -8,7 +8,6 @@ import {
 } from '../descriptors';
 import { assertChangeIndexKeyPath } from '../keyExpressions';
 import type { Network } from '../networks';
-import type { HWWKeySource } from './types';
 
 /** Builds an Output from a descriptor and optional address position. */
 export function outputFromDescriptor({
@@ -31,15 +30,19 @@ export function outputFromDescriptor({
   });
 }
 
-/** Builds a descriptor key expression from a hardware-wallet key source. */
+/** Builds a descriptor key expression from hardware-wallet device callbacks. */
 export async function keyExpressionHWW({
-  keySource,
+  getMasterFingerprint,
+  getAccountXpub,
   originPath,
   keyPath,
   change,
   index
 }: {
-  keySource: HWWKeySource;
+  /** Reads the connected device master fingerprint. */
+  getMasterFingerprint(): Promise<Uint8Array>;
+  /** Reads the account xpub for the descriptor origin path. */
+  getAccountXpub(originPath: string): Promise<string>;
   originPath: string;
   change?: number | undefined;
   index?: number | undefined | '*';
@@ -47,9 +50,9 @@ export async function keyExpressionHWW({
 }): Promise<string> {
   assertChangeIndexKeyPath({ change, index, keyPath });
 
-  const masterFingerprint = await keySource.getMasterFingerprint();
+  const masterFingerprint = await getMasterFingerprint();
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;
-  const xpub = await keySource.getAccountXpub(originPath);
+  const xpub = await getAccountXpub(originPath);
 
   const keyRoot = `${origin}${xpub}`;
   if (keyPath !== undefined) return `${keyRoot}${keyPath}`;

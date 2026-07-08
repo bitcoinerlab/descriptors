@@ -28,8 +28,7 @@ import {
   originPathFromKeyRoot,
   outputFromDescriptor
 } from '../hww/helpers';
-import { apiNetwork, simpleType } from './client';
-import { policyResolverFromSession } from './policyResolver';
+import { apiNetwork, getMasterFingerprint, simpleType } from './client';
 import type { BitBoxPolicy, BitBoxSession, BitBoxStore } from './types';
 
 export type {
@@ -85,11 +84,11 @@ export async function registerPolicy({
     ...(descriptor.includes('/<') ? { change: 0 } : {}),
     index: 0
   });
-  const policyResolver = policyResolverFromSession(session);
+  const readMasterFingerprint = () => getMasterFingerprint({ session });
 
   const standardPolicy = await standardPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: readMasterFingerprint
   });
   if (standardPolicy) {
     simpleType({
@@ -99,13 +98,17 @@ export async function registerPolicy({
     return store;
   }
 
-  const result = await derivePolicyFromOutput({ output, policyResolver });
+  const result = await derivePolicyFromOutput({
+    output,
+    getMasterFingerprint: readMasterFingerprint
+  });
   if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
   if (!store.policies) store.policies = [];
 
   const existingPolicy = await knownPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: readMasterFingerprint,
+    knownPolicies: store.policies
   });
   if (existingPolicy) {
     if (existingPolicy.name !== name)
@@ -220,10 +223,9 @@ export async function displayAddress({
     change,
     index
   });
-  const policyResolver = policyResolverFromSession(session);
   const standardPolicy = await standardPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: () => getMasterFingerprint({ session })
   });
   if (standardPolicy)
     return displayStandardAddress({
@@ -233,7 +235,13 @@ export async function displayAddress({
       index
     });
 
-  const policy = await knownPolicyFromOutput({ output, policyResolver });
+  const policy = await knownPolicyFromOutput({
+    output,
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    ...(session.store.policies !== undefined
+      ? { knownPolicies: session.store.policies }
+      : {})
+  });
   if (!policy)
     throw new Error(`BitBox policy not registered; call registerPolicy first`);
   return displayPolicyAddress({ policy, session, change, index });
@@ -258,7 +266,7 @@ export async function signMessage({
   });
   const policy = await standardPolicyFromOutput({
     output,
-    policyResolver: policyResolverFromSession(session)
+    getMasterFingerprint: () => getMasterFingerprint({ session })
   });
   if (!policy)
     throw new Error(

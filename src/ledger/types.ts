@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import type { OutputConstructor } from '../descriptors';
-import type { HWWPolicy } from '../hww/types';
+import type { HWWPolicy } from '../hww/policies';
 import type { Network } from '../networks';
 
 export type LedgerPartialSignature = {

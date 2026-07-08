@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { HWWPolicy } from '../hww/types';
+import type { HWWPolicy } from '../hww/policies';
 import type { Network } from '../networks';
 
 export type BitBoxApiNetwork = 'btc' | 'tbtc';

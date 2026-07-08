@@ -42,7 +42,7 @@
  * All the conditions above are checked when deriving the common HWW policy.
  */
 
-import { importAndValidateLedgerBitcoin } from './client';
+import { getMasterFingerprint, importAndValidateLedgerBitcoin } from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
 import {
   derivePolicyFromOutput,
@@ -55,7 +55,6 @@ import {
   originPathFromKeyRoot,
   outputFromDescriptor
 } from '../hww/helpers';
-import { policyResolverFromSession } from './policyResolver';
 import {
   keyExpression as keyExpressionFromSession,
   keyExpressionLedger
@@ -141,15 +140,25 @@ export async function registerPolicy({
     network,
     index: 0
   });
-  const policyResolver = policyResolverFromSession(session);
-  if (await standardPolicyFromOutput({ output, policyResolver })) return store;
-  const result = await derivePolicyFromOutput({ output, policyResolver });
+  const readMasterFingerprint = () => getMasterFingerprint({ session });
+  if (
+    await standardPolicyFromOutput({
+      output,
+      getMasterFingerprint: readMasterFingerprint
+    })
+  )
+    return store;
+  const result = await derivePolicyFromOutput({
+    output,
+    getMasterFingerprint: readMasterFingerprint
+  });
   if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { descriptorTemplate, keyRoots } = result;
   if (!store.policies) store.policies = [];
   const policy = (await knownPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: readMasterFingerprint,
+    knownPolicies: store.policies
   })) as LedgerPolicy | null;
   if (policy) {
     if (policy.name !== name)
@@ -276,10 +285,9 @@ export async function displayAddress({
     change,
     index
   });
-  const policyResolver = policyResolverFromSession(session);
   const standardPolicy = await standardPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: () => getMasterFingerprint({ session })
   });
   if (standardPolicy) {
     return ledgerClient.getWalletAddress(
@@ -296,7 +304,10 @@ export async function displayAddress({
 
   const policy = (await knownPolicyFromOutput({
     output,
-    policyResolver
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    ...(session.store.policies !== undefined
+      ? { knownPolicies: session.store.policies }
+      : {})
   })) as LedgerPolicy | null;
   if (!policy)
     throw new Error(`Ledger policy not registered; call registerPolicy first`);
@@ -339,7 +350,7 @@ export async function signMessage({
   });
   const policy = await standardPolicyFromOutput({
     output,
-    policyResolver: policyResolverFromSession(session)
+    getMasterFingerprint: () => getMasterFingerprint({ session })
   });
   if (!policy)
     throw new Error(

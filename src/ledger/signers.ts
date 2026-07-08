@@ -5,8 +5,11 @@ import { type ScureTransactionLike, type PsbtLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
 import { policyForPsbtInput, samePolicy } from '../hww/policies';
-import { importAndValidateLedgerBitcoin } from './client';
-import { policyResolverFromSession } from './policyResolver';
+import {
+  getMasterFingerprint,
+  getXpub,
+  importAndValidateLedgerBitcoin
+} from './client';
 import { fromHex } from 'uint8array-tools';
 import type {
   LedgerManager,
@@ -108,7 +111,12 @@ export async function signInput({
   const policy = (await policyForPsbtInput({
     psbt,
     index,
-    policyResolver: policyResolverFromSession(session)
+    network: session.network,
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session }),
+    ...(session.store.policies !== undefined
+      ? { knownPolicies: session.store.policies }
+      : {})
   })) as LedgerPolicy | undefined;
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
@@ -182,12 +190,16 @@ export async function sign({
     throw new Error(`Error: pass a valid Ledger client`);
 
   const ledgerPolicies = [];
-  const policyResolver = policyResolverFromSession(session);
   for (let index = 0; index < psbt.data.inputs.length; index++) {
     const policy = (await policyForPsbtInput({
       psbt,
       index,
-      policyResolver
+      network: session.network,
+      getMasterFingerprint: () => getMasterFingerprint({ session }),
+      getAccountXpub: originPath => getXpub({ originPath, session }),
+      ...(session.store.policies !== undefined
+        ? { knownPolicies: session.store.policies }
+        : {})
     })) as LedgerPolicy | undefined;
     if (policy) ledgerPolicies.push(policy);
   }

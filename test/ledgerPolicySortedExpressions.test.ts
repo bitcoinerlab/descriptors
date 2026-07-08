@@ -22,7 +22,6 @@ import {
   derivePolicyFromOutput,
   policyForPsbtInput
 } from '../dist/hww/policies';
-import type { HWWPolicy, HWWPolicyResolver } from '../dist/hww/types';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
 
@@ -61,21 +60,12 @@ function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
   };
 }
 
-function mockPolicyResolver({
-  masterFingerprint,
-  knownPolicies
-}: {
-  masterFingerprint: Uint8Array;
-  knownPolicies?: HWWPolicy[];
-}): HWWPolicyResolver {
-  return {
-    network: NETWORK,
-    ...(knownPolicies !== undefined ? { knownPolicies } : {}),
-    getMasterFingerprint: async () => masterFingerprint,
-    getAccountXpub: async () => {
-      throw new Error('unexpected standard policy xpub request');
-    }
-  };
+function mockGetMasterFingerprint(masterFingerprint: Uint8Array) {
+  return async () => masterFingerprint;
+}
+
+async function unexpectedGetAccountXpub(): Promise<string> {
+  throw new Error('unexpected standard policy xpub request');
 }
 
 function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
@@ -146,9 +136,7 @@ describeIfNotScure(
 
       const result = await derivePolicyFromOutput({
         output,
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint
-        })
+        getMasterFingerprint: mockGetMasterFingerprint(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -179,9 +167,7 @@ describeIfNotScure(
 
       const result = await derivePolicyFromOutput({
         output,
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint
-        })
+        getMasterFingerprint: mockGetMasterFingerprint(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -208,9 +194,7 @@ describeIfNotScure(
 
       const result = await derivePolicyFromOutput({
         output,
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint
-        })
+        getMasterFingerprint: mockGetMasterFingerprint(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -250,9 +234,7 @@ describeIfNotScure(
 
       const result = await derivePolicyFromOutput({
         output,
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint
-        })
+        getMasterFingerprint: mockGetMasterFingerprint(ledgerMaster.fingerprint)
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -306,10 +288,12 @@ describeIfNotScure(
       ];
 
       const policy = await policyForPsbtInput({
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint,
-          knownPolicies
-        }),
+        getMasterFingerprint: mockGetMasterFingerprint(
+          ledgerMaster.fingerprint
+        ),
+        getAccountXpub: unexpectedGetAccountXpub,
+        knownPolicies,
+        network: NETWORK,
         psbt,
         index: 0
       });
@@ -367,10 +351,12 @@ describeIfNotScure(
       ];
 
       const policy = await policyForPsbtInput({
-        policyResolver: mockPolicyResolver({
-          masterFingerprint: ledgerMaster.fingerprint,
-          knownPolicies
-        }),
+        getMasterFingerprint: mockGetMasterFingerprint(
+          ledgerMaster.fingerprint
+        ),
+        getAccountXpub: unexpectedGetAccountXpub,
+        knownPolicies,
+        network: NETWORK,
         psbt,
         index: 0
       });

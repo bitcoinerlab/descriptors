@@ -4,13 +4,17 @@
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { policyForPsbtInput } from '../hww/policies';
-import { formatUnit, apiNetwork } from './client';
+import {
+  formatUnit,
+  apiNetwork,
+  getMasterFingerprint,
+  getXpub
+} from './client';
 import {
   assertPolicyCanDerive,
   signingKeypathFromPolicy,
   scriptConfigFromPolicy
 } from './scriptConfig';
-import { policyResolverFromSession } from './policyResolver';
 import type { BitBoxScriptConfigWithKeypath, BitBoxSession } from './types';
 
 type MergeablePsbt = PsbtLike & {
@@ -42,13 +46,17 @@ async function forcedScriptConfigForPsbt({
   session: BitBoxSession;
 }): Promise<BitBoxScriptConfigWithKeypath | undefined> {
   const configs = new Map<string, BitBoxScriptConfigWithKeypath>();
-  const policyResolver = policyResolverFromSession(session);
 
   for (let index = 0; index < psbt.data.inputs.length; index++) {
     const policy = await policyForPsbtInput({
       psbt,
       index,
-      policyResolver
+      network: session.network,
+      getMasterFingerprint: () => getMasterFingerprint({ session }),
+      getAccountXpub: originPath => getXpub({ originPath, session }),
+      ...(session.store.policies !== undefined
+        ? { knownPolicies: session.store.policies }
+        : {})
     });
     if (!policy) continue;
 
