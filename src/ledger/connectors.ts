@@ -19,20 +19,11 @@ type LedgerTransportModule = {
   };
 };
 
-/**
- * Built-in Ledger connection modes.
- *
- * All modes require `@ledgerhq/ledger-bitcoin`. Also install the transport for
- * the mode you use: `@ledgerhq/hw-transport-node-hid`,
- * `@ledgerhq/hw-transport-webhid`, or `@ledgerhq/hw-transport-webusb`.
- */
-export type ConnectMode = 'node-hid' | 'webhid' | 'webusb';
-
 function importAndValidateTransport({
   mode,
   specifier
 }: {
-  mode: ConnectMode;
+  mode: 'node-hid' | 'webhid' | 'webusb';
   specifier: string;
 }): LedgerTransportModule {
   try {
@@ -57,17 +48,6 @@ function importAndValidateTransport({
   }
 }
 
-export type FromClientParams = {
-  /** Ledger Bitcoin app client instance. */
-  client: LedgerClient;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
-  /** Bitcoin network used for descriptor and policy interpretation. */
-  network: Network;
-  /** App-owned JSON store for cached keys and wallet policy receipts. */
-  store: LedgerStore;
-};
-
 /**
  * Build a Ledger session from an existing Ledger Bitcoin app client.
  *
@@ -79,7 +59,16 @@ export function fromClient({
   Output,
   network,
   store
-}: FromClientParams): LedgerSession {
+}: {
+  /** Ledger Bitcoin app client instance. */
+  client: LedgerClient;
+  /** Pre-bound `Output` constructor from the package/backend you are using. */
+  Output: OutputConstructor;
+  /** Bitcoin network used for descriptor and policy interpretation. */
+  network: Network;
+  /** App-owned JSON store for cached keys and Ledger policy receipts. */
+  store: LedgerStore;
+}): LedgerSession {
   return {
     client,
     store,
@@ -88,79 +77,76 @@ export function fromClient({
   };
 }
 
-type BaseConnectParams = Omit<FromClientParams, 'client'> & {
-  /** Expected open Ledger app name. */
-  appName?: string;
-  /** Minimum acceptable Bitcoin app version. */
-  minVersion?: string;
-  /** Set to false if the caller validates the app separately. */
-  assertApp?: boolean;
-};
-
-export type NodeHidConnectParams = BaseConnectParams & {
-  /**
-   * Use Node.js HID. Install `@ledgerhq/ledger-bitcoin` and
-   * `@ledgerhq/hw-transport-node-hid`.
-   */
-  mode: 'node-hid';
-  /** Node HID open timeout in milliseconds. Default: 3000. */
-  openTimeout?: number;
-  /** Node HID listen timeout in milliseconds. Default: 3000. */
-  listenTimeout?: number;
-};
-
-export type WebHidConnectParams = BaseConnectParams & {
-  /**
-   * Use browser WebHID. Install `@ledgerhq/ledger-bitcoin` and
-   * `@ledgerhq/hw-transport-webhid`.
-   */
-  mode: 'webhid';
-};
-
-export type WebUsbConnectParams = BaseConnectParams & {
-  /**
-   * Use browser WebUSB. Install `@ledgerhq/ledger-bitcoin` and
-   * `@ledgerhq/hw-transport-webusb`.
-   */
-  mode: 'webusb';
-};
-
-export type ConnectParams =
-  | NodeHidConnectParams
-  | WebHidConnectParams
-  | WebUsbConnectParams;
-
-async function createTransport(
-  params: ConnectParams
-): Promise<LedgerTransport> {
-  if (params.mode === 'node-hid') {
-    const transportModule = importAndValidateTransport({
-      mode: params.mode,
-      specifier: '@ledgerhq/hw-transport-node-hid'
-    });
-    return transportModule.default.create(
-      params.openTimeout ?? 3000,
-      params.listenTimeout ?? 3000
-    );
-  }
-
-  const transportModule = importAndValidateTransport({
-    mode: params.mode,
-    specifier:
-      params.mode === 'webhid'
-        ? '@ledgerhq/hw-transport-webhid'
-        : '@ledgerhq/hw-transport-webusb'
-  });
-  return transportModule.default.create();
-}
-
 /**
  * Connect to a Ledger with one built-in transport mode and build a session.
  *
  * Install `@ledgerhq/ledger-bitcoin` plus the transport package for the selected
  * mode. Use `fromClient(...)` if your app already has a Ledger Bitcoin client.
  */
-export async function connect(params: ConnectParams): Promise<LedgerSession> {
+export async function connect(
+  params:
+    | {
+        /**
+         * Use Node.js HID. Install `@ledgerhq/ledger-bitcoin` and
+         * `@ledgerhq/hw-transport-node-hid`.
+         */
+        mode: 'node-hid';
+        /** Pre-bound `Output` constructor from the package/backend you are using. */
+        Output: OutputConstructor;
+        /** Bitcoin network used for descriptor and policy interpretation. */
+        network: Network;
+        /** App-owned JSON store for cached keys and Ledger policy receipts. */
+        store: LedgerStore;
+        /** Expected open Ledger app name. */
+        appName?: string;
+        /** Minimum acceptable Bitcoin app version. */
+        minVersion?: string;
+        /** Set to false if the caller validates the app separately. */
+        assertApp?: boolean;
+        /** Node HID open timeout in milliseconds. Default: 3000. */
+        openTimeout?: number;
+        /** Node HID listen timeout in milliseconds. Default: 3000. */
+        listenTimeout?: number;
+      }
+    | {
+        /**
+         * Use browser WebHID. Install `@ledgerhq/ledger-bitcoin` and
+         * `@ledgerhq/hw-transport-webhid`.
+         */
+        mode: 'webhid';
+        /** Pre-bound `Output` constructor from the package/backend you are using. */
+        Output: OutputConstructor;
+        /** Bitcoin network used for descriptor and policy interpretation. */
+        network: Network;
+        /** App-owned JSON store for cached keys and Ledger policy receipts. */
+        store: LedgerStore;
+        /** Expected open Ledger app name. */
+        appName?: string;
+        /** Minimum acceptable Bitcoin app version. */
+        minVersion?: string;
+        /** Set to false if the caller validates the app separately. */
+        assertApp?: boolean;
+      }
+    | {
+        /**
+         * Use browser WebUSB. Install `@ledgerhq/ledger-bitcoin` and
+         * `@ledgerhq/hw-transport-webusb`.
+         */
+        mode: 'webusb';
+        /** Pre-bound `Output` constructor from the package/backend you are using. */
+        Output: OutputConstructor;
+        /** Bitcoin network used for descriptor and policy interpretation. */
+        network: Network;
+        /** App-owned JSON store for cached keys and Ledger policy receipts. */
+        store: LedgerStore;
+        /** Expected open Ledger app name. */
+        appName?: string;
+        /** Minimum acceptable Bitcoin app version. */
+        minVersion?: string;
+        /** Set to false if the caller validates the app separately. */
+        assertApp?: boolean;
+      }
+): Promise<LedgerSession> {
   const {
     Output,
     network,
@@ -169,7 +155,22 @@ export async function connect(params: ConnectParams): Promise<LedgerSession> {
     minVersion = '2.1.0',
     assertApp = true
   } = params;
-  const transport = await createTransport(params);
+  const transport =
+    params.mode === 'node-hid'
+      ? await importAndValidateTransport({
+          mode: params.mode,
+          specifier: '@ledgerhq/hw-transport-node-hid'
+        }).default.create(
+          params.openTimeout ?? 3000,
+          params.listenTimeout ?? 3000
+        )
+      : await importAndValidateTransport({
+          mode: params.mode,
+          specifier:
+            params.mode === 'webhid'
+              ? '@ledgerhq/hw-transport-webhid'
+              : '@ledgerhq/hw-transport-webusb'
+        }).default.create();
   const ledgerBitcoin =
     (await importAndValidateLedgerBitcoin()) as typeof import('@ledgerhq/ledger-bitcoin');
 

@@ -13,35 +13,33 @@
 
 import {
   assertPolicyCanDerive,
-  policyFromStandard,
-  policyFromStore,
   addressKeypathFromPolicy,
+  scriptConfigForRegistration,
   scriptConfigFromPolicy
-} from './policies';
+} from './scriptConfig';
+import {
+  derivePolicyFromOutput,
+  knownPolicyFromOutput,
+  standardPolicyFromOutput
+} from '../hww/policies';
+import {
+  assertLegacyMessageSignature,
+  messageBytes,
+  originPathFromKeyRoot,
+  outputFromDescriptor
+} from '../hww/helpers';
 import { apiNetwork, simpleType } from './client';
-import { fromUtf8 } from 'uint8array-tools';
+import { policyResolverFromSession } from './policyResolver';
 import type { BitBoxPolicy, BitBoxSession, BitBoxStore } from './types';
 
 export type {
-  BitBoxApiNetwork,
   BitBoxClient,
   BitBoxFormatUnit,
-  BitBoxKeyOriginInfo,
-  BitBoxKeypath,
-  BitBoxMultisigScriptConfig,
-  BitBoxMultisigScriptType,
   BitBoxPolicy,
-  BitBoxPolicyScriptConfig,
-  BitBoxRegisterXPubType,
-  BitBoxScriptConfig,
-  BitBoxScriptConfigWithKeypath,
   BitBoxSession,
-  BitBoxSimpleType,
-  BitBoxStore,
-  BitBoxXPubType
+  BitBoxStore
 } from './types';
 
-export { registerWalletPolicy } from './policies';
 export { getMasterFingerprint, getVersion, getXpub } from './client';
 export { keyExpression } from './keyExpressions';
 export * as scriptExpressions from './scriptExpressions';
@@ -51,7 +49,7 @@ export * as connectors from './connectors';
 export type Session = BitBoxSession;
 export type Store = BitBoxStore;
 
-export type AddressDisplayParams = {
+type AddressDisplayParams = {
   descriptor: string;
   session: BitBoxSession;
   change?: number;
@@ -62,36 +60,96 @@ type MessageSigningParams = AddressDisplayParams & {
   message: string | Uint8Array;
 };
 
-function outputFromDescriptor({
+/** Registers a non-standard descriptor policy with BitBox when needed. */
+export async function registerPolicy({
   descriptor,
   session,
-  change,
-  index
-}: AddressDisplayParams) {
-  const { Output, network } = session;
-  return new Output({
+  name
+}: {
+  descriptor: string;
+  session: BitBoxSession;
+  /** Name shown by the device for this policy. */
+  name: string;
+}): Promise<BitBoxStore> {
+  const { client, store, network, Output } = session;
+  const output = outputFromDescriptor({
     descriptor,
-    ...(descriptor.includes('*') ? { index } : {}),
-    ...(change !== undefined ? { change } : {}),
-    network
+    Output,
+    network,
+    ...(descriptor.includes('/<') ? { change: 0 } : {}),
+    index: 0
   });
-}
+  const policyResolver = policyResolverFromSession(session);
 
-function messageBytes(message: string | Uint8Array): Uint8Array {
-  return typeof message === 'string' ? fromUtf8(message) : message;
-}
+  const standardPolicy = await standardPolicyFromOutput({
+    output,
+    policyResolver
+  });
+  if (standardPolicy) {
+    simpleType({
+      descriptorTemplate: standardPolicy.descriptorTemplate,
+      session
+    });
+    return store;
+  }
 
-function assertLegacyMessageSignature(
-  signature: Uint8Array,
-  device: string
-): Uint8Array {
-  if (signature.length !== 65)
-    throw new Error(`${device} client returned an invalid message signature`);
-  return signature;
-}
+  const result = await derivePolicyFromOutput({ output, policyResolver });
+  if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
+  if (!store.policies) store.policies = [];
 
-function keyRootOriginPath(keyRoot: string): string | undefined {
-  return keyRoot.match(/^\[[0-9a-fA-F]{8}([^\]]*)\]/)?.[1];
+  const existingPolicy = await knownPolicyFromOutput({
+    output,
+    policyResolver
+  });
+  if (existingPolicy) {
+    if (existingPolicy.name !== name)
+      throw new Error(
+        `Error: policy was already registered with a different name: ${existingPolicy.name}`
+      );
+    return store;
+  }
+
+  const policy: BitBoxPolicy = {
+    name,
+    descriptorTemplate: result.descriptorTemplate,
+    keyRoots: result.keyRoots
+  };
+  const { scriptConfig, accountKeypath } = scriptConfigForRegistration({
+    policy,
+    session
+  });
+  const registered = await client.btcIsScriptConfigRegistered(
+    apiNetwork(session),
+    scriptConfig,
+    accountKeypath
+  );
+  if (!registered) {
+    try {
+      await client.btcRegisterScriptConfig(
+        apiNetwork(session),
+        scriptConfig,
+        accountKeypath,
+        'autoXpubTpub',
+        name
+      );
+    } catch (error) {
+      // BitBox can report a duplicate if another registration check was stale.
+      const duplicate =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'bitbox-duplicate';
+      if (!duplicate) throw error;
+      const registeredAfterDuplicate = await client.btcIsScriptConfigRegistered(
+        apiNetwork(session),
+        scriptConfig,
+        accountKeypath
+      );
+      if (!registeredAfterDuplicate) throw error;
+    }
+  }
+  store.policies.push(policy);
+  return store;
 }
 
 async function displayStandardAddress({
@@ -106,7 +164,7 @@ async function displayStandardAddress({
   index: number;
 }) {
   const { client } = session;
-  const originPath = keyRootOriginPath(policy.keyRoots[0] ?? '');
+  const originPath = originPathFromKeyRoot(policy.keyRoots[0] ?? '');
   if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
   return client.btcAddress(
     apiNetwork(session),
@@ -147,10 +205,17 @@ export async function displayAddress({
   change = 0,
   index
 }: AddressDisplayParams): Promise<string | void> {
-  const output = outputFromDescriptor({ descriptor, session, change, index });
-  const standardPolicy = await policyFromStandard({
+  const output = outputFromDescriptor({
+    descriptor,
+    Output: session.Output,
+    network: session.network,
+    change,
+    index
+  });
+  const policyResolver = policyResolverFromSession(session);
+  const standardPolicy = await standardPolicyFromOutput({
     output,
-    session
+    policyResolver
   });
   if (standardPolicy)
     return displayStandardAddress({
@@ -160,11 +225,9 @@ export async function displayAddress({
       index
     });
 
-  const policy = await policyFromStore({ output, session });
+  const policy = await knownPolicyFromOutput({ output, policyResolver });
   if (!policy)
-    throw new Error(
-      `BitBox policy not registered; call registerWalletPolicy first`
-    );
+    throw new Error(`BitBox policy not registered; call registerPolicy first`);
   return displayPolicyAddress({ policy, session, change, index });
 }
 
@@ -179,8 +242,17 @@ export async function signMessage({
   if (typeof client.btcSignMessage !== 'function')
     throw new Error(`BitBox client does not support message signing`);
 
-  const output = outputFromDescriptor({ descriptor, session, change, index });
-  const policy = await policyFromStandard({ output, session });
+  const output = outputFromDescriptor({
+    descriptor,
+    Output: session.Output,
+    network: session.network,
+    change,
+    index
+  });
+  const policy = await standardPolicyFromOutput({
+    output,
+    policyResolver: policyResolverFromSession(session)
+  });
   if (!policy)
     throw new Error(
       `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`

@@ -5,24 +5,14 @@ import type { OutputConstructor } from '../descriptors';
 import type { Network } from '../networks';
 
 /**
- * Device data returned when a wallet policy is registered.
- *
- * Ledger uses these fields to sign later with the same registered policy.
- */
-export type HWWPolicyRegistration = {
-  /** Device policy id, when the device returns one. */
-  id?: Uint8Array;
-  /** Device proof or authorization data needed to reuse the policy. */
-  hmac?: Uint8Array;
-};
-
-/**
- * Generic wallet policy used by shared hardware-wallet helpers.
+ * Descriptor policy used by shared hardware-wallet helpers.
  *
  * `descriptorTemplate` is the device policy template, for example
  * `wsh(sortedmulti(2,@0/**,@1/**))`.
  *
  * `keyRoots` contains the xpub roots that replace `@0`, `@1`, and so on.
+ * `name` is optional because standard policies and freshly derived policies do
+ * not have a device registration name.
  */
 export type HWWPolicy = {
   /** Human-readable policy name shown by the device when supported. */
@@ -31,8 +21,6 @@ export type HWWPolicy = {
   descriptorTemplate: string;
   /** Xpub roots used by the descriptor template placeholders. */
   keyRoots: string[];
-  /** Registration data returned by devices that need it, such as Ledger. */
-  registration?: HWWPolicyRegistration;
 };
 
 /**

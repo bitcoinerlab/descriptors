@@ -45,7 +45,7 @@ import {
   getVersion,
   getXpub,
   keyExpression,
-  registerWalletPolicy,
+  registerPolicy,
   scriptExpressions,
   signers,
   type Session
@@ -241,7 +241,7 @@ const SOFT_MNEMONIC =
   );
 
   console.log('Register Miniscript policy');
-  await registerWalletPolicy({
+  await registerPolicy({
     descriptor: miniscriptDescriptor,
     session,
     name: POLICY_NAME

@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import type { OutputConstructor } from '../descriptors';
+import type { HWWPolicy } from '../hww/types';
 import type { Network } from '../networks';
 
 export type LedgerPartialSignature = {
@@ -45,10 +46,13 @@ export type LedgerClient = {
   signMessage?(message: Uint8Array, path: string): Promise<string>;
 };
 
-export type LedgerPolicy = {
-  name?: string;
-  descriptorTemplate: string;
-  keyRoots: string[];
+/**
+ * JSON-safe Ledger policy stored by the app.
+ *
+ * `policyId` and `policyHmac` are hex strings returned by Ledger when a
+ * non-standard policy is registered.
+ */
+export type LedgerPolicy = HWWPolicy & {
   /** Hex-encoded Ledger policy id. */
   policyId?: string;
   /** Hex-encoded Ledger policy HMAC. Persist this to reuse the policy. */
@@ -59,7 +63,7 @@ export type LedgerPolicy = {
  * App-owned Ledger store. This is plain JSON and should be persisted by the app.
  *
  * `masterFingerprint` is hex. `xpubs` are caches. `policies` stores Ledger
- * wallet policy registration receipts so the app can reuse a registered policy.
+ * registration receipts so the app can reuse a registered policy.
  */
 export type LedgerStore = {
   masterFingerprint?: string;
@@ -90,7 +94,7 @@ export type LedgerSession = {
 export type LedgerManager = {
   /** Ledger Bitcoin app client instance. */
   ledgerClient: LedgerClient;
-  /** App-owned store for cached keys and registered wallet policy receipts. */
+  /** App-owned store for cached keys and registered Ledger policy receipts. */
   ledgerState: LedgerStore;
   /** Pre-bound `Output` constructor from the package/backend you are using. */
   Output: OutputConstructor;

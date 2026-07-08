@@ -13,12 +13,11 @@ import {
   connectors,
   displayAddress,
   keyExpression,
-  registerWalletPolicy,
+  registerPolicy,
   scriptExpressions,
   signMessage,
   signers,
-  type Session,
-  type BitBoxScriptConfig
+  type Session
 } from '../dist/bitbox';
 
 const NETWORK = networks.regtest;
@@ -28,6 +27,7 @@ const SHA256_DIGEST =
 const MESSAGE_SIGNATURE = new Uint8Array(65).fill(2);
 
 type ProviderClient = Parameters<typeof connectors.fromClient>[0]['client'];
+type BitBoxScriptConfig = Parameters<ProviderClient['btcAddress']>[2];
 
 type FakeBitBoxClient = ProviderClient & {
   xpubRequests: {
@@ -229,7 +229,7 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(sortedmulti(1,${bitboxKey},${otherKey}))`;
 
-    await registerWalletPolicy({
+    await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Test BitBox'
@@ -313,7 +313,7 @@ describe('BitBox helpers', () => {
       display: false
     });
 
-    await registerWalletPolicy({
+    await registerPolicy({
       descriptor: `wsh(and_v(v:pk(${testnetKey}),older(5)))`,
       session: testnetSession,
       name: 'Test provider client'
@@ -386,7 +386,7 @@ describe('BitBox helpers', () => {
       keyPath: '/0/*'
     });
     await expect(
-      registerWalletPolicy({
+      registerPolicy({
         descriptor: `pkh(${bitboxKey})`,
         session: bitboxSession,
         name: 'Test pkh'
@@ -408,7 +408,7 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(pkh(${bitboxKey}))`;
 
-    await registerWalletPolicy({
+    await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Test Miniscript pkh'
@@ -416,6 +416,42 @@ describe('BitBox helpers', () => {
 
     expect(client.registered?.scriptConfig).toMatchObject({
       policy: { policy: 'wsh(pkh(@0/**))' }
+    });
+  });
+
+  test('keeps ordered P2WSH multi policies generic', async () => {
+    const bitboxMaster = makeMaster(12);
+    const otherMaster = makeMaster(13);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const bitboxKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/48'/1'/0'/3'",
+      keyPath: '/0/*'
+    });
+    const otherKey = keyExpressionBIP32({
+      masterNode: otherMaster,
+      originPath: "/48'/1'/0'/3'",
+      keyPath: '/0/*'
+    });
+    const descriptor = `wsh(multi(1,${bitboxKey},${otherKey}))`;
+
+    await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Ordered Multi'
+    });
+
+    expect(client.registered?.keypathAccount).toBeUndefined();
+    expect(client.registered?.scriptConfig).toMatchObject({
+      policy: { policy: 'wsh(multi(1,@0/**,@1/**))' }
+    });
+
+    await expect(
+      displayAddress({ descriptor, session: bitboxSession, index: 3 })
+    ).resolves.toBe('bcrt1policy');
+    expect(client.displayed?.scriptConfig).toMatchObject({
+      policy: { policy: 'wsh(multi(1,@0/**,@1/**))' }
     });
   });
 
@@ -431,7 +467,7 @@ describe('BitBox helpers', () => {
     });
     const descriptor = `wsh(and_v(v:pk(${bitboxKey}),older(5)))`;
 
-    await registerWalletPolicy({
+    await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Test Policy'
@@ -594,7 +630,7 @@ describe('BitBox helpers', () => {
       ],
       network: NETWORK
     });
-    await registerWalletPolicy({
+    await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Test sha256'

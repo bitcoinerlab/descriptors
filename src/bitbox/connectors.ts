@@ -73,19 +73,6 @@ async function importAndValidateBitBoxApi(): Promise<BitBoxApiModule> {
   }
 }
 
-export type FromClientParams = {
-  /** Connected and paired BitBox-compatible provider client. */
-  client: BitBoxClient;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
-  /** Bitcoin network used for descriptor and policy interpretation. */
-  network: Network;
-  /** App-owned JSON store for cached keys and wallet policy metadata. */
-  store: BitBoxStore;
-  /** Optional display unit passed to `btcSignPSBT`. */
-  formatUnit?: BitBoxFormatUnit;
-};
-
 /**
  * Build a BitBox session from an already paired client.
  *
@@ -97,7 +84,18 @@ export function fromClient({
   network,
   store,
   formatUnit
-}: FromClientParams): BitBoxSession {
+}: {
+  /** Connected and paired BitBox-compatible provider client. */
+  client: BitBoxClient;
+  /** Pre-bound `Output` constructor from the package/backend you are using. */
+  Output: OutputConstructor;
+  /** Bitcoin network used for descriptor and policy interpretation. */
+  network: Network;
+  /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
+  store: BitBoxStore;
+  /** Optional display unit passed to `btcSignPSBT`. */
+  formatUnit?: BitBoxFormatUnit;
+}): BitBoxSession {
   const session: BitBoxSession = {
     client,
     store,
@@ -109,66 +107,6 @@ export function fromClient({
 }
 
 /**
- * Built-in BitBox connection modes.
- *
- * Install `bitbox-api` before using any of these modes. React Native apps
- * should usually use `fromClient(...)` instead.
- */
-export type ConnectMode = 'webhid' | 'bridge' | 'webhid-or-bridge';
-
-export type ConnectParams = Omit<FromClientParams, 'client'> & {
-  /**
-   * Built-in BitBox connection mode.
-   *
-   * Install `bitbox-api` before using this. `webhid` uses browser WebHID.
-   * `bridge` uses BitBoxBridge. `webhid-or-bridge` tries WebHID and falls
-   * back to BitBoxBridge.
-   */
-  mode: ConnectMode;
-  /** Called when bitbox-api reports that the device connection closed. */
-  onClose?: () => void;
-  /** Called with the pairing code before waiting for device confirmation. */
-  onPairingCode?: (pairingCode: string) => void | Promise<void>;
-};
-
-const connectNames: Record<
-  ConnectMode,
-  keyof Pick<
-    BitBoxApiModule,
-    'bitbox02ConnectAuto' | 'bitbox02ConnectBridge' | 'bitbox02ConnectWebHID'
-  >
-> = {
-  'webhid-or-bridge': 'bitbox02ConnectAuto',
-  bridge: 'bitbox02ConnectBridge',
-  webhid: 'bitbox02ConnectWebHID'
-};
-
-async function connectWith(
-  connectName: keyof Pick<
-    BitBoxApiModule,
-    'bitbox02ConnectAuto' | 'bitbox02ConnectBridge' | 'bitbox02ConnectWebHID'
-  >,
-  params: Omit<ConnectParams, 'mode'>
-): Promise<BitBoxSession> {
-  const bitboxApi = await importAndValidateBitBoxApi();
-  const unpaired = await bitboxApi[connectName](params.onClose);
-  const pairing = await unpaired.unlockAndPair();
-  const pairingCode = pairing.getPairingCode();
-  if (pairingCode !== undefined) await params.onPairingCode?.(pairingCode);
-  const client = await pairing.waitConfirm();
-
-  return fromClient({
-    client,
-    Output: params.Output,
-    network: params.network,
-    store: params.store,
-    ...(params.formatUnit !== undefined
-      ? { formatUnit: params.formatUnit }
-      : {})
-  });
-}
-
-/**
  * Connect to a BitBox with `bitbox-api` and build a session.
  *
  * Install `bitbox-api` before calling this. Use `fromClient(...)` if your app
@@ -176,7 +114,51 @@ async function connectWith(
  */
 export async function connect({
   mode,
-  ...params
-}: ConnectParams): Promise<BitBoxSession> {
-  return connectWith(connectNames[mode], params);
+  Output,
+  network,
+  store,
+  formatUnit,
+  onClose,
+  onPairingCode
+}: {
+  /**
+   * Built-in BitBox connection mode.
+   *
+   * Install `bitbox-api` before using this. `webhid` uses browser WebHID.
+   * `bridge` uses BitBoxBridge. `webhid-or-bridge` tries WebHID and falls
+   * back to BitBoxBridge.
+   */
+  mode: 'webhid' | 'bridge' | 'webhid-or-bridge';
+  /** Pre-bound `Output` constructor from the package/backend you are using. */
+  Output: OutputConstructor;
+  /** Bitcoin network used for descriptor and policy interpretation. */
+  network: Network;
+  /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
+  store: BitBoxStore;
+  /** Optional display unit passed to `btcSignPSBT`. */
+  formatUnit?: BitBoxFormatUnit;
+  /** Called when bitbox-api reports that the device connection closed. */
+  onClose?: () => void;
+  /** Called with the pairing code before waiting for device confirmation. */
+  onPairingCode?: (pairingCode: string) => void | Promise<void>;
+}): Promise<BitBoxSession> {
+  const bitboxApi = await importAndValidateBitBoxApi();
+  const unpaired =
+    mode === 'webhid-or-bridge'
+      ? await bitboxApi.bitbox02ConnectAuto(onClose)
+      : mode === 'bridge'
+        ? await bitboxApi.bitbox02ConnectBridge(onClose)
+        : await bitboxApi.bitbox02ConnectWebHID(onClose);
+  const pairing = await unpaired.unlockAndPair();
+  const pairingCode = pairing.getPairingCode();
+  if (pairingCode !== undefined) await onPairingCode?.(pairingCode);
+  const client = await pairing.waitConfirm();
+
+  return fromClient({
+    client,
+    Output,
+    network,
+    store,
+    ...(formatUnit !== undefined ? { formatUnit } : {})
+  });
 }

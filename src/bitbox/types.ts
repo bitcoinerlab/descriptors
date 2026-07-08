@@ -2,6 +2,7 @@
 // Distributed under the MIT software license
 
 import type { OutputConstructor } from '../descriptors';
+import type { HWWPolicy } from '../hww/types';
 import type { Network } from '../networks';
 
 export type BitBoxApiNetwork = 'btc' | 'tbtc';
@@ -95,17 +96,14 @@ export type BitBoxMultisigScriptConfig = {
   scriptType: BitBoxMultisigScriptType;
 };
 
-export type BitBoxPolicy = {
-  name?: string;
-  descriptorTemplate: string;
-  keyRoots: string[];
-};
+/** JSON-safe BitBox descriptor policy stored by the app. */
+export type BitBoxPolicy = HWWPolicy;
 
 /**
  * App-owned BitBox store. This is plain JSON and should be persisted by the app.
  *
  * `masterFingerprint` is hex. `xpubs` are caches. `policies` is the local
- * wallet policy mapping this library needs to display addresses and sign later.
+ * hardware-wallet policy mapping needed to display addresses and sign later.
  * A BitBox can confirm whether a script config is registered, but it does not
  * return the app's descriptor policy list.
  */

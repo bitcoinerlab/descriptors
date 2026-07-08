@@ -46,7 +46,39 @@ function isStandardPolicy({
   return false;
 }
 
-export async function policyFromPsbtInput({
+/**
+ * Reads a `wsh(sortedmulti(...))` descriptor policy.
+ *
+ * Returns `null` for every other policy shape, including ordered
+ * `wsh(multi(...))` policies.
+ */
+export function parseP2wshSortedmultiPolicy(policy: HWWPolicy): {
+  /** Number of signatures required by the sortedmulti policy. */
+  threshold: number;
+  /** Placeholder indexes used inside the sortedmulti expression. */
+  keyIndexes: number[];
+} | null {
+  const match = policy.descriptorTemplate.match(
+    /^wsh\(sortedmulti\((\d+),(.+)\)\)$/
+  );
+  if (!match) return null;
+
+  const threshold = Number(match[1]);
+  if (!Number.isInteger(threshold) || threshold < 1) return null;
+
+  const keyIndexes: number[] = [];
+  for (const token of match[2]!.split(',')) {
+    const keyMatch = token.trim().match(/^@(\d+)\/\*\*$/);
+    if (!keyMatch) return null;
+    keyIndexes.push(Number(keyMatch[1]));
+  }
+  if (threshold > keyIndexes.length) return null;
+
+  return { threshold, keyIndexes };
+}
+
+/** Finds the hardware-wallet policy that matches a PSBT input. */
+export async function policyForPsbtInput({
   policyResolver,
   psbt,
   index
@@ -184,7 +216,8 @@ export async function policyFromPsbtInput({
   return;
 }
 
-export async function policyFromOutput({
+/** Builds the descriptor policy for an output that contains this device. */
+export async function derivePolicyFromOutput({
   output,
   policyResolver
 }: {
@@ -329,14 +362,15 @@ export async function policyFromOutput({
   return { descriptorTemplate, keyRoots };
 }
 
-export async function policyFromStandard({
+/** Returns a standard single-key policy for an output, or `null`. */
+export async function standardPolicyFromOutput({
   output,
   policyResolver
 }: {
   output: OutputInstance;
   policyResolver: HWWPolicyResolver;
 }): Promise<HWWPolicy | null> {
-  const result = await policyFromOutput({
+  const result = await derivePolicyFromOutput({
     output,
     policyResolver
   });
@@ -366,21 +400,23 @@ function compareKeyRoots(arr1: string[], arr2: string[]) {
   return true;
 }
 
-export function comparePolicies(policyA: HWWPolicy, policyB: HWWPolicy) {
+/** Compares policies by descriptor template and key roots only. */
+export function samePolicy(policyA: HWWPolicy, policyB: HWWPolicy) {
   return (
     compareKeyRoots(policyA.keyRoots, policyB.keyRoots) &&
     policyA.descriptorTemplate === policyB.descriptorTemplate
   );
 }
 
-export async function policyFromStore({
+/** Finds a known policy matching an output. */
+export async function knownPolicyFromOutput({
   output,
   policyResolver
 }: {
   output: OutputInstance;
   policyResolver: HWWPolicyResolver;
 }): Promise<HWWPolicy | null> {
-  const result = await policyFromOutput({
+  const result = await derivePolicyFromOutput({
     output,
     policyResolver
   });
@@ -388,7 +424,7 @@ export async function policyFromStore({
     throw new Error(`Error: output does not have a hardware wallet input`);
   const { descriptorTemplate, keyRoots } = result;
   const policies = (policyResolver.knownPolicies || []).filter(policy =>
-    comparePolicies(policy, { descriptorTemplate, keyRoots })
+    samePolicy(policy, { descriptorTemplate, keyRoots })
   );
   if (policies.length > 1) throw new Error(`Error: duplicated policy`);
   if (policies.length === 1) {

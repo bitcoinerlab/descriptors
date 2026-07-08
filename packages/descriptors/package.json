@@ -64,10 +64,6 @@
       "types": "./dist/ledger.d.ts",
       "default": "./dist/ledger.js"
     },
-    "./hww": {
-      "types": "./dist/hww.d.ts",
-      "default": "./dist/hww.js"
-    },
     "./bitbox": {
       "types": "./dist/bitbox.d.ts",
       "default": "./dist/bitbox.js"

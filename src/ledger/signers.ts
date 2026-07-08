@@ -4,8 +4,9 @@
 import { type ScureTransactionLike, type PsbtLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
+import { policyForPsbtInput, samePolicy } from '../hww/policies';
 import { importAndValidateLedgerBitcoin } from './client';
-import { comparePolicies, ledgerPolicyFromPsbtInput } from './policies';
+import { policyResolverFromSession } from './policyResolver';
 import { fromHex } from 'uint8array-tools';
 import type {
   LedgerManager,
@@ -104,15 +105,15 @@ export async function signInput({
   if (!(client instanceof AppClient))
     throw new Error(`Error: pass a valid Ledger client`);
 
-  const policy = await ledgerPolicyFromPsbtInput({
+  const policy = (await policyForPsbtInput({
     psbt,
     index,
-    session
-  });
+    policyResolver: policyResolverFromSession(session)
+  })) as LedgerPolicy | undefined;
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
   let ledgerSignatures;
-  if (policy.name && policy.policyHmac && policy.policyId) {
+  if (policy.name && policy.policyHmac) {
     const walletPolicy = new WalletPolicy(
       policy.name,
       policy.descriptorTemplate,
@@ -182,12 +183,13 @@ export async function sign({
     throw new Error(`Error: pass a valid Ledger client`);
 
   const ledgerPolicies = [];
+  const policyResolver = policyResolverFromSession(session);
   for (let index = 0; index < psbt.data.inputs.length; index++) {
-    const policy = await ledgerPolicyFromPsbtInput({
+    const policy = (await policyForPsbtInput({
       psbt,
       index,
-      session
-    });
+      policyResolver
+    })) as LedgerPolicy | undefined;
     if (policy) ledgerPolicies.push(policy);
   }
   if (ledgerPolicies.length === 0)
@@ -197,7 +199,7 @@ export async function sign({
   for (const policy of ledgerPolicies) {
     if (
       !uniquePolicies.find((uniquePolicy: LedgerPolicy) =>
-        comparePolicies(uniquePolicy, policy)
+        samePolicy(uniquePolicy, policy)
       )
     )
       uniquePolicies.push(policy);
@@ -205,7 +207,7 @@ export async function sign({
 
   for (const uniquePolicy of uniquePolicies) {
     let ledgerSignatures;
-    if (uniquePolicy.name && uniquePolicy.policyHmac && uniquePolicy.policyId) {
+    if (uniquePolicy.name && uniquePolicy.policyHmac) {
       const walletPolicy = new WalletPolicy(
         uniquePolicy.name,
         uniquePolicy.descriptorTemplate,

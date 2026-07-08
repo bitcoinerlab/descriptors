@@ -11,7 +11,6 @@
       "@bitcoinerlab/descriptors-core/bitbox": [
         "../../dist/bitbox/index.d.ts"
       ],
-      "@bitcoinerlab/descriptors-core/hww": ["../../dist/hww/index.d.ts"],
       "@bitcoinerlab/descriptors-core/ledger": ["../../dist/ledger/index.d.ts"],
       "@bitcoinerlab/descriptors-core/scure": ["../../dist/scure.d.ts"]
     }

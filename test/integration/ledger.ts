@@ -230,12 +230,12 @@ const finalizers = [];
   //Register Ledger policies of non-standard descriptors.
   //Registration is stored in session store and is a necessary step before
   //signing with non-standard policies when using a Ledger wallet.
-  //registerWalletPolicy internally takes all the necessary steps to register
+  //registerPolicy internally takes all the necessary steps to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots.
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
-  await ledger.registerWalletPolicy({
+  await ledger.registerPolicy({
     session: ledgerSession,
     descriptor: miniscriptDescriptor,
     name: 'BitcoinerLab'

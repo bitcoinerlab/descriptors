@@ -14,15 +14,17 @@ import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import {
   displayAddress,
   getVersion,
+  signers,
   signMessage,
   type LedgerSession
 } from '../dist/ledger/index';
 import {
-  ledgerPolicyFromOutput,
-  ledgerPolicyFromPsbtInput
-} from '../dist/ledger/policies';
+  derivePolicyFromOutput,
+  policyForPsbtInput
+} from '../dist/hww/policies';
+import type { HWWPolicy, HWWPolicyResolver } from '../dist/hww/types';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
-import { fromUtf8, toBase64, toHex } from 'uint8array-tools';
+import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
 
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
@@ -57,6 +59,24 @@ function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
     store: { masterFingerprint: toHex(masterFingerprint) },
     Output,
     network: NETWORK
+  };
+}
+
+function mockPolicyResolver({
+  masterFingerprint,
+  knownPolicies
+}: {
+  masterFingerprint: Uint8Array;
+  knownPolicies?: HWWPolicy[];
+}): HWWPolicyResolver {
+  return {
+    Output,
+    network: NETWORK,
+    ...(knownPolicies !== undefined ? { knownPolicies } : {}),
+    getMasterFingerprint: async () => masterFingerprint,
+    getAccountXpub: async () => {
+      throw new Error('unexpected standard policy xpub request');
+    }
   };
 }
 
@@ -126,9 +146,11 @@ describeIfNotScure(
         network: NETWORK
       });
 
-      const result = await ledgerPolicyFromOutput({
+      const result = await derivePolicyFromOutput({
         output,
-        session: mockLedgerSession(ledgerMaster.fingerprint)
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint
+        })
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -157,9 +179,11 @@ describeIfNotScure(
         network: NETWORK
       });
 
-      const result = await ledgerPolicyFromOutput({
+      const result = await derivePolicyFromOutput({
         output,
-        session: mockLedgerSession(ledgerMaster.fingerprint)
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint
+        })
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -184,9 +208,11 @@ describeIfNotScure(
         network: NETWORK
       });
 
-      const result = await ledgerPolicyFromOutput({
+      const result = await derivePolicyFromOutput({
         output,
-        session: mockLedgerSession(ledgerMaster.fingerprint)
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint
+        })
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -224,9 +250,11 @@ describeIfNotScure(
         network: NETWORK
       });
 
-      const result = await ledgerPolicyFromOutput({
+      const result = await derivePolicyFromOutput({
         output,
-        session: mockLedgerSession(ledgerMaster.fingerprint)
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint
+        })
       });
       if (!result) throw new Error('expected a ledger policy');
 
@@ -244,7 +272,7 @@ describeIfNotScure(
       expect(result.keyRoots.length).toBe(12);
     });
 
-    test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti', async () => {
+    test('policyForPsbtInput matches repeated tuples for sortedmulti', async () => {
       const ledgerMaster = makeMaster(241);
       const otherMaster = makeMaster(242);
 
@@ -269,8 +297,7 @@ describeIfNotScure(
         }
       });
 
-      const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
-      ledgerSession.store.policies = [
+      const knownPolicies = [
         {
           descriptorTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
           keyRoots: [
@@ -280,8 +307,11 @@ describeIfNotScure(
         }
       ];
 
-      const policy = await ledgerPolicyFromPsbtInput({
-        session: ledgerSession,
+      const policy = await policyForPsbtInput({
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint,
+          knownPolicies
+        }),
         psbt,
         index: 0
       });
@@ -295,7 +325,7 @@ describeIfNotScure(
       ]);
     });
 
-    test('ledgerPolicyFromPsbtInput matches repeated tuples for sortedmulti_a', async () => {
+    test('policyForPsbtInput matches repeated tuples for sortedmulti_a', async () => {
       const ledgerMaster = makeMaster(251);
       const otherMaster = makeMaster(252);
       const internalMaster = makeMaster(253);
@@ -327,8 +357,7 @@ describeIfNotScure(
         }
       });
 
-      const ledgerSession = mockLedgerSession(ledgerMaster.fingerprint);
-      ledgerSession.store.policies = [
+      const knownPolicies = [
         {
           descriptorTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
           keyRoots: [
@@ -339,8 +368,11 @@ describeIfNotScure(
         }
       ];
 
-      const policy = await ledgerPolicyFromPsbtInput({
-        session: ledgerSession,
+      const policy = await policyForPsbtInput({
+        policyResolver: mockPolicyResolver({
+          masterFingerprint: ledgerMaster.fingerprint,
+          knownPolicies
+        }),
         psbt,
         index: 0
       });
@@ -353,6 +385,84 @@ describeIfNotScure(
         keyRootNoOrigin(otherMaster),
         keyRootWithOrigin(ledgerMaster)
       ]);
+    });
+
+    test('signs registered policies using policyHmac without requiring policyId', async () => {
+      const ledgerMaster = makeMaster(261);
+      const otherMaster = makeMaster(262);
+      const ledgerKeyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/7'
+      });
+      const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/7');
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${ledgerKeyAtIndex},${otherKeyAtIndex}))`,
+        network: NETWORK
+      });
+      const policyHmac = '00112233445566778899aabbccddeeff';
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      session.store.policies = [
+        {
+          name: 'No id policy',
+          descriptorTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
+          keyRoots: [
+            keyRootWithOrigin(ledgerMaster),
+            keyRootNoOrigin(otherMaster)
+          ],
+          policyHmac
+        }
+      ];
+      Object.assign(session.client, {
+        signPsbt: jest.fn(async () => [
+          [
+            0,
+            {
+              pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
+              signature: new Uint8Array([1])
+            }
+          ]
+        ])
+      });
+      const updateInput = jest.fn();
+      const psbt = {
+        data: {
+          inputs: [
+            {
+              witnessUtxo: {
+                script: output.getScriptPubKey(),
+                value: 50_000n
+              },
+              bip32Derivation: [
+                {
+                  masterFingerprint: ledgerMaster.fingerprint,
+                  path: "m/48'/1'/0'/0/7",
+                  pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
+                }
+              ]
+            }
+          ]
+        },
+        txInputs: [],
+        toBase64: () => 'psbt-base64',
+        updateInput
+      } as unknown as Psbt;
+
+      await signers.sign({ psbt, session });
+
+      expect(session.client.signPsbt).toHaveBeenCalledWith(
+        'psbt-base64',
+        expect.objectContaining({ name: 'No id policy' }),
+        fromHex(policyHmac)
+      );
+      expect(updateInput).toHaveBeenCalledWith(0, {
+        partialSig: [
+          {
+            pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
+            signature: new Uint8Array([1])
+          }
+        ]
+      });
     });
 
     test('displays standard addresses through Ledger getWalletAddress', async () => {

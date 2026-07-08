@@ -39,10 +39,6 @@
       "types": "./dist/ledger/index.d.ts",
       "default": "./dist/ledger/index.js"
     },
-    "./hww": {
-      "types": "./dist/hww/index.d.ts",
-      "default": "./dist/hww/index.js"
-    },
     "./bitbox": {
       "types": "./dist/bitbox/index.d.ts",
       "default": "./dist/bitbox/index.js"

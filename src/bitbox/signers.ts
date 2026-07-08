@@ -3,13 +3,14 @@
 
 import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
+import { policyForPsbtInput } from '../hww/policies';
 import { formatUnit, apiNetwork } from './client';
 import {
   assertPolicyCanDerive,
-  policyFromPsbtInput,
   signingKeypathFromPolicy,
   scriptConfigFromPolicy
-} from './policies';
+} from './scriptConfig';
+import { policyResolverFromSession } from './policyResolver';
 import type { BitBoxScriptConfigWithKeypath, BitBoxSession } from './types';
 
 type MergeablePsbt = PsbtLike & {
@@ -17,6 +18,22 @@ type MergeablePsbt = PsbtLike & {
   constructor: { fromBase64?(psbt: string): PsbtLike };
 };
 
+/**
+ * Finds the explicit BitBox script config needed to sign this PSBT.
+ *
+ * The name matches BitBox's `forceScriptConfig` signing parameter. "Forced"
+ * means we pass the config to the device instead of letting the device infer it.
+ * Standard single-key inputs return `undefined` because BitBox can infer them.
+ * Registered multisig and policy inputs return `{ scriptConfig, keypath }`.
+ *
+ * Examples:
+ * - `wpkh(...)` returns `undefined`.
+ * - `wsh(sortedmulti(...))` returns the native multisig config and account path.
+ * - Generic Miniscript policies return the policy config and account path.
+ *
+ * BitBox accepts only one forced script config per PSBT, so mixed policy inputs
+ * with different configs are rejected before calling the device.
+ */
 async function forcedScriptConfigForPsbt({
   psbt,
   session
@@ -25,12 +42,13 @@ async function forcedScriptConfigForPsbt({
   session: BitBoxSession;
 }): Promise<BitBoxScriptConfigWithKeypath | undefined> {
   const configs = new Map<string, BitBoxScriptConfigWithKeypath>();
+  const policyResolver = policyResolverFromSession(session);
 
   for (let index = 0; index < psbt.data.inputs.length; index++) {
-    const policy = await policyFromPsbtInput({
+    const policy = await policyForPsbtInput({
       psbt,
       index,
-      session
+      policyResolver
     });
     if (!policy) continue;
 

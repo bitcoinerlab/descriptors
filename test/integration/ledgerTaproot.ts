@@ -153,7 +153,7 @@ async function runSpendScenario({
   });
   const scriptPathDescriptor = `tr(${internalKeyExpression},pk(${ledgerLeafExpression}))`;
 
-  await ledger.registerWalletPolicy({
+  await ledger.registerPolicy({
     session: ledgerSession,
     descriptor: scriptPathDescriptor,
     name: 'Taproot ScriptPath'

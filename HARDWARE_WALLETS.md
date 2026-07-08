@@ -4,7 +4,7 @@
 import { Output, Psbt, networks } from '@bitcoinerlab/descriptors';
 import {
   connectors,
-  registerWalletPolicy,
+  registerPolicy,
   scriptExpressions,
   signers
 } from '@bitcoinerlab/descriptors/ledger';
@@ -25,7 +25,7 @@ const descriptor = await scriptExpressions.wpkh({
   index: '*'
 });
 
-await registerWalletPolicy({
+await registerPolicy({
   session,
   descriptor,
   name: 'Savings'
@@ -85,7 +85,7 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `getXpub({ session, originPath })` | Read and cache an account xpub. |
 | `keyExpression(...)` | Build a descriptor key expression from device keys. |
 | `scriptExpressions.*(...)` | Build standard account descriptors. |
-| `registerWalletPolicy(...)` | Register or locally remember non-standard wallet policies. |
+| `registerPolicy(...)` | Register or locally remember non-standard policies. |
 | `displayAddress(...)` | Ask the device to display an address for verification. |
 | `signers.sign(...)` | Ask the device to sign a PSBT. |
 | `signers.signInput(...)` | Convenience wrapper for single-input signing flows. |
@@ -257,13 +257,16 @@ The details are slightly different by device:
   script config is already registered, but it does not give this library a list
   of wallet policies to rebuild that mapping later.
 
-If you drop BitBox store, you can call `registerWalletPolicy(...)` again for each
+If you drop BitBox store, you can call `registerPolicy(...)` again for each
 wallet descriptor after reconnecting. The helper checks the device first, avoids
 duplicate on-device registration when possible, and repopulates local store.
 
-BitBox native multisig may be used internally for `wsh(sortedmulti(...))` and
-`wsh(multi(...))`. Other non-standard descriptors use generic BitBox policy
-configs. The public store remains the same generic descriptor policy mapping.
+For BitBox multisig, still pass normal descriptor syntax such as
+`wsh(sortedmulti(...))`. The library keeps the public store descriptor-based and
+converts internally to BitBox native multisig when possible, so the device can
+show its native multisig UX. Other non-standard descriptors, including ordered
+`wsh(multi(...))`, use generic BitBox policy configs because ordered multisig is
+not the same policy as sorted multisig.
 
 ## Build Standard Descriptors
 
@@ -294,7 +297,7 @@ sign a descriptor type, the helper throws early.
 ```ts
 import {
   keyExpression,
-  registerWalletPolicy
+  registerPolicy
 } from '@bitcoinerlab/descriptors/bitbox';
 
 const key = await keyExpression({
@@ -305,7 +308,7 @@ const key = await keyExpression({
 
 const descriptor = `wsh(and_v(v:pk(${key}),older(10)))`;
 
-await registerWalletPolicy({
+await registerPolicy({
   session,
   descriptor,
   name: 'CSV Savings'
@@ -315,8 +318,8 @@ await registerWalletPolicy({
 Use `keyExpression(...)` when the standard helpers are not enough. It returns a
 descriptor key expression with origin information and an xpub from the device.
 
-Many hardware wallets need to register non-standard wallet policies before they
-can display addresses or sign. `registerWalletPolicy(...)` stores what the device
+Many hardware wallets need to register non-standard policies before they
+can display addresses or sign. `registerPolicy(...)` stores what the device
 returns in the session store. If registration is not needed, or the policy is
 already known, the helper skips the extra device step when possible.
 
