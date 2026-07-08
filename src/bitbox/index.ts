@@ -60,7 +60,14 @@ type MessageSigningParams = AddressDisplayParams & {
   message: string | Uint8Array;
 };
 
-/** Registers a non-standard descriptor policy with BitBox when needed. */
+/**
+ * Registers a non-standard descriptor policy with BitBox when needed.
+ *
+ * BitBox returns no Ledger-style id or HMAC. The device remembers the approved
+ * script config internally, while this function stores the descriptor policy in
+ * the app-owned JSON store so address display and PSBT signing can rebuild the
+ * same script config later.
+ */
 export async function registerPolicy({
   descriptor,
   session,
@@ -118,6 +125,9 @@ export async function registerPolicy({
     policy,
     session
   });
+  // BitBox can check whether a multisig/policy config is already approved, but
+  // it cannot enumerate configs back to the app. The local policy list below is
+  // still needed even when this returns true.
   const registered = await client.btcIsScriptConfigRegistered(
     apiNetwork(session),
     scriptConfig,

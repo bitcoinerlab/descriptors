@@ -105,7 +105,8 @@ export type BitBoxPolicy = HWWPolicy;
  * `masterFingerprint` is hex. `xpubs` are caches. `policies` is the local
  * hardware-wallet policy mapping needed to display addresses and sign later.
  * A BitBox can confirm whether a script config is registered, but it does not
- * return the app's descriptor policy list.
+ * return the app's descriptor policy list or a Ledger-style registration
+ * receipt.
  */
 export type BitBoxStore = {
   masterFingerprint?: string;

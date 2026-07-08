@@ -156,9 +156,11 @@ export function scriptConfigFromPolicy({
   policy: BitBoxPolicy;
   session: BitBoxSession;
 }): BitBoxScriptConfig {
-  // Try to see if this policy is a sortedmulti descriptor, since BitBox does
-  // not accept wsh(sortedmulti(...)) as a generic policy and instead requires
-  // the native multisig format built by scriptConfigFromNativeMultisigDetails.
+  // Try to see if this policy is a sortedmulti descriptor. BitBox does not
+  // accept wsh(sortedmulti(...)) as a generic policy and wants it passed using
+  // its native multisig format. Ordered wsh(multi(...)) is different: BitBox
+  // accepts it as a generic policy, and using native sorted multisig would
+  // change the script.
   const nativeMultisigDetails = nativeMultisigDetailsFromPolicy({
     policy,
     session
@@ -181,6 +183,8 @@ export function scriptConfigFromPolicy({
     };
   }
 
+  // Generic policies cover Miniscript and ordered multisig. Physical BitBox
+  // devices accept ordered wsh(multi(...)) through this policy path.
   return {
     policy: {
       policy: policy.descriptorTemplate,
@@ -193,7 +197,7 @@ export function scriptConfigFromPolicy({
  * Builds the BitBox script config and account path used for registration.
  *
  * Native multisig registration needs `accountKeypath`. Generic policy
- * registration leaves it undefined.
+ * registration, including ordered `wsh(multi(...))`, leaves it undefined.
  */
 export function scriptConfigForRegistration({
   policy,

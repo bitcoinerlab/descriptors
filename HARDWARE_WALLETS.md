@@ -253,20 +253,27 @@ The details are slightly different by device:
 - Ledger store stores the registration receipt returned by the Ledger app
   (`policyId` and `policyHmac`). Keep it with your wallet record. Without it,
   the app cannot reuse that registered Ledger policy without registering again.
-- BitBox store stores the app-side policy mapping. The BitBox can tell whether a
-  script config is already registered, but it does not give this library a list
-  of wallet policies to rebuild that mapping later.
+- BitBox store stores the app-side policy mapping. BitBox registration returns
+  no id or HMAC. The device can tell whether one exact script config is already
+  registered, but it does not give this library a list of wallet policies to
+  rebuild that mapping later.
 
 If you drop BitBox store, you can call `registerPolicy(...)` again for each
 wallet descriptor after reconnecting. The helper checks the device first, avoids
 duplicate on-device registration when possible, and repopulates local store.
+The current `bitbox-api` exposes register/check calls, but no unregister or
+delete call. Clearing your app store only forgets the local mapping; removing the
+device-side registration must be done outside this library, for example through
+BitBox device/app management if available, or by resetting the device.
 
 For BitBox multisig, still pass normal descriptor syntax such as
 `wsh(sortedmulti(...))`. The library keeps the public store descriptor-based and
 converts internally to BitBox native multisig when possible, so the device can
 show its native multisig UX. Other non-standard descriptors, including ordered
 `wsh(multi(...))`, use generic BitBox policy configs because ordered multisig is
-not the same policy as sorted multisig.
+not the same policy as sorted multisig. Physical BitBox devices accept ordered
+`wsh(multi(...))` registration and address display through that generic policy
+path.
 
 ## Build Standard Descriptors
 
@@ -394,6 +401,25 @@ await bitbox.scriptExpressions.tr({ session, account: 0, index: '*' });
 ```
 
 These are good standard choices for BitBox single-key accounts.
+
+For non-standard policies, BitBox has the same user-facing two-step flow as
+Ledger: register first, then receive or sign. The difference is what the device
+returns. Ledger returns `policyId` and `policyHmac`, which the app must persist.
+BitBox returns no receipt. It stores the approval internally on the device, while
+the app persists `BitBoxStore.policies` so this library can rebuild the same
+script config for future address display and signing.
+
+This means `registerPolicy(...)` is safe to call again after reconnecting. If the
+BitBox already knows the script config, the helper repopulates app-side store
+without asking for a duplicate on-device registration. If the BitBox does not
+know it, the user approves it on the device.
+
+BitBox has three Bitcoin script-config paths:
+
+- Standard single-key descriptors use simple configs and do not need policy
+  registration.
+- `wsh(sortedmulti(...))` is converted internally to BitBox native multisig.
+- Miniscript and ordered `wsh(multi(...))` use generic policy configs.
 
 ```ts
 await bitbox.scriptExpressions.pkh({ session, account: 0, index: '*' });
