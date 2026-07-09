@@ -128,11 +128,11 @@ export function addPsbtInput({
   scriptPubKey: Uint8Array;
   isSegwit: boolean;
   /** for taproot **/
-  tapInternalKey?: Uint8Array | undefined;
+  tapInternalKey?: Uint8Array;
   /** for taproot script-path **/
-  tapLeafScript?: TapLeafScript[] | undefined;
+  tapLeafScript?: TapLeafScript[];
   /** for taproot **/
-  tapBip32Derivation?: TapBip32Derivation[] | undefined;
+  tapBip32Derivation?: TapBip32Derivation[];
   witnessScript: Uint8Array | undefined;
   redeemScript: Uint8Array | undefined;
   rbf: boolean;

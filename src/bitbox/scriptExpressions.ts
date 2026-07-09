@@ -10,8 +10,8 @@ type StandardScriptExpressionParams = {
   session: BitBoxSession;
   account: number;
   keyPath?: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
+  change?: number;
+  index?: number | '*';
 };
 
 function makeStandardExpression(purpose: number, scriptTemplate: string) {
@@ -28,9 +28,9 @@ function makeStandardExpression(purpose: number, scriptTemplate: string) {
     const key = await keyExpression({
       session,
       originPath,
-      keyPath,
-      change,
-      index
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {})
     });
 
     return scriptTemplate.replace('KEYEXPRESSION', key);

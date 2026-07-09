@@ -52,8 +52,8 @@ function standardExpressionsBIP32Maker(
     /** @default networks.bitcoin */
     network?: Network;
     account: number;
-    change?: number | undefined; //0 -> external (receive), 1 -> internal (change)
-    index?: number | undefined | '*';
+    change?: number; //0 -> external (receive), 1 -> internal (change)
+    index?: number | '*';
     keyPath?: string;
     /**
      * Compute an xpub or xprv
@@ -66,10 +66,10 @@ function standardExpressionsBIP32Maker(
     const keyExpression = keyExpressionBIP32({
       masterNode,
       originPath,
-      keyPath,
-      change,
-      index,
-      isPublic
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {}),
+      ...(isPublic !== undefined ? { isPublic } : {})
     });
 
     return scriptTemplate.replace('KEYEXPRESSION', keyExpression);

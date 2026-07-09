@@ -50,6 +50,7 @@ import {
   standardPolicyFromOutput
 } from '../hww/policies';
 import {
+  assertDescriptorParams,
   assertLegacyMessageSignature,
   messageBytes,
   originPathFromKeyRoot,
@@ -96,7 +97,7 @@ type AddressDisplayParams = {
   descriptor: string;
   session: LedgerSession;
   change?: number;
-  index: number;
+  index?: number;
 };
 
 type MessageSigningParams = AddressDisplayParams & {
@@ -247,35 +248,40 @@ export async function keyExpression({
 }: {
   session: LedgerSession;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
   return keyExpressionFromSession({
     session,
     originPath,
-    keyPath,
-    change,
-    index
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
   });
 }
 
 export async function displayAddress({
   descriptor,
   session,
-  change = 0,
+  change,
   index
 }: AddressDisplayParams): Promise<string> {
   const { client } = session;
+  const descriptorParams = {
+    descriptor,
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
   const { DefaultWalletPolicy, WalletPolicy } =
     await importLedgerBitcoinModule();
   const ledgerClient: LedgerClient = client;
 
   const output = outputFromDescriptor({
-    descriptor,
-    network: session.network,
-    change,
-    index
+    ...descriptorParams,
+    network: session.network
   });
   const standardPolicy = await standardPolicyFromOutput({
     output,
@@ -288,8 +294,8 @@ export async function displayAddress({
         standardPolicy.keyRoots[0]!
       ),
       null,
-      change,
-      index,
+      standardPolicy.change,
+      standardPolicy.index,
       true
     );
   }
@@ -300,7 +306,7 @@ export async function displayAddress({
     ...(session.store.policies !== undefined
       ? { knownPolicies: session.store.policies }
       : {})
-  })) as LedgerPolicy | null;
+  })) as (LedgerPolicy & { change: number; index: number }) | null;
   if (!policy)
     throw new Error(`Ledger policy not registered; call registerPolicy first`);
   if (!policy.name || !policy.policyHmac)
@@ -311,8 +317,8 @@ export async function displayAddress({
   return ledgerClient.getWalletAddress(
     new WalletPolicy(policy.name, policy.descriptorTemplate, policy.keyRoots),
     fromHex(policy.policyHmac),
-    change,
-    index,
+    policy.change,
+    policy.index,
     true
   );
 }
@@ -321,7 +327,7 @@ export async function signMessage({
   descriptor,
   session,
   message,
-  change = 0,
+  change,
   index
 }: MessageSigningParams): Promise<Uint8Array> {
   const { client } = session;
@@ -329,11 +335,16 @@ export async function signMessage({
   if (typeof ledgerClient.signMessage !== 'function')
     throw new Error(`Ledger client does not support message signing`);
 
-  const output = outputFromDescriptor({
+  const descriptorParams = {
     descriptor,
-    network: session.network,
-    change,
-    index
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
+  const output = outputFromDescriptor({
+    ...descriptorParams,
+    network: session.network
   });
   const policy = await standardPolicyFromOutput({
     output,
@@ -357,7 +368,7 @@ export async function signMessage({
   if (!originPath) throw new Error(`Ledger key root missing origin path`);
   const signature = await ledgerClient.signMessage(
     messageBytes(message),
-    `m${originPath}/${change}/${index}`
+    `m${originPath}/${policy.change}/${policy.index}`
   );
   return assertLegacyMessageSignature(fromBase64(signature), 'Ledger');
 }

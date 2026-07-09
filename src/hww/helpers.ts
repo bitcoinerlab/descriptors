@@ -9,6 +9,34 @@ import {
 import { assertChangeIndexKeyPath } from '../keyExpressions';
 import type { Network } from '../networks';
 
+/**
+ * Checks that address position params match the descriptor shape.
+ *
+ * Use `index` for ranged descriptors (`*`). Use `change` only when the
+ * descriptor has a multipath branch such as `/**` or `/<0;1>/*`.
+ */
+export function assertDescriptorParams({
+  descriptor,
+  change,
+  index
+}: {
+  descriptor: string;
+  change?: number;
+  index?: number;
+}): void {
+  const isRanged = descriptor.includes('*');
+  const hasMultipath = /\/(?:\*\*|<[^<>]+>)/.test(descriptor);
+
+  if (isRanged && index === undefined)
+    throw new Error(`Error: index was not provided for ranged descriptor`);
+  if (!isRanged && index !== undefined)
+    throw new Error(`Error: index passed for non-ranged descriptor`);
+  if (hasMultipath && change === undefined)
+    throw new Error(`Error: change was not provided for multipath descriptor`);
+  if (!hasMultipath && change !== undefined)
+    throw new Error(`Error: change passed for descriptor without multipath`);
+}
+
 /** Builds an Output from a descriptor and optional address position. */
 export function outputFromDescriptor({
   descriptor,
@@ -44,11 +72,15 @@ export async function keyExpressionHWW({
   /** Reads the account xpub for the descriptor origin path. */
   getAccountXpub(originPath: string): Promise<string>;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
-  assertChangeIndexKeyPath({ change, index, keyPath });
+  assertChangeIndexKeyPath({
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {}),
+    ...(keyPath !== undefined ? { keyPath } : {})
+  });
 
   const masterFingerprint = await getMasterFingerprint();
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;

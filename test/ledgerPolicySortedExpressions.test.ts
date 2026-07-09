@@ -489,10 +489,37 @@ describeIfNotScure(
         displayAddress({
           descriptor: `wpkh(${ledgerKey})`,
           session,
-          change: 0,
           index: 3
         })
       ).resolves.toBe('bcrt1ledger');
+
+      expect(session.client.getWalletAddress).toHaveBeenCalledWith(
+        expect.any(Object),
+        null,
+        0,
+        3,
+        true
+      );
+    });
+
+    test('displays fixed standard addresses without index', async () => {
+      const ledgerMaster = makeMaster(274);
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/3'
+      });
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      Object.assign(session.client, {
+        getWalletAddress: jest.fn(async () => 'bcrt1fixed')
+      });
+
+      await expect(
+        displayAddress({
+          descriptor: `wpkh(${ledgerKey})`,
+          session
+        })
+      ).resolves.toBe('bcrt1fixed');
 
       expect(session.client.getWalletAddress).toHaveBeenCalledWith(
         expect.any(Object),
@@ -527,12 +554,28 @@ describeIfNotScure(
           session,
           message: 'hello',
           descriptor: `wpkh(${ledgerKey})`,
-          change: 0,
           index: 0
         })
       ).resolves.toEqual(signature);
       expect(session.client.signMessage).toHaveBeenCalledWith(
         fromUtf8('hello'),
+        "m/84'/1'/0'/0/0"
+      );
+
+      const fixedKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/0'
+      });
+      await expect(
+        signMessage({
+          session,
+          message: 'fixed',
+          descriptor: `wpkh(${fixedKey})`
+        })
+      ).resolves.toEqual(signature);
+      expect(session.client.signMessage).toHaveBeenLastCalledWith(
+        fromUtf8('fixed'),
         "m/84'/1'/0'/0/0"
       );
     });
@@ -554,13 +597,54 @@ describeIfNotScure(
           session,
           message: 'hello',
           descriptor: `tr(${ledgerKey})`,
-          change: 0,
           index: 0
         })
       ).rejects.toThrow(
         'standard single-key pkh, sh(wpkh), and wpkh descriptors'
       );
       expect(session.client.signMessage).not.toHaveBeenCalled();
+    });
+
+    test('validates address position params before device calls', async () => {
+      const ledgerMaster = makeMaster(275);
+      const rangedKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const fixedKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/3'
+      });
+      const multipathKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/<0;1>/*'
+      });
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+
+      await expect(
+        displayAddress({ descriptor: `wpkh(${rangedKey})`, session })
+      ).rejects.toThrow('index was not provided for ranged descriptor');
+      await expect(
+        displayAddress({ descriptor: `wpkh(${fixedKey})`, session, index: 3 })
+      ).rejects.toThrow('index passed for non-ranged descriptor');
+      await expect(
+        displayAddress({
+          descriptor: `wpkh(${rangedKey})`,
+          session,
+          change: 0,
+          index: 3
+        })
+      ).rejects.toThrow('change passed for descriptor without multipath');
+      await expect(
+        displayAddress({
+          descriptor: `wpkh(${multipathKey})`,
+          session,
+          index: 3
+        })
+      ).rejects.toThrow('change was not provided for multipath descriptor');
     });
 
     test('opens selected React Native HID devices', async () => {

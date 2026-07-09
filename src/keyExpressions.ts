@@ -240,9 +240,9 @@ export function assertChangeIndexKeyPath({
   index,
   keyPath
 }: {
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
+  change?: number; //0 -> external (reveive), 1 -> internal (change)
+  index?: number | '*';
+  keyPath?: string; //In the case of the Ledger, keyPath must be /<1;0>/number
 }) {
   if (
     !(
@@ -314,9 +314,9 @@ export function keyExpressionBIP32({
 }: {
   masterNode: BIP32InterfaceLike | ScureHDKeyLike;
   originPath: string;
-  change?: number | undefined; //0 -> external (reveive), 1 -> internal (change)
-  index?: number | undefined | '*';
-  keyPath?: string | undefined; //In the case of the Ledger, keyPath must be /<1;0>/number
+  change?: number; //0 -> external (reveive), 1 -> internal (change)
+  index?: number | '*';
+  keyPath?: string; //In the case of the Ledger, keyPath must be /<1;0>/number
   /**
    * Compute an xpub or xprv
    * @default true
@@ -324,7 +324,11 @@ export function keyExpressionBIP32({
   isPublic?: boolean;
 }) {
   masterNode = toBIP32Interface(masterNode);
-  assertChangeIndexKeyPath({ change, index, keyPath });
+  assertChangeIndexKeyPath({
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {}),
+    ...(keyPath !== undefined ? { keyPath } : {})
+  });
   const masterFingerprint = masterNode.fingerprint;
   const origin = `[${toHex(masterFingerprint)}${originPath}]`;
   const xpub = isPublic

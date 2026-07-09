@@ -23,6 +23,7 @@ import {
   standardPolicyFromOutput
 } from '../hww/policies';
 import {
+  assertDescriptorParams,
   assertLegacyMessageSignature,
   messageBytes,
   originPathFromKeyRoot,
@@ -52,7 +53,7 @@ type AddressDisplayParams = {
   descriptor: string;
   session: BitBoxSession;
   change?: number;
-  index: number;
+  index?: number;
 };
 
 type MessageSigningParams = AddressDisplayParams & {
@@ -214,14 +215,19 @@ async function displayPolicyAddress({
 export async function displayAddress({
   descriptor,
   session,
-  change = 0,
+  change,
   index
 }: AddressDisplayParams): Promise<string | void> {
-  const output = outputFromDescriptor({
+  const descriptorParams = {
     descriptor,
-    network: session.network,
-    change,
-    index
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
+  const output = outputFromDescriptor({
+    ...descriptorParams,
+    network: session.network
   });
   const standardPolicy = await standardPolicyFromOutput({
     output,
@@ -231,8 +237,8 @@ export async function displayAddress({
     return displayStandardAddress({
       policy: standardPolicy,
       session,
-      change,
-      index
+      change: standardPolicy.change,
+      index: standardPolicy.index
     });
 
   const policy = await knownPolicyFromOutput({
@@ -244,25 +250,35 @@ export async function displayAddress({
   });
   if (!policy)
     throw new Error(`BitBox policy not registered; call registerPolicy first`);
-  return displayPolicyAddress({ policy, session, change, index });
+  return displayPolicyAddress({
+    policy,
+    session,
+    change: policy.change,
+    index: policy.index
+  });
 }
 
 export async function signMessage({
   descriptor,
   session,
   message,
-  change = 0,
+  change,
   index
 }: MessageSigningParams): Promise<Uint8Array> {
   const { client } = session;
   if (typeof client.btcSignMessage !== 'function')
     throw new Error(`BitBox client does not support message signing`);
 
-  const output = outputFromDescriptor({
+  const descriptorParams = {
     descriptor,
-    network: session.network,
-    change,
-    index
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
+  const output = outputFromDescriptor({
+    ...descriptorParams,
+    network: session.network
   });
   const policy = await standardPolicyFromOutput({
     output,
@@ -292,7 +308,12 @@ export async function signMessage({
     apiNetwork(session),
     {
       scriptConfig: scriptConfigFromPolicy({ policy, session }),
-      keypath: addressKeypathFromPolicy({ policy, session, change, index })
+      keypath: addressKeypathFromPolicy({
+        policy,
+        session,
+        change: policy.change,
+        index: policy.index
+      })
     },
     messageBytes(message)
   );

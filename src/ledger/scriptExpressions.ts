@@ -10,8 +10,8 @@ type StandardScriptExpressionParams = {
   session: LedgerSession;
   account: number;
   keyPath?: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
+  change?: number;
+  index?: number | '*';
 };
 
 type DeprecatedLedgerStandardScriptExpressionParams = Omit<
@@ -35,9 +35,9 @@ function makeStandardExpression(purpose: number, scriptTemplate: string) {
     const key = await keyExpression({
       session,
       originPath,
-      keyPath,
-      change,
-      index
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {})
     });
 
     return scriptTemplate.replace('KEYEXPRESSION', key);

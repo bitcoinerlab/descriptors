@@ -255,7 +255,15 @@ export async function derivePolicyFromOutput({
   output: OutputInstance;
   /** Reads the connected device master fingerprint. */
   getMasterFingerprint(): Promise<Uint8Array>;
-}): Promise<{ descriptorTemplate: string; keyRoots: string[] } | null> {
+}): Promise<
+  | (HWWPolicy & {
+      /** Concrete branch extracted from the expanded descriptor key path. */
+      change: number;
+      /** Concrete address index extracted from the expanded descriptor key path. */
+      index: number;
+    })
+  | null
+> {
   const expanded = output.expand();
   let expandedExpression = expanded.expandedExpression;
   const expansionMap = expanded.expansionMap
@@ -351,6 +359,11 @@ export async function derivePolicyFromOutput({
     throw new Error(
       `Error: key paths must be /<1;0>/index, where change is 1 or 0 and index >= 0`
     );
+  const [, strChange, strIndex] = keyPath.split('/');
+  if (!strChange || !strIndex)
+    throw new Error(`Error: invalid hardware wallet key path: ${keyPath}`);
+  const change = parseInt(strChange, 10);
+  const index = parseInt(strIndex, 10);
 
   const keyRoots: string[] = [];
   const placeholderToHwwPlaceholder = new Map<string, string>();
@@ -391,7 +404,7 @@ export async function derivePolicyFromOutput({
     placeholder => placeholderToHwwPlaceholder.get(placeholder) ?? placeholder
   );
 
-  return { descriptorTemplate, keyRoots };
+  return { descriptorTemplate, keyRoots, change, index };
 }
 
 /** Returns a standard single-key policy for an output, or `null`. */
@@ -402,7 +415,7 @@ export async function standardPolicyFromOutput({
   output: OutputInstance;
   /** Reads the connected device master fingerprint. */
   getMasterFingerprint(): Promise<Uint8Array>;
-}): Promise<HWWPolicy | null> {
+}): Promise<(HWWPolicy & { change: number; index: number }) | null> {
   const result = await derivePolicyFromOutput({
     output,
     getMasterFingerprint
@@ -417,7 +430,7 @@ export async function standardPolicyFromOutput({
       network: output.getNetwork()
     })
   )
-    return { descriptorTemplate, keyRoots };
+    return result;
   return null;
 }
 
@@ -452,7 +465,7 @@ export async function knownPolicyFromOutput({
   getMasterFingerprint(): Promise<Uint8Array>;
   /** Policies already known by the app or registered with the device. */
   knownPolicies?: HWWPolicy[];
-}): Promise<HWWPolicy | null> {
+}): Promise<(HWWPolicy & { change: number; index: number }) | null> {
   const result = await derivePolicyFromOutput({
     output,
     getMasterFingerprint
@@ -465,7 +478,7 @@ export async function knownPolicyFromOutput({
   );
   if (policies.length > 1) throw new Error(`Error: duplicated policy`);
   if (policies.length === 1) {
-    return policies[0]!;
+    return { ...policies[0]!, change: result.change, index: result.index };
   } else {
     return null;
   }

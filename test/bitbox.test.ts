@@ -255,7 +255,6 @@ describe('BitBox helpers', () => {
       displayAddress({
         descriptor,
         session: bitboxSession,
-        change: 0,
         index: 7
       })
     ).resolves.toBe('bcrt1multisig');
@@ -363,6 +362,75 @@ describe('BitBox helpers', () => {
       scriptConfig: { simpleType: 'p2wpkh' },
       display: true
     });
+
+    const fixedKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/3'
+    });
+    await expect(
+      displayAddress({
+        descriptor: `wpkh(${fixedKey})`,
+        session: bitboxSession
+      })
+    ).resolves.toBe('bcrt1simple');
+    expect(client.displayed).toEqual({
+      apiNetwork: 'tbtc',
+      keypath: "m/84'/1'/0'/0/3",
+      scriptConfig: { simpleType: 'p2wpkh' },
+      display: true
+    });
+  });
+
+  test('validates address position params before BitBox calls', async () => {
+    const bitboxMaster = makeMaster(14);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const rangedKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/*'
+    });
+    const fixedKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/3'
+    });
+    const multipathKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/84'/1'/0'",
+      keyPath: '/<0;1>/*'
+    });
+
+    await expect(
+      displayAddress({
+        descriptor: `wpkh(${rangedKey})`,
+        session: bitboxSession
+      })
+    ).rejects.toThrow('index was not provided for ranged descriptor');
+    await expect(
+      displayAddress({
+        descriptor: `wpkh(${fixedKey})`,
+        session: bitboxSession,
+        index: 3
+      })
+    ).rejects.toThrow('index passed for non-ranged descriptor');
+    await expect(
+      displayAddress({
+        descriptor: `wpkh(${rangedKey})`,
+        session: bitboxSession,
+        change: 0,
+        index: 3
+      })
+    ).rejects.toThrow('change passed for descriptor without multipath');
+    await expect(
+      displayAddress({
+        descriptor: `wpkh(${multipathKey})`,
+        session: bitboxSession,
+        index: 3
+      })
+    ).rejects.toThrow('change was not provided for multipath descriptor');
+    expect(client.displayed).toBeUndefined();
   });
 
   test('rejects top-level legacy pkh descriptors before calling the device', async () => {
@@ -490,6 +558,19 @@ describe('BitBox helpers', () => {
     expect(client.displayed?.scriptConfig).toMatchObject({
       policy: { policy: 'wsh(and_v(v:pk(@0/**),older(5)))' }
     });
+
+    const fixedKey = await keyExpression({
+      session: bitboxSession,
+      originPath,
+      keyPath: '/0/9'
+    });
+    await expect(
+      displayAddress({
+        descriptor: `wsh(and_v(v:pk(${fixedKey}),older(5)))`,
+        session: bitboxSession
+      })
+    ).resolves.toBe('bcrt1policy');
+    expect(client.displayed?.keypath).toBe("m/48'/1'/1'/2'/0/9");
   });
 
   test('signs PSBTs through bitbox-api btcSignPSBT', async () => {
@@ -558,7 +639,6 @@ describe('BitBox helpers', () => {
         session: bitboxSession,
         message: 'hello',
         descriptor,
-        change: 0,
         index: 0
       })
     ).resolves.toEqual(MESSAGE_SIGNATURE);
@@ -567,6 +647,25 @@ describe('BitBox helpers', () => {
       scriptConfig: { simpleType: 'p2wpkh' },
       keypath: "m/84'/1'/0'/0/0",
       message: fromUtf8('hello')
+    });
+
+    const fixedKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/0'
+    });
+    await expect(
+      signMessage({
+        session: bitboxSession,
+        message: 'fixed',
+        descriptor: `wpkh(${fixedKey})`
+      })
+    ).resolves.toEqual(MESSAGE_SIGNATURE);
+    expect(client.messageSigned).toEqual({
+      apiNetwork: 'tbtc',
+      scriptConfig: { simpleType: 'p2wpkh' },
+      keypath: "m/84'/1'/0'/0/0",
+      message: fromUtf8('fixed')
     });
   });
 
@@ -591,7 +690,6 @@ describe('BitBox helpers', () => {
         session: bitboxSession,
         message: 'hello',
         descriptor: `pkh(${pkhKey})`,
-        change: 0,
         index: 0
       })
     ).rejects.toThrow('top-level legacy p2pkh');
@@ -600,7 +698,6 @@ describe('BitBox helpers', () => {
         session: bitboxSession,
         message: 'hello',
         descriptor: trDescriptor,
-        change: 0,
         index: 0
       })
     ).rejects.toThrow('Taproot message signing');

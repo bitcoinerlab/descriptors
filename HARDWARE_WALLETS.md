@@ -91,9 +91,23 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `signMessage(...)` | Ask the device to sign a legacy/Electrum Bitcoin message for a descriptor address. |
 
 `signMessage(...)` has the same public shape for Ledger and BitBox:
-`signMessage({ session, message, descriptor, change?, index })`. It returns a
+`signMessage({ session, message, descriptor, change?, index? })`. It returns a
 65-byte `Uint8Array` legacy/Electrum Bitcoin message signature. It does not
 produce BIP322 signatures.
+
+## Address Position Params
+
+`displayAddress(...)` and `signMessage(...)` derive the concrete device key path
+from the descriptor. Pass position params only when the descriptor still needs
+them:
+
+- Fixed descriptor, such as `wpkh(KEY/0/7)`: pass neither `change` nor `index`.
+- Ranged fixed-branch descriptor, such as `wpkh(KEY/0/*)`: pass `index` only.
+- Multipath ranged descriptor, such as `wpkh(KEY/**)` or `wpkh(KEY/<0;1>/*)`: pass both `change` and `index`.
+
+`index` is only for ranged descriptors. `change` is only for descriptors with a
+multipath branch selector. Passing unnecessary params is rejected so the address
+shown by the device cannot differ from the descriptor you supplied.
 
 ## Install Device Transports
 
@@ -543,7 +557,6 @@ const signature = await signMessage({
   session,
   message: 'hello',
   descriptor,
-  change: 0,
   index: 0
 });
 ```

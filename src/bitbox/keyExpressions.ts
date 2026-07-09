@@ -14,16 +14,16 @@ export async function keyExpression({
 }: {
   session: BitBoxSession;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
   return keyExpressionHWW({
     getMasterFingerprint: () => getMasterFingerprint({ session }),
     getAccountXpub: originPath => getXpub({ originPath, session }),
     originPath,
-    keyPath,
-    change,
-    index
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
   });
 }

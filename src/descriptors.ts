@@ -2157,9 +2157,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
-        tapInternalKey,
-        tapLeafScript,
-        tapBip32Derivation,
+        ...(tapInternalKey !== undefined ? { tapInternalKey } : {}),
+        ...(tapLeafScript !== undefined ? { tapLeafScript } : {}),
+        ...(tapBip32Derivation !== undefined ? { tapBip32Derivation } : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
@@ -2181,7 +2181,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
          * @default true */
-        validate?: boolean | undefined;
+        validate?: boolean;
       }) => {
         // Normalize to Psbt interface for finalization
         psbt = toPsbt(psbt);

@@ -14,17 +14,17 @@ export async function keyExpression({
 }: {
   session: LedgerSession;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
   return keyExpressionHWW({
     getMasterFingerprint: () => getMasterFingerprint({ session }),
     getAccountXpub: originPath => getXpub({ originPath, session }),
     originPath,
-    keyPath,
-    change,
-    index
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
   });
 }
 
@@ -40,9 +40,9 @@ export async function keyExpressionLedger({
 }: {
   ledgerManager: LedgerManager;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
   return keyExpression({
     session: {
@@ -51,8 +51,8 @@ export async function keyExpressionLedger({
       network: ledgerManager.network
     },
     originPath,
-    keyPath,
-    change,
-    index
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
   });
 }
