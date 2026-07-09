@@ -6,9 +6,14 @@ import type { LedgerManager, LedgerSession } from './types';
 
 type LedgerBitcoinModule = typeof import('@ledgerhq/ledger-bitcoin');
 
-export async function importAndValidateLedgerBitcoin(
-  ledgerClient?: unknown
-): Promise<unknown> {
+/**
+ * Loads the optional Ledger Bitcoin package only when a Ledger helper needs it.
+ *
+ * This keeps non-Ledger users from loading `@ledgerhq/ledger-bitcoin` at module
+ * startup. It does not validate clients; callers use the structural
+ * `LedgerClient` type instead.
+ */
+export async function importLedgerBitcoinModule(): Promise<LedgerBitcoinModule> {
   let ledgerBitcoinModule: LedgerBitcoinModule;
   try {
     // Keep the optional Ledger peer out of module initialization for non-Ledger users.
@@ -20,10 +25,6 @@ export async function importAndValidateLedgerBitcoin(
     throw new Error(
       'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using Ledger helpers. Please run "npm install @ledgerhq/ledger-bitcoin" or import only non-Ledger APIs.'
     );
-  }
-  const { AppClient } = ledgerBitcoinModule;
-  if (ledgerClient !== undefined && !(ledgerClient instanceof AppClient)) {
-    throw new Error('Error: invalid AppClient instance');
   }
   return ledgerBitcoinModule;
 }
@@ -101,11 +102,6 @@ export async function getMasterFingerprint({
   session: LedgerSession;
 }): Promise<Uint8Array> {
   const { client, store } = session;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    client
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
   let masterFingerprint = store.masterFingerprint;
   if (!masterFingerprint) {
     masterFingerprint = await client.getMasterFingerprint();
@@ -120,11 +116,6 @@ export async function getVersion({
   session: LedgerSession;
 }): Promise<string> {
   const { client } = session;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    client
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
   const { version } = await client.getAppAndVersion();
   return version;
 }
@@ -137,11 +128,6 @@ export async function getXpub({
   session: LedgerSession;
 }): Promise<string> {
   const { client, store } = session;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    client
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
   if (!store.xpubs) store.xpubs = {};
   let xpub = store.xpubs[originPath];
   if (!xpub) {

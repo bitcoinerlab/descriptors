@@ -42,7 +42,7 @@
  * All the conditions above are checked when deriving the common HWW policy.
  */
 
-import { getMasterFingerprint, importAndValidateLedgerBitcoin } from './client';
+import { getMasterFingerprint, importLedgerBitcoinModule } from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
 import {
   derivePolicyFromOutput,
@@ -130,11 +130,7 @@ export async function registerPolicy({
   name: string;
 }): Promise<LedgerStore> {
   const { client, store, network } = session;
-  const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
-    client
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
+  const { WalletPolicy } = await importLedgerBitcoinModule();
   const output = outputFromDescriptor({
     descriptor,
     network,
@@ -271,12 +267,8 @@ export async function displayAddress({
   index
 }: AddressDisplayParams): Promise<string> {
   const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      client
-    )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
+  const { DefaultWalletPolicy, WalletPolicy } =
+    await importLedgerBitcoinModule();
   const ledgerClient: LedgerClient = client;
 
   const output = outputFromDescriptor({
@@ -333,11 +325,6 @@ export async function signMessage({
   index
 }: MessageSigningParams): Promise<Uint8Array> {
   const { client } = session;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    client
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
   const ledgerClient: LedgerClient = client;
   if (typeof ledgerClient.signMessage !== 'function')
     throw new Error(`Ledger client does not support message signing`);

@@ -8,7 +8,7 @@ import { policyForPsbtInput, samePolicy } from '../hww/policies';
 import {
   getMasterFingerprint,
   getXpub,
-  importAndValidateLedgerBitcoin
+  importLedgerBitcoinModule
 } from './client';
 import { fromHex } from 'uint8array-tools';
 import type {
@@ -101,12 +101,8 @@ export async function signInput({
 }): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      client
-    )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
+  const { DefaultWalletPolicy, WalletPolicy } =
+    await importLedgerBitcoinModule();
 
   const policy = (await policyForPsbtInput({
     psbt,
@@ -182,12 +178,8 @@ export async function sign({
 }): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      client
-    )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(client instanceof AppClient))
-    throw new Error(`Error: pass a valid Ledger client`);
+  const { DefaultWalletPolicy, WalletPolicy } =
+    await importLedgerBitcoinModule();
 
   const ledgerPolicies = [];
   for (let index = 0; index < psbt.data.inputs.length; index++) {

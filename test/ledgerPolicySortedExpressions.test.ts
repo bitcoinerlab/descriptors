@@ -8,7 +8,6 @@ const isScure = process.env['BITCOIN_LIB'] === 'scure';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import {
@@ -16,6 +15,7 @@ import {
   getVersion,
   signers,
   signMessage,
+  type LedgerClient,
   type LedgerSession
 } from '../dist/ledger/index';
 import {
@@ -50,9 +50,7 @@ function manyExternalKeys(startSeed: number, count: number): string[] {
 }
 
 function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
-  const ledgerClient = Object.create(AppClient.prototype) as InstanceType<
-    typeof AppClient
-  >;
+  const ledgerClient = {} as LedgerClient;
   return {
     client: ledgerClient,
     store: { masterFingerprint: toHex(masterFingerprint) },

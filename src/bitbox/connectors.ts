@@ -26,33 +26,30 @@ type BitBoxApiModule = {
 
 type ImportBitBoxApi = (specifier: string) => Promise<BitBoxApiModule>;
 
-let importBitBoxApi: ImportBitBoxApi | undefined;
-
-// bitbox-api is ESM and loads a WASM file, so require('bitbox-api') does not
-// work from this CommonJS build. This helper creates a native dynamic import
-// function only when built-in connectors are used, keeping simple
-// fromClient(...) imports safe for React Native users that provide their own
-// connected client.
-function getImportBitBoxApi(): ImportBitBoxApi {
-  if (!importBitBoxApi) {
-    try {
-      importBitBoxApi = new Function(
-        'specifier',
-        'return import(specifier)'
-      ) as ImportBitBoxApi;
-    } catch (error) {
-      void error;
-      throw new Error(
-        'BitBox built-in connectors require native dynamic import support. In React Native, use connectors.fromClient(...) with a platform provider instead.'
-      );
-    }
-  }
-  return importBitBoxApi;
-}
-
-async function importAndValidateBitBoxApi(): Promise<BitBoxApiModule> {
+/**
+ * Loads the optional BitBox API package only when a built-in connector needs it.
+ *
+ * `fromClient(...)` users bring their own paired client, so they should not need
+ * `bitbox-api` or native dynamic import support.
+ */
+async function importBitBoxApiModule(): Promise<BitBoxApiModule> {
+  // bitbox-api is ESM and loads WASM, so require('bitbox-api') does not work
+  // from this CommonJS build. Keep this dynamic import lazy for fromClient(...).
+  let importBitBoxApi: ImportBitBoxApi;
   try {
-    return await getImportBitBoxApi()('bitbox-api');
+    importBitBoxApi = new Function(
+      'specifier',
+      'return import(specifier)'
+    ) as ImportBitBoxApi;
+  } catch (error) {
+    void error;
+    throw new Error(
+      'BitBox built-in connectors require native dynamic import support. In React Native, use connectors.fromClient(...) with a platform provider instead.'
+    );
+  }
+
+  try {
+    return await importBitBoxApi('bitbox-api');
   } catch (error) {
     const errorCode =
       error instanceof Error && 'code' in error
@@ -138,7 +135,7 @@ export async function connect({
   /** Called with the pairing code before waiting for device confirmation. */
   onPairingCode?: (pairingCode: string) => void | Promise<void>;
 }): Promise<BitBoxSession> {
-  const bitboxApi = await importAndValidateBitBoxApi();
+  const bitboxApi = await importBitBoxApiModule();
   const unpaired =
     mode === 'webhid-or-bridge'
       ? await bitboxApi.bitbox02ConnectAuto(onClose)

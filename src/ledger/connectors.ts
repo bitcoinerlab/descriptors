@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import type { Network } from '../networks';
-import { assertLedgerApp, importAndValidateLedgerBitcoin } from './client';
+import { assertLedgerApp, importLedgerBitcoinModule } from './client';
 import type { LedgerClient, LedgerSession, LedgerStore } from './types';
 
 type LedgerTransport = {
@@ -163,8 +163,7 @@ export async function connect(
               ? '@ledgerhq/hw-transport-webhid'
               : '@ledgerhq/hw-transport-webusb'
         }).default.create();
-  const ledgerBitcoin =
-    (await importAndValidateLedgerBitcoin()) as typeof import('@ledgerhq/ledger-bitcoin');
+  const ledgerBitcoin = await importLedgerBitcoinModule();
 
   if (assertApp)
     await assertLedgerApp({ transport, name: appName, minVersion });
