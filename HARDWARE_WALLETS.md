@@ -105,6 +105,8 @@ the mode you use:
 | `node-hid` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-node-hid` |
 | `webhid` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-webhid` |
 | `webusb` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-webusb` |
+| `react-native-hid` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/react-native-hid` |
+| `react-native-ble` | `npm install @ledgerhq/ledger-bitcoin @ledgerhq/react-native-hw-transport-ble` |
 
 ```bash
 npm install @ledgerhq/ledger-bitcoin @ledgerhq/hw-transport-node-hid
@@ -158,11 +160,143 @@ Available Ledger modes are:
 - `node-hid`
 - `webhid`
 - `webusb`
+- `react-native-hid`
+- `react-native-ble`
 
 WebHID and WebUSB are browser transports. They must be called from a browser
 context that can show the device permission prompt, usually from a user gesture.
 `openTimeout` and `listenTimeout` are only for `node-hid`; browser modes use the
 Ledger browser transport defaults.
+
+React Native modes expect your app to discover a device first, then pass that
+device to this connector. This package does not scan automatically and does not
+choose a device for the user.
+
+### Ledger React Native Setup
+
+Ledger React Native transports are native modules. They do not work in Expo Go.
+Use a development build, `npx expo prebuild`, `npx expo run:ios`,
+`npx expo run:android`, or EAS Build.
+
+| Ledger mode | Platform | Expo app config | Native permissions | Runtime prompt |
+| --- | --- | --- | --- | --- |
+| `react-native-hid` | Android USB only | No Ledger plugin is required. Rebuild after installing the package. | The package adds Android USB host support. There is no iOS USB mode. | Android asks for USB permission when the transport opens the device. |
+| `react-native-ble` | iOS and Android BLE | Add the `react-native-ble-plx` config plugin. | iOS needs a Bluetooth usage message. Android needs Bluetooth scan/connect permissions and usually location for scanning. | Android needs runtime permission requests before scanning. iOS shows the Bluetooth prompt from the system. |
+
+For BLE in Expo, install `react-native-ble-plx` in the app and add its config
+plugin. The Ledger BLE transport uses this package under the hood, and Expo uses
+the plugin to write native Bluetooth settings.
+
+```bash
+npx expo install react-native-ble-plx
+```
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to your Ledger over Bluetooth."
+        }
+      ]
+    ]
+  }
+}
+```
+
+For bare React Native BLE apps, add the same native settings yourself:
+`NSBluetoothAlwaysUsageDescription` in `Info.plist`, and Android Bluetooth
+permissions in `AndroidManifest.xml`. After changing native permissions or Expo
+plugins, rebuild the native app. An OTA JavaScript update is not enough.
+
+Ledger's React Native transports expect `global.Buffer` in many apps. If your
+runtime does not provide it, install `buffer` and set it before importing Ledger
+code:
+
+```ts
+import { Buffer } from 'buffer';
+
+global.Buffer = global.Buffer ?? Buffer;
+```
+
+### Ledger React Native USB/HID
+
+Use `react-native-hid` for Android USB/HID. It is not an iOS transport.
+
+```ts
+import TransportHID from '@ledgerhq/react-native-hid';
+import { networks } from '@bitcoinerlab/descriptors';
+import { connectors } from '@bitcoinerlab/descriptors/ledger';
+
+const devices = await TransportHID.list();
+const device = devices[0]; // Let the user choose in a real app.
+
+const session = await connectors.connect({
+  mode: 'react-native-hid',
+  device,
+  network: networks.bitcoin,
+  store: {}
+});
+```
+
+Your app still owns the UI. Show the device list, let the user pick one, handle
+permission denial, and tell the user to open the Bitcoin app on the Ledger.
+
+### Ledger React Native BLE
+
+Use `react-native-ble` for Bluetooth Ledger devices. It works through Ledger's
+React Native BLE transport, which uses `react-native-ble-plx` under the hood.
+
+```ts
+import TransportBLE from '@ledgerhq/react-native-hw-transport-ble';
+import { networks } from '@bitcoinerlab/descriptors';
+import { connectors } from '@bitcoinerlab/descriptors/ledger';
+
+// First scan with TransportBLE.listen(...) and let the user choose a device.
+// The chosen device object, or a saved device.id string, can be used here.
+const session = await connectors.connect({
+  mode: 'react-native-ble',
+  device,
+  network: networks.bitcoin,
+  store: {},
+  openTimeout: 10000
+});
+```
+
+For BLE, your app must handle Bluetooth state, scanning, and runtime permission
+prompts before calling `connectors.connect(...)`. On Android 12 and newer, ask
+for `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT`. Unless your app is configured with
+`neverForLocation` and you have tested that path, also ask for
+`ACCESS_FINE_LOCATION`. On older Android versions, BLE scanning normally needs
+`ACCESS_FINE_LOCATION`. On iOS, add a clear Bluetooth usage message such as
+`NSBluetoothAlwaysUsageDescription`.
+
+This is a conservative Android runtime permission helper:
+
+```ts
+import { PermissionsAndroid, Platform } from 'react-native';
+
+async function requestLedgerBlePermissions() {
+  if (Platform.OS !== 'android') return true;
+
+  const apiLevel = Number(Platform.Version);
+  const permissions =
+    apiLevel >= 31
+      ? [
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        ]
+      : [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+
+  const result = await PermissionsAndroid.requestMultiple(permissions);
+  return permissions.every(
+    permission => result[permission] === PermissionsAndroid.RESULTS.GRANTED
+  );
+}
+```
 
 If your app already created a Ledger Bitcoin app client with another transport,
 use `fromClient(...)` instead:
@@ -205,6 +339,51 @@ Available BitBox modes are:
 `webhid-or-bridge` is the `bitbox-api` fallback flow: it tries WebHID when
 available and otherwise attempts BitBoxBridge. For React Native and other native
 apps, use `fromClient(...)` instead of a built-in mode.
+
+For React Native BitBox apps, use `@bitcoinerlab/bitbox-react-native` to create
+the native client, then pass that client to `connectors.fromClient(...)`. That
+package provides `connectBitBoxNovaBle(...)` for BLE and `connectBitBoxUsb(...)`
+for Android USB.
+
+```bash
+npx expo install @bitcoinerlab/bitbox-react-native
+npx expo install expo-dev-client
+```
+
+Add its config plugin when using Expo prebuild or EAS Build:
+
+```json
+{
+  "expo": {
+    "plugins": ["expo-dev-client", "@bitcoinerlab/bitbox-react-native"]
+  }
+}
+```
+
+The BitBox React Native plugin adds the iOS Bluetooth usage text and the Android
+Bluetooth and USB manifest entries used by its native transports. It does not
+work in Expo Go; use a development build or a production native build.
+
+```ts
+import { connectBitBoxNovaBle } from '@bitcoinerlab/bitbox-react-native';
+import { networks } from '@bitcoinerlab/descriptors';
+import { connectors } from '@bitcoinerlab/descriptors/bitbox';
+
+const client = await connectBitBoxNovaBle({ timeoutMs: 60_000 });
+
+try {
+  const session = connectors.fromClient({
+    client,
+    network: networks.bitcoin,
+    store: {}
+  });
+
+  // Use keyExpression(...), registerPolicy(...), displayAddress(...),
+  // and signers.sign(...) with this session.
+} finally {
+  await client.close();
+}
+```
 
 If your app already has a paired BitBox-compatible provider client, use
 `fromClient(...)`. This is the right path for mobile apps and other native
@@ -464,8 +643,9 @@ passes `default`.
 
 Ledger adds these device-specific extensions on top of the common API:
 
-- `connectors.connect(...)` with `node-hid`, `webhid` or `webusb` mode for
-  built-in Ledger connection flows.
+- `connectors.connect(...)` with `node-hid`, `webhid`, `webusb`,
+  `react-native-hid` or `react-native-ble` mode for built-in Ledger connection
+  flows.
 - `assertLedgerApp(...)` to verify the open Ledger app and minimum version when
   you manage the transport yourself.
 - Deprecated 3.x compatibility names such as `LedgerManager`,

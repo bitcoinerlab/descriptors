@@ -11,6 +11,7 @@ import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import {
+  connectors,
   displayAddress,
   getVersion,
   signers,
@@ -24,6 +25,27 @@ import {
 } from '../dist/hww/policies';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
+
+const mockHidOpen = jest.fn();
+const mockBleOpen = jest.fn();
+
+jest.mock(
+  '@ledgerhq/react-native-hid',
+  () => ({
+    __esModule: true,
+    default: { open: mockHidOpen }
+  }),
+  { virtual: true }
+);
+
+jest.mock(
+  '@ledgerhq/react-native-hw-transport-ble',
+  () => ({
+    __esModule: true,
+    default: { open: mockBleOpen }
+  }),
+  { virtual: true }
+);
 
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
@@ -64,6 +86,10 @@ function mockGetMasterFingerprint(masterFingerprint: Uint8Array) {
 
 async function unexpectedGetAccountXpub(): Promise<string> {
   throw new Error('unexpected standard policy xpub request');
+}
+
+function mockLedgerTransport() {
+  return { send: jest.fn() };
 }
 
 function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
@@ -535,6 +561,44 @@ describeIfNotScure(
         'standard single-key pkh, sh(wpkh), and wpkh descriptors'
       );
       expect(session.client.signMessage).not.toHaveBeenCalled();
+    });
+
+    test('opens selected React Native HID devices', async () => {
+      const transport = mockLedgerTransport();
+      mockHidOpen.mockResolvedValueOnce(transport);
+      const store = {};
+      const device = { vendorId: 11415, productId: 1 };
+
+      const session = await connectors.connect({
+        mode: 'react-native-hid',
+        device,
+        network: NETWORK,
+        store,
+        assertApp: false
+      });
+
+      expect(mockHidOpen).toHaveBeenCalledWith(device);
+      expect(session.network).toBe(NETWORK);
+      expect(session.store).toBe(store);
+    });
+
+    test('opens selected React Native BLE devices', async () => {
+      const transport = mockLedgerTransport();
+      mockBleOpen.mockResolvedValueOnce(transport);
+      const store = {};
+
+      const session = await connectors.connect({
+        mode: 'react-native-ble',
+        device: 'ledger-ble-device-id',
+        network: NETWORK,
+        store,
+        assertApp: false,
+        openTimeout: 10_000
+      });
+
+      expect(mockBleOpen).toHaveBeenCalledWith('ledger-ble-device-id', 10_000);
+      expect(session.network).toBe(NETWORK);
+      expect(session.store).toBe(store);
     });
   }
 );
