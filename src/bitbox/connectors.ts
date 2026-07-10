@@ -9,72 +9,62 @@ import type {
   BitBoxStore
 } from './types';
 
-type BitBoxConnection = {
-  unlockAndPair(): Promise<BitBoxPairing>;
+type ConnectedBitBoxClient = BitBoxClient & {
+  close(): void | Promise<void>;
 };
 
 type BitBoxPairing = {
+  free?(): void;
   getPairingCode(): string | undefined;
-  waitConfirm(): Promise<BitBoxClient>;
+  waitConfirm(): Promise<ConnectedBitBoxClient>;
 };
 
-type BitBoxApiModule = {
-  bitbox02ConnectAuto(onCloseCb?: () => void): Promise<BitBoxConnection>;
-  bitbox02ConnectBridge(onCloseCb?: () => void): Promise<BitBoxConnection>;
-  bitbox02ConnectWebHID(onCloseCb?: () => void): Promise<BitBoxConnection>;
+type BitBoxConnection = {
+  free?(): void;
+  unlockAndPair(): Promise<BitBoxPairing>;
 };
 
-type ImportBitBoxApi = (specifier: string) => Promise<BitBoxApiModule>;
+type ConnectBitBox = (params?: {
+  timeoutMs?: number;
+  deviceId?: string;
+}) => Promise<ConnectedBitBoxClient>;
 
-/**
- * Loads the optional BitBox API package only when a built-in connector needs it.
- *
- * `fromClient(...)` users bring their own paired client, so they should not need
- * `bitbox-api` or native dynamic import support.
- */
-async function importBitBoxApiModule(): Promise<BitBoxApiModule> {
-  // bitbox-api is ESM and loads WASM, so require('bitbox-api') does not work
-  // from this CommonJS build. Keep this dynamic import lazy for fromClient(...).
-  let importBitBoxApi: ImportBitBoxApi;
-  try {
-    importBitBoxApi = new Function(
-      'specifier',
-      'return import(specifier)'
-    ) as ImportBitBoxApi;
-  } catch (error) {
-    void error;
-    throw new Error(
-      'BitBox built-in connectors require native dynamic import support. In React Native, use connectors.fromClient(...) with a platform provider instead.'
-    );
-  }
-
-  try {
-    return await importBitBoxApi('bitbox-api');
-  } catch (error) {
-    const errorCode =
-      error instanceof Error && 'code' in error
-        ? (error as Error & { code?: string }).code
-        : undefined;
-    if (
-      error instanceof Error &&
-      (errorCode === 'MODULE_NOT_FOUND' ||
-        errorCode === 'ERR_MODULE_NOT_FOUND' ||
-        error.message.includes('bitbox-api'))
-    ) {
-      throw new Error(
-        'Could not import "bitbox-api". This peer dependency is required when using BitBox built-in connectors. Please run "npm install bitbox-api" or use connectors.fromClient(...).'
-      );
+type BitBoxReactNativeModule =
+  | {
+      connectBitBoxNovaBle: ConnectBitBox;
+      connectBitBoxUsb?: ConnectBitBox;
     }
-    throw error;
-  }
-}
+  | {
+      connectBitBoxNovaBle?: ConnectBitBox;
+      connectBitBoxUsb: ConnectBitBox;
+    };
+
+type BitBoxApiConnect = (
+  onClose: (() => void) | undefined
+) => Promise<BitBoxConnection>;
+
+type BitBoxApiModule =
+  | {
+      bitbox02ConnectAuto: BitBoxApiConnect;
+      bitbox02ConnectBridge?: BitBoxApiConnect;
+      bitbox02ConnectWebHID?: BitBoxApiConnect;
+    }
+  | {
+      bitbox02ConnectAuto?: BitBoxApiConnect;
+      bitbox02ConnectBridge: BitBoxApiConnect;
+      bitbox02ConnectWebHID?: BitBoxApiConnect;
+    }
+  | {
+      bitbox02ConnectAuto?: BitBoxApiConnect;
+      bitbox02ConnectBridge?: BitBoxApiConnect;
+      bitbox02ConnectWebHID: BitBoxApiConnect;
+    };
 
 /**
- * Build a BitBox session from an already paired client.
+ * Builds a BitBox session from a paired client that the application owns.
  *
- * Use this in React Native or when your app owns the BitBox transport.
- * Preset packages bind the descriptor backend before this function runs. Direct
- * core users must call `DescriptorsFactory(...)` first.
+ * Descriptors does not close this client. The application remains responsible
+ * for its transport and connection lifetime.
  */
 export function fromClient({
   client,
@@ -82,75 +72,208 @@ export function fromClient({
   store,
   formatUnit
 }: {
-  /** Connected and paired BitBox-compatible provider client. */
+  /** Connected and paired BitBox-compatible client. */
   client: BitBoxClient;
-  /** Bitcoin network used for descriptor and policy interpretation. */
+  /** Bitcoin network used for descriptors and policies. */
   network: Network;
-  /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
+  /** App-owned JSON store for cached keys and hardware-wallet policies. */
   store: BitBoxStore;
-  /** Optional display unit passed to `btcSignPSBT`. */
+  /** Default amount unit shown while signing. */
   formatUnit?: BitBoxFormatUnit;
 }): BitBoxSession {
-  const session: BitBoxSession = {
-    client,
-    store,
-    network
-  };
+  const session: BitBoxSession = { client, store, network };
   if (formatUnit !== undefined) session.formatUnit = formatUnit;
   return session;
 }
 
 /**
- * Connect to a BitBox with `bitbox-api` and build a session.
+ * Opens a BitBox driver supplied by the application and builds a session.
  *
- * Install `bitbox-api` before calling this. Use `fromClient(...)` if your app
- * already has a paired BitBox client. Preset packages bind the descriptor
- * backend before this function runs. Direct core users must call
- * `DescriptorsFactory(...)` first.
+ * Pass a literal module import in `driver.module`, for example
+ * `import('@bitcoinerlab/bitbox-react-native')`. One available mode is selected
+ * automatically. If the module supports several modes, pass `driver.mode`.
+ *
+ * The returned session owns the client. Call `session.close()` when the
+ * connection is no longer needed.
  */
 export async function connect({
-  mode,
+  driver,
   network,
-  store,
-  formatUnit,
-  onClose,
-  onPairingCode
+  store
 }: {
-  /**
-   * Built-in BitBox connection mode.
-   *
-   * Install `bitbox-api` before using this. `webhid` uses browser WebHID.
-   * `bridge` uses BitBoxBridge. `webhid-or-bridge` tries WebHID and falls
-   * back to BitBoxBridge.
-   */
-  mode: 'webhid' | 'bridge' | 'webhid-or-bridge';
-  /** Bitcoin network used for descriptor and policy interpretation. */
+  /** Everything specific to the selected BitBox driver. */
+  driver:
+    | {
+        /** Imported BitBox React Native module, or its import promise. */
+        module: BitBoxReactNativeModule | Promise<BitBoxReactNativeModule>;
+        /** Select BLE or USB when both are available. */
+        mode?: 'ble' | 'usb';
+        /** Device returned by provider discovery, or a saved device id. */
+        device?: string | { deviceId: string };
+        /** Timeout passed to the native BitBox provider. */
+        timeoutMs?: number;
+        /** Default amount unit shown while signing. */
+        formatUnit?: BitBoxFormatUnit;
+      }
+    | {
+        /** Imported `bitbox-api` module, or its import promise. */
+        module: BitBoxApiModule | Promise<BitBoxApiModule>;
+        /** Select the browser or bridge connection mechanism. */
+        mode?: 'webhid' | 'bridge' | 'webhid-or-bridge';
+        /** Shows the code that the user must compare with the BitBox. */
+        onPairingCode(code: string): void | Promise<void>;
+        /** Called when `bitbox-api` reports a closed connection. */
+        onClose?: () => void;
+        /** Default amount unit shown while signing. */
+        formatUnit?: BitBoxFormatUnit;
+      };
+  /** Bitcoin network used for descriptors and policies. */
   network: Network;
-  /** App-owned JSON store for cached keys and hardware-wallet policy metadata. */
+  /** App-owned JSON store for cached keys and hardware-wallet policies. */
   store: BitBoxStore;
-  /** Optional display unit passed to `btcSignPSBT`. */
-  formatUnit?: BitBoxFormatUnit;
-  /** Called when bitbox-api reports that the device connection closed. */
-  onClose?: () => void;
-  /** Called with the pairing code before waiting for device confirmation. */
-  onPairingCode?: (pairingCode: string) => void | Promise<void>;
-}): Promise<BitBoxSession> {
-  const bitboxApi = await importBitBoxApiModule();
-  const unpaired =
-    mode === 'webhid-or-bridge'
-      ? await bitboxApi.bitbox02ConnectAuto(onClose)
-      : mode === 'bridge'
-        ? await bitboxApi.bitbox02ConnectBridge(onClose)
-        : await bitboxApi.bitbox02ConnectWebHID(onClose);
-  const pairing = await unpaired.unlockAndPair();
-  const pairingCode = pairing.getPairingCode();
-  if (pairingCode !== undefined) await onPairingCode?.(pairingCode);
-  const client = await pairing.waitConfirm();
+}): Promise<
+  BitBoxSession & {
+    /** Closes the client owned by this connected session. */
+    close(): Promise<void>;
+  }
+> {
+  const driverModule = await driver.module;
+  const modes: string[] = [];
+  if (
+    'connectBitBoxNovaBle' in driverModule &&
+    typeof driverModule.connectBitBoxNovaBle === 'function'
+  )
+    modes.push('ble');
+  if (
+    'connectBitBoxUsb' in driverModule &&
+    typeof driverModule.connectBitBoxUsb === 'function'
+  )
+    modes.push('usb');
+  if (
+    'bitbox02ConnectWebHID' in driverModule &&
+    typeof driverModule.bitbox02ConnectWebHID === 'function'
+  )
+    modes.push('webhid');
+  if (
+    'bitbox02ConnectBridge' in driverModule &&
+    typeof driverModule.bitbox02ConnectBridge === 'function'
+  )
+    modes.push('bridge');
+  if (
+    'bitbox02ConnectAuto' in driverModule &&
+    typeof driverModule.bitbox02ConnectAuto === 'function'
+  )
+    modes.push('webhid-or-bridge');
+  if (modes.length === 0)
+    throw new Error(
+      `BitBox driver does not expose a supported connection mode`
+    );
 
-  return fromClient({
-    client,
-    network,
-    store,
-    ...(formatUnit !== undefined ? { formatUnit } : {})
-  });
+  const mode = driver.mode ?? (modes.length === 1 ? modes[0] : undefined);
+  if (!mode)
+    throw new Error(
+      `BitBox driver supports multiple modes: ${modes.map(value => `"${value}"`).join(', ')}. Pass driver.mode.`
+    );
+  if (!modes.includes(mode))
+    throw new Error(
+      `BitBox driver does not support mode "${mode}". Available modes: ${modes.map(value => `"${value}"`).join(', ')}.`
+    );
+
+  let client: ConnectedBitBoxClient;
+  if (mode === 'ble' || mode === 'usb') {
+    const connect =
+      mode === 'ble'
+        ? 'connectBitBoxNovaBle' in driverModule
+          ? driverModule.connectBitBoxNovaBle
+          : undefined
+        : 'connectBitBoxUsb' in driverModule
+          ? driverModule.connectBitBoxUsb
+          : undefined;
+    if (typeof connect !== 'function')
+      throw new Error(`BitBox driver does not support mode "${mode}"`);
+    if ('onPairingCode' in driver)
+      throw new Error(`BitBox React Native driver options are invalid`);
+    const deviceId =
+      typeof driver.device === 'string'
+        ? driver.device
+        : driver.device?.deviceId;
+    client = await connect({
+      ...(driver.timeoutMs !== undefined
+        ? { timeoutMs: driver.timeoutMs }
+        : {}),
+      ...(deviceId !== undefined ? { deviceId } : {})
+    });
+  } else {
+    if (!('onPairingCode' in driver))
+      throw new Error(`BitBox API drivers require onPairingCode`);
+    const connect =
+      mode === 'webhid'
+        ? 'bitbox02ConnectWebHID' in driverModule
+          ? driverModule.bitbox02ConnectWebHID
+          : undefined
+        : mode === 'bridge'
+          ? 'bitbox02ConnectBridge' in driverModule
+            ? driverModule.bitbox02ConnectBridge
+            : undefined
+          : 'bitbox02ConnectAuto' in driverModule
+            ? driverModule.bitbox02ConnectAuto
+            : undefined;
+    if (typeof connect !== 'function')
+      throw new Error(`BitBox driver does not support mode "${mode}"`);
+    const unpaired = await connect(driver.onClose);
+    let pairing: BitBoxPairing;
+    try {
+      pairing = await unpaired.unlockAndPair();
+    } catch (error) {
+      unpaired.free?.();
+      throw error;
+    }
+    try {
+      const pairingCode = pairing.getPairingCode();
+      if (pairingCode !== undefined) await driver.onPairingCode(pairingCode);
+      client = await pairing.waitConfirm();
+    } catch (error) {
+      pairing.free?.();
+      throw error;
+    }
+  }
+
+  try {
+    if (typeof client.close !== 'function')
+      throw new Error(`BitBox client must have a close method`);
+    const masterFingerprint = (await client.rootFingerprint()).toLowerCase();
+    if (!/^[0-9a-f]{8}$/.test(masterFingerprint))
+      throw new Error(`BitBox returned an invalid master fingerprint`);
+    if (
+      store.masterFingerprint !== undefined &&
+      store.masterFingerprint.toLowerCase() !== masterFingerprint
+    )
+      throw new Error(
+        `Connected BitBox fingerprint ${masterFingerprint} does not match store fingerprint ${store.masterFingerprint}`
+      );
+    store.masterFingerprint = masterFingerprint;
+
+    let closing: Promise<void> | undefined;
+    return {
+      ...fromClient({
+        client,
+        network,
+        store,
+        ...('formatUnit' in driver && driver.formatUnit !== undefined
+          ? { formatUnit: driver.formatUnit }
+          : {})
+      }),
+      close: () => {
+        closing ??= Promise.resolve().then(() => client.close());
+        return closing;
+      }
+    };
+  } catch (error) {
+    try {
+      await client.close();
+    } catch {
+      // Keep the connection or validation error that caused cleanup.
+    }
+    throw error;
+  }
 }

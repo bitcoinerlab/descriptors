@@ -47,8 +47,7 @@ import {
   keyExpression,
   registerPolicy,
   scriptExpressions,
-  signers,
-  type Session
+  signers
 } from '../../dist/bitbox';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
@@ -118,20 +117,25 @@ const POLICY_RECEIVE_INDEX = 0;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
+let closeSession = async () => {};
 (async () => {
   await ready;
-  const session: Session = await connectors.connect({
-    mode: 'bridge',
-    network: NETWORK,
-    store: {},
-    onClose: () => {
-      console.log('BitBox02 connection closed');
+  const session = await connectors.connect({
+    driver: {
+      module: import('bitbox-api'),
+      mode: 'bridge',
+      onClose: () => {
+        console.log('BitBox02 connection closed');
+      },
+      onPairingCode: pairingCode => {
+        console.log(`Pairing code:\n${pairingCode}`);
+        console.log('Confirm the pairing code on the BitBox02.');
+      }
     },
-    onPairingCode: pairingCode => {
-      console.log(`Pairing code:\n${pairingCode}`);
-      console.log('Confirm the pairing code on the BitBox02.');
-    }
+    network: NETWORK,
+    store: {}
   });
+  closeSession = session.close;
 
   const version = await getVersion({ session });
   const xpub = await getXpub({ session, originPath: ORIGIN_PATH });
@@ -266,9 +270,9 @@ const SOFT_MNEMONIC =
     psbt: psbtToBase64(policyPsbt),
     tx: psbtToHex(policyPsbt)
   });
-
-  (session.client as Session['client'] & { close(): void }).close();
-})().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+})()
+  .finally(() => closeSession())
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });

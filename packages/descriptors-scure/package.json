@@ -26,34 +26,10 @@
     "bip32"
   ],
   "peerDependencies": {
-    "@ledgerhq/hw-transport-node-hid": "^6.33.5",
-    "@ledgerhq/hw-transport-webhid": "^6.36.0",
-    "@ledgerhq/hw-transport-webusb": "^6.35.0",
-    "@ledgerhq/ledger-bitcoin": "^0.3.1",
-    "@ledgerhq/react-native-hid": "^6.39.5",
-    "@ledgerhq/react-native-hw-transport-ble": "^6.41.0",
-    "bitbox-api": "^0.13.0"
+    "@ledgerhq/ledger-bitcoin": "^0.3.1"
   },
   "peerDependenciesMeta": {
-    "@ledgerhq/hw-transport-node-hid": {
-      "optional": true
-    },
-    "@ledgerhq/hw-transport-webhid": {
-      "optional": true
-    },
-    "@ledgerhq/hw-transport-webusb": {
-      "optional": true
-    },
     "@ledgerhq/ledger-bitcoin": {
-      "optional": true
-    },
-    "@ledgerhq/react-native-hid": {
-      "optional": true
-    },
-    "@ledgerhq/react-native-hw-transport-ble": {
-      "optional": true
-    },
-    "bitbox-api": {
       "optional": true
     }
   },

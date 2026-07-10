@@ -7,97 +7,24 @@ import type { LedgerClient, LedgerSession, LedgerStore } from './types';
 
 type LedgerTransport = {
   send(cla: number, ins: number, p1: number, p2: number): Promise<Uint8Array>;
+  close(): void | Promise<void>;
 };
 
-type LedgerConnectorMode =
-  | 'node-hid'
-  | 'webhid'
-  | 'webusb'
-  | 'react-native-hid'
-  | 'react-native-ble';
-
-type LedgerCreateTransportModule = {
+type LedgerTransportModule<TDevice> = {
   default: {
     create(
       openTimeout?: number,
       listenTimeout?: number
     ): Promise<LedgerTransport>;
-  };
-};
-
-/** Device object returned by `@ledgerhq/react-native-hid` discovery. */
-export type LedgerReactNativeHidDevice = {
-  vendorId: number;
-  productId: number;
-};
-
-/** Device object or persisted id accepted by the Ledger React Native BLE transport. */
-export type LedgerReactNativeBleDevice =
-  | string
-  | {
-      id: string;
-      name?: string | null;
-      [key: string]: unknown;
-    };
-
-type LedgerReactNativeHidTransportModule = {
-  default: {
-    open(device: LedgerReactNativeHidDevice): Promise<LedgerTransport>;
-  };
-};
-
-type LedgerReactNativeBleTransportModule = {
-  default: {
-    open(
-      deviceOrId: LedgerReactNativeBleDevice,
-      timeoutMs?: number
-    ): Promise<LedgerTransport>;
+    open(device: TDevice, openTimeout?: number): Promise<LedgerTransport>;
   };
 };
 
 /**
- * Loads the optional Ledger transport package for the selected connector mode.
+ * Builds a Ledger session from a client that the application already owns.
  *
- * This keeps other Ledger modes, and non-Ledger users, from loading transports
- * they do not use. If the package is missing, this throws a clear install
- * message instead of the raw module loader error.
- */
-function importLedgerTransportModule<TModule>({
-  mode,
-  specifier
-}: {
-  mode: LedgerConnectorMode;
-  specifier: string;
-}): TModule {
-  try {
-    return (
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require(specifier) as TModule
-    );
-  } catch (error) {
-    const errorCode =
-      error instanceof Error && 'code' in error
-        ? (error as Error & { code?: string }).code
-        : undefined;
-    if (
-      error instanceof Error &&
-      (errorCode === 'MODULE_NOT_FOUND' || error.message.includes(specifier))
-    ) {
-      throw new Error(
-        `Could not import "${specifier}". This peer dependency is required when using Ledger ${mode} connector mode. Please run "npm install ${specifier}" or use connectors.fromClient(...).`
-      );
-    }
-    throw error;
-  }
-}
-
-/**
- * Build a Ledger session from an existing Ledger Bitcoin app client.
- *
- * Use this when your app owns the transport, for example React Native, BLE,
- * WebUSB/WebHID handled outside this package, or a custom provider. Preset
- * packages bind the descriptor backend before this function runs. Direct core
- * users must call `DescriptorsFactory(...)` first.
+ * Descriptors does not close this client. The application remains responsible
+ * for its transport and connection lifetime.
  */
 export function fromClient({
   client,
@@ -106,168 +33,118 @@ export function fromClient({
 }: {
   /** Ledger Bitcoin app client instance. */
   client: LedgerClient;
-  /** Bitcoin network used for descriptor and policy interpretation. */
+  /** Bitcoin network used for descriptors and policies. */
   network: Network;
   /** App-owned JSON store for cached keys and Ledger policy receipts. */
   store: LedgerStore;
 }): LedgerSession {
-  return {
-    client,
-    store,
-    network
-  };
+  return { client, store, network };
 }
 
 /**
- * Connect to a Ledger with one built-in transport mode and build a session.
+ * Opens a Ledger transport supplied by the application and builds a session.
  *
- * Install `@ledgerhq/ledger-bitcoin` plus the transport package for the selected
- * mode. Use `fromClient(...)` if your app already has a Ledger Bitcoin client.
- * Preset packages bind the descriptor backend before this function runs. Direct
- * core users must call `DescriptorsFactory(...)` first.
+ * Pass a literal module import in `driver.module`, for example
+ * `import('@ledgerhq/react-native-hid')`. This lets Metro and other bundlers see
+ * the selected optional dependency. If `driver.device` is omitted, the Ledger
+ * transport's normal `create()` behavior is used.
+ *
+ * The returned session owns the transport. Call `session.close()` when the
+ * connection is no longer needed.
  */
-export async function connect(
-  params:
-    | {
-        /**
-         * Use Node.js HID. Install `@ledgerhq/ledger-bitcoin` and
-         * `@ledgerhq/hw-transport-node-hid`.
-         */
-        mode: 'node-hid';
-        /** Bitcoin network used for descriptor and policy interpretation. */
-        network: Network;
-        /** App-owned JSON store for cached keys and Ledger policy receipts. */
-        store: LedgerStore;
-        /** Expected open Ledger app name. */
-        appName?: string;
-        /** Minimum acceptable Bitcoin app version. */
-        minVersion?: string;
-        /** Set to false if the caller validates the app separately. */
-        assertApp?: boolean;
-        /** Node HID open timeout in milliseconds. Default: 3000. */
-        openTimeout?: number;
-        /** Node HID listen timeout in milliseconds. Default: 3000. */
-        listenTimeout?: number;
-      }
-    | {
-        /**
-         * Use browser WebHID. Install `@ledgerhq/ledger-bitcoin` and
-         * `@ledgerhq/hw-transport-webhid`.
-         */
-        mode: 'webhid';
-        /** Bitcoin network used for descriptor and policy interpretation. */
-        network: Network;
-        /** App-owned JSON store for cached keys and Ledger policy receipts. */
-        store: LedgerStore;
-        /** Expected open Ledger app name. */
-        appName?: string;
-        /** Minimum acceptable Bitcoin app version. */
-        minVersion?: string;
-        /** Set to false if the caller validates the app separately. */
-        assertApp?: boolean;
-      }
-    | {
-        /**
-         * Use browser WebUSB. Install `@ledgerhq/ledger-bitcoin` and
-         * `@ledgerhq/hw-transport-webusb`.
-         */
-        mode: 'webusb';
-        /** Bitcoin network used for descriptor and policy interpretation. */
-        network: Network;
-        /** App-owned JSON store for cached keys and Ledger policy receipts. */
-        store: LedgerStore;
-        /** Expected open Ledger app name. */
-        appName?: string;
-        /** Minimum acceptable Bitcoin app version. */
-        minVersion?: string;
-        /** Set to false if the caller validates the app separately. */
-        assertApp?: boolean;
-      }
-    | {
-        /**
-         * Use React Native Android USB/HID. Install `@ledgerhq/ledger-bitcoin`
-         * and `@ledgerhq/react-native-hid`.
-         */
-        mode: 'react-native-hid';
-        /** Device object returned by `@ledgerhq/react-native-hid` discovery. */
-        device: LedgerReactNativeHidDevice;
-        /** Bitcoin network used for descriptor and policy interpretation. */
-        network: Network;
-        /** App-owned JSON store for cached keys and Ledger policy receipts. */
-        store: LedgerStore;
-        /** Expected open Ledger app name. */
-        appName?: string;
-        /** Minimum acceptable Bitcoin app version. */
-        minVersion?: string;
-        /** Set to false if the caller validates the app separately. */
-        assertApp?: boolean;
-      }
-    | {
-        /**
-         * Use React Native Bluetooth. Install `@ledgerhq/ledger-bitcoin` and
-         * `@ledgerhq/react-native-hw-transport-ble`.
-         */
-        mode: 'react-native-ble';
-        /** Device object or persisted id accepted by the Ledger BLE transport. */
-        device: LedgerReactNativeBleDevice;
-        /** Bitcoin network used for descriptor and policy interpretation. */
-        network: Network;
-        /** App-owned JSON store for cached keys and Ledger policy receipts. */
-        store: LedgerStore;
-        /** Expected open Ledger app name. */
-        appName?: string;
-        /** Minimum acceptable Bitcoin app version. */
-        minVersion?: string;
-        /** Set to false if the caller validates the app separately. */
-        assertApp?: boolean;
-        /** BLE open timeout in milliseconds. */
-        openTimeout?: number;
-      }
-): Promise<LedgerSession> {
-  const {
-    network,
-    store,
-    appName = 'Bitcoin',
-    minVersion = '2.1.0',
-    assertApp = true
-  } = params;
-  let transport: LedgerTransport;
-  if (params.mode === 'node-hid') {
-    transport = await importLedgerTransportModule<LedgerCreateTransportModule>({
-      mode: params.mode,
-      specifier: '@ledgerhq/hw-transport-node-hid'
-    }).default.create(params.openTimeout ?? 3000, params.listenTimeout ?? 3000);
-  } else if (params.mode === 'webhid' || params.mode === 'webusb') {
-    transport = await importLedgerTransportModule<LedgerCreateTransportModule>({
-      mode: params.mode,
-      specifier:
-        params.mode === 'webhid'
-          ? '@ledgerhq/hw-transport-webhid'
-          : '@ledgerhq/hw-transport-webusb'
-    }).default.create();
-  } else if (params.mode === 'react-native-hid') {
-    transport =
-      await importLedgerTransportModule<LedgerReactNativeHidTransportModule>({
-        mode: params.mode,
-        specifier: '@ledgerhq/react-native-hid'
-      }).default.open(params.device);
-  } else {
-    transport =
-      await importLedgerTransportModule<LedgerReactNativeBleTransportModule>({
-        mode: params.mode,
-        specifier: '@ledgerhq/react-native-hw-transport-ble'
-      }).default.open(params.device, params.openTimeout);
+export async function connect<TDevice>({
+  driver,
+  network,
+  store
+}: {
+  /** Everything specific to the selected Ledger transport and app. */
+  driver: {
+    /** Imported Ledger transport module, or its import promise. */
+    module:
+      | LedgerTransportModule<TDevice>
+      | Promise<LedgerTransportModule<TDevice>>;
+    /** Device descriptor returned by the transport's discovery API. */
+    device?: TDevice;
+    /** Timeout passed to the transport while opening a device. */
+    openTimeout?: number;
+    /** Timeout passed to automatic transport discovery. */
+    listenTimeout?: number;
+    /** Optional Ledger app name and minimum version check. */
+    app?: { name: string; minVersion: string };
+  };
+  /** Bitcoin network used for descriptors and policies. */
+  network: Network;
+  /** App-owned JSON store for cached keys and Ledger policy receipts. */
+  store: LedgerStore;
+}): Promise<
+  LedgerSession & {
+    /** Closes the transport owned by this connected session. */
+    close(): Promise<void>;
   }
-  const ledgerBitcoin = await importLedgerBitcoinModule();
+> {
+  const [transportModule, ledgerBitcoin] = await Promise.all([
+    driver.module,
+    importLedgerBitcoinModule()
+  ]);
+  const Transport = transportModule.default;
+  if (!Transport)
+    throw new Error(`Ledger driver must have a default transport export`);
 
-  if (assertApp)
-    await assertLedgerApp({ transport, name: appName, minVersion });
+  const transport =
+    driver.device === undefined
+      ? driver.listenTimeout !== undefined
+        ? await Transport.create(
+            driver.openTimeout ?? 3000,
+            driver.listenTimeout
+          )
+        : driver.openTimeout !== undefined
+          ? await Transport.create(driver.openTimeout)
+          : await Transport.create()
+      : driver.openTimeout !== undefined
+        ? await Transport.open(driver.device, driver.openTimeout)
+        : await Transport.open(driver.device);
 
-  return fromClient({
-    client: new ledgerBitcoin.AppClient(
+  try {
+    if (typeof transport.close !== 'function')
+      throw new Error(`Ledger transport must have a close method`);
+    if (driver.app)
+      await assertLedgerApp({
+        transport,
+        name: driver.app.name,
+        minVersion: driver.app.minVersion
+      });
+
+    const client: LedgerClient = new ledgerBitcoin.AppClient(
       transport as ConstructorParameters<typeof ledgerBitcoin.AppClient>[0]
-    ),
-    network,
-    store
-  });
+    );
+    const masterFingerprint = (
+      await client.getMasterFingerprint()
+    ).toLowerCase();
+    if (!/^[0-9a-f]{8}$/.test(masterFingerprint))
+      throw new Error(`Ledger returned an invalid master fingerprint`);
+    if (
+      store.masterFingerprint !== undefined &&
+      store.masterFingerprint.toLowerCase() !== masterFingerprint
+    )
+      throw new Error(
+        `Connected Ledger fingerprint ${masterFingerprint} does not match store fingerprint ${store.masterFingerprint}`
+      );
+    store.masterFingerprint = masterFingerprint;
+
+    let closing: Promise<void> | undefined;
+    return {
+      ...fromClient({ client, network, store }),
+      close: () => {
+        closing ??= Promise.resolve().then(() => transport.close());
+        return closing;
+      }
+    };
+  } catch (error) {
+    try {
+      await transport.close();
+    } catch {
+      // Keep the connection or validation error that caused cleanup.
+    }
+    throw error;
+  }
 }

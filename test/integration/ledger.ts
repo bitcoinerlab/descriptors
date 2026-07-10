@@ -99,15 +99,18 @@ let vout: number;
 //In this array, we will keep track the previous output of each input:
 const finalizers = [];
 
+let closeSession = async () => {};
 (async () => {
   await ready;
   const ledgerSession = await ledger.connectors.connect({
-    mode: 'node-hid',
+    driver: {
+      module: import('@ledgerhq/hw-transport-node-hid'),
+      app: { name: 'Bitcoin Test', minVersion: '2.1.0' }
+    },
     network: NETWORK,
-    store: {},
-    appName: 'Bitcoin Test',
-    minVersion: '2.1.0'
+    store: {}
   });
+  closeSession = ledgerSession.close;
 
   //Build the miniscript-based descriptor.
   //POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
@@ -277,4 +280,4 @@ const finalizers = [];
     psbt: psbtToBase64(psbt),
     tx: psbtToHex(psbt)
   });
-})();
+})().finally(() => closeSession());

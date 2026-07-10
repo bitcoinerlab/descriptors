@@ -109,14 +109,17 @@ async function runSpendScenario({
   console.log(`${name}: OK`);
 }
 
+let closeSession = async () => {};
 (async () => {
   const ledgerSession = await ledger.connectors.connect({
-    mode: 'node-hid',
+    driver: {
+      module: import('@ledgerhq/hw-transport-node-hid'),
+      app: { name: 'Bitcoin Test', minVersion: '2.1.0' }
+    },
     network: NETWORK,
-    store: {},
-    appName: 'Bitcoin Test',
-    minVersion: '2.1.0'
+    store: {}
   });
+  closeSession = ledgerSession.close;
 
   // Scenario 1: Taproot key-path using standard Ledger BIP86 descriptor
   const trKeyPathDescriptor = await ledger.scriptExpressions.tr({
@@ -176,4 +179,4 @@ async function runSpendScenario({
       )}`
     );
   }
-})();
+})().finally(() => closeSession());

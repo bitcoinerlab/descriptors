@@ -30,6 +30,7 @@ type ProviderClient = Parameters<typeof connectors.fromClient>[0]['client'];
 type BitBoxScriptConfig = Parameters<ProviderClient['btcAddress']>[2];
 
 type FakeBitBoxClient = ProviderClient & {
+  close(): Promise<void>;
   xpubRequests: {
     apiNetwork: string;
     keypath: string;
@@ -128,6 +129,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
           message: Uint8Array;
         }
       | undefined,
+    close: jest.fn(async () => undefined),
     version: () => '9.99.0-test',
     rootFingerprint: () => Buffer.from(master.fingerprint).toString('hex'),
     btcXpub: async (
@@ -209,6 +211,105 @@ function fakeClientFor(master: BIP32InterfaceLike) {
 }
 
 describe('BitBox helpers', () => {
+  test('connects through an injected single-mode driver', async () => {
+    const bitboxMaster = makeMaster(15);
+    const client = fakeClientFor(bitboxMaster);
+    const store = {};
+    const connectBitBoxNovaBle = jest.fn(async () => client);
+
+    const session = await connectors.connect({
+      driver: {
+        module: Promise.resolve({ connectBitBoxNovaBle }),
+        device: { deviceId: 'ble-device' },
+        timeoutMs: 60_000,
+        formatUnit: 'sat'
+      },
+      network: NETWORK,
+      store
+    });
+
+    expect(connectBitBoxNovaBle).toHaveBeenCalledWith({
+      timeoutMs: 60_000,
+      deviceId: 'ble-device'
+    });
+    expect(session.store).toEqual({
+      masterFingerprint: toHex(bitboxMaster.fingerprint)
+    });
+    expect(session.formatUnit).toBe('sat');
+    const closing = session.close();
+    expect(session.close()).toBe(closing);
+    await closing;
+    expect(client.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('requires a mode when a BitBox driver exposes several', async () => {
+    const bitboxMaster = makeMaster(16);
+    const client = fakeClientFor(bitboxMaster);
+
+    await expect(
+      connectors.connect({
+        driver: {
+          module: {
+            connectBitBoxNovaBle: async () => client,
+            connectBitBoxUsb: async () => client
+          }
+        },
+        network: NETWORK,
+        store: {}
+      })
+    ).rejects.toThrow(
+      'BitBox driver supports multiple modes: "ble", "usb". Pass driver.mode.'
+    );
+  });
+
+  test('closes a BitBox when its fingerprint does not match the store', async () => {
+    const bitboxMaster = makeMaster(18);
+    const client = fakeClientFor(bitboxMaster);
+
+    await expect(
+      connectors.connect({
+        driver: {
+          module: {
+            connectBitBoxUsb: async () => client
+          }
+        },
+        network: NETWORK,
+        store: { masterFingerprint: 'deadbeef' }
+      })
+    ).rejects.toThrow(
+      `Connected BitBox fingerprint ${toHex(bitboxMaster.fingerprint)} does not match store fingerprint deadbeef`
+    );
+
+    expect(client.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('shows bitbox-api pairing codes before confirmation', async () => {
+    const bitboxMaster = makeMaster(17);
+    const client = fakeClientFor(bitboxMaster);
+    const onPairingCode = jest.fn(async () => undefined);
+    const waitConfirm = jest.fn(async () => client);
+
+    const session = await connectors.connect({
+      driver: {
+        module: {
+          bitbox02ConnectBridge: async () => ({
+            unlockAndPair: async () => ({
+              getPairingCode: () => '123 456',
+              waitConfirm
+            })
+          })
+        },
+        onPairingCode
+      },
+      network: NETWORK,
+      store: {}
+    });
+
+    expect(onPairingCode).toHaveBeenCalledWith('123 456');
+    expect(waitConfirm).toHaveBeenCalledTimes(1);
+    await session.close();
+  });
+
   test('builds key expressions and registers P2WSH multisig natively', async () => {
     const bitboxMaster = makeMaster(1);
     const otherMaster = makeMaster(2);

@@ -29,23 +29,14 @@ import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
 const mockHidOpen = jest.fn();
 const mockBleOpen = jest.fn();
 
-jest.mock(
-  '@ledgerhq/react-native-hid',
-  () => ({
-    __esModule: true,
-    default: { open: mockHidOpen }
-  }),
-  { virtual: true }
-);
-
-jest.mock(
-  '@ledgerhq/react-native-hw-transport-ble',
-  () => ({
-    __esModule: true,
-    default: { open: mockBleOpen }
-  }),
-  { virtual: true }
-);
+jest.mock('@ledgerhq/ledger-bitcoin', () => ({
+  ...jest.requireActual('@ledgerhq/ledger-bitcoin'),
+  AppClient: class {
+    async getMasterFingerprint() {
+      return 'aabbccdd';
+    }
+  }
+}));
 
 const NETWORK = networks.regtest;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
@@ -89,7 +80,7 @@ async function unexpectedGetAccountXpub(): Promise<string> {
 }
 
 function mockLedgerTransport() {
-  return { send: jest.fn() };
+  return { send: jest.fn(), close: jest.fn() };
 }
 
 function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
@@ -654,16 +645,23 @@ describeIfNotScure(
       const device = { vendorId: 11415, productId: 1 };
 
       const session = await connectors.connect({
-        mode: 'react-native-hid',
-        device,
+        driver: {
+          module: {
+            default: { create: jest.fn(), open: mockHidOpen }
+          },
+          device
+        },
         network: NETWORK,
-        store,
-        assertApp: false
+        store
       });
 
       expect(mockHidOpen).toHaveBeenCalledWith(device);
       expect(session.network).toBe(NETWORK);
-      expect(session.store).toBe(store);
+      expect(session.store).toEqual({ masterFingerprint: 'aabbccdd' });
+      const closing = session.close();
+      expect(session.close()).toBe(closing);
+      await closing;
+      expect(transport.close).toHaveBeenCalledTimes(1);
     });
 
     test('opens selected React Native BLE devices', async () => {
@@ -672,17 +670,43 @@ describeIfNotScure(
       const store = {};
 
       const session = await connectors.connect({
-        mode: 'react-native-ble',
-        device: 'ledger-ble-device-id',
+        driver: {
+          module: Promise.resolve({
+            default: { create: jest.fn(), open: mockBleOpen }
+          }),
+          device: 'ledger-ble-device-id',
+          openTimeout: 10_000
+        },
         network: NETWORK,
-        store,
-        assertApp: false,
-        openTimeout: 10_000
+        store
       });
 
       expect(mockBleOpen).toHaveBeenCalledWith('ledger-ble-device-id', 10_000);
       expect(session.network).toBe(NETWORK);
       expect(session.store).toBe(store);
+      await session.close();
+    });
+
+    test('closes an automatically opened Ledger when its fingerprint does not match', async () => {
+      const transport = mockLedgerTransport();
+      const create = jest.fn(async () => transport);
+
+      await expect(
+        connectors.connect({
+          driver: {
+            module: {
+              default: { create, open: jest.fn() }
+            }
+          },
+          network: NETWORK,
+          store: { masterFingerprint: 'deadbeef' }
+        })
+      ).rejects.toThrow(
+        'Connected Ledger fingerprint aabbccdd does not match store fingerprint deadbeef'
+      );
+
+      expect(create).toHaveBeenCalledWith();
+      expect(transport.close).toHaveBeenCalledTimes(1);
     });
   }
 );
