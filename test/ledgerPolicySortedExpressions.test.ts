@@ -6,21 +6,22 @@
 const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
+import * as ledgerBitcoinApi from '@ledgerhq/ledger-bitcoin';
 import { networks, Psbt } from 'bitcoinjs-lib';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
 import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import {
-  connectors,
+  assertLedgerApp,
+  connect,
   displayAddress,
   getLedgerMasterFingerPrint,
   getVersion,
   signers,
   signMessage,
-  type LedgerClient,
   type LedgerManager,
   type LedgerState,
-  type LedgerSession
+  type Session
 } from '../dist/ledger/index';
 import {
   derivePolicyFromOutput,
@@ -28,6 +29,10 @@ import {
 } from '../dist/hww/policies';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
+
+type LedgerBitcoinApi = Awaited<
+  Parameters<typeof connect>[0]['driver']['bitcoinApi']
+>;
 
 const mockHidOpen = jest.fn();
 const mockBleOpen = jest.fn();
@@ -42,6 +47,14 @@ jest.mock('@ledgerhq/ledger-bitcoin', () => ({
 }));
 
 const NETWORK = networks.regtest;
+const BITCOIN_API = {
+  ...ledgerBitcoinApi,
+  AppClient: class {
+    async getMasterFingerprint() {
+      return 'aabbccdd';
+    }
+  }
+} as unknown as LedgerBitcoinApi;
 const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
 
 function makeMaster(seed: number): BIP32InterfaceLike {
@@ -65,12 +78,14 @@ function manyExternalKeys(startSeed: number, count: number): string[] {
   );
 }
 
-function mockLedgerSession(masterFingerprint: Uint8Array): LedgerSession {
-  const ledgerClient = {} as LedgerClient;
+function mockLedgerSession(masterFingerprint: Uint8Array): Session {
+  const ledgerClient = {} as Session['client'];
   return {
     client: ledgerClient,
+    bitcoinApi: BITCOIN_API,
     store: { masterFingerprint: toHex(masterFingerprint) },
-    network: NETWORK
+    network: NETWORK,
+    close: async () => undefined
   };
 }
 
@@ -510,7 +525,7 @@ describeIfNotScure(
             }
           ]
         ])
-      } as unknown as LedgerClient;
+      } as unknown as Session['client'];
       const ledgerManager: LedgerManager = {
         ledgerClient,
         ledgerState,
@@ -683,6 +698,27 @@ describeIfNotScure(
       );
     });
 
+    test('reads Ledger app metadata from a Uint8Array transport response', async () => {
+      const name = fromUtf8('Bitcoin');
+      const version = fromUtf8('2.4.0');
+      const response = Uint8Array.from([
+        1,
+        name.length,
+        ...name,
+        version.length,
+        ...version,
+        0
+      ]);
+
+      await expect(
+        assertLedgerApp({
+          transport: { send: jest.fn(async () => response) },
+          name: 'Bitcoin',
+          minVersion: '2.1.0'
+        })
+      ).resolves.toBeUndefined();
+    });
+
     test('rejects unsupported Ledger message-signing descriptors before calling the device', async () => {
       const ledgerMaster = makeMaster(273);
       const ledgerKey = keyExpressionBIP32({
@@ -756,11 +792,12 @@ describeIfNotScure(
       const store = {};
       const device = { vendorId: 11415, productId: 1 };
 
-      const session = await connectors.connect({
+      const session = await connect({
         driver: {
-          module: {
+          transport: {
             default: { create: jest.fn(), open: mockHidOpen }
           },
+          bitcoinApi: BITCOIN_API,
           device
         },
         network: NETWORK,
@@ -781,11 +818,12 @@ describeIfNotScure(
       mockBleOpen.mockResolvedValueOnce(transport);
       const store = {};
 
-      const session = await connectors.connect({
+      const session = await connect({
         driver: {
-          module: Promise.resolve({
+          transport: Promise.resolve({
             default: { create: jest.fn(), open: mockBleOpen }
           }),
+          bitcoinApi: BITCOIN_API,
           device: 'ledger-ble-device-id',
           openTimeout: 10_000
         },
@@ -804,11 +842,12 @@ describeIfNotScure(
       const create = jest.fn(async () => transport);
 
       await expect(
-        connectors.connect({
+        connect({
           driver: {
-            module: {
+            transport: {
               default: { create, open: jest.fn() }
-            }
+            },
+            bitcoinApi: BITCOIN_API
           },
           network: NETWORK,
           store: { masterFingerprint: 'deadbeef' }

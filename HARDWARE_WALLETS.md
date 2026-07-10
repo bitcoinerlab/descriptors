@@ -3,7 +3,7 @@
 ```ts
 import { Output, Psbt, networks } from '@bitcoinerlab/descriptors';
 import {
-  connectors,
+  connect,
   registerPolicy,
   scriptExpressions,
   signers
@@ -11,9 +11,10 @@ import {
 
 const store = {};
 
-const session = await connectors.connect({
+const session = await connect({
   driver: {
-    module: import('@ledgerhq/hw-transport-node-hid'),
+    transport: import('@ledgerhq/hw-transport-node-hid'),
+    bitcoinApi: import('@ledgerhq/ledger-bitcoin'),
     app: { name: 'Bitcoin', minVersion: '2.1.0' }
   },
   network: networks.bitcoin,
@@ -82,10 +83,9 @@ Ledger and BitBox entrypoints expose the same common API shape:
 
 | API | Purpose |
 | --- | --- |
-| `type Session` | Connected device client plus network and app-owned store. |
+| `type Session` | Owned device connection plus network and app-owned store. |
 | `type Store` | JSON-safe app-owned store for cached keys and wallet policy metadata. |
-| `connectors.connect(...)` | Build an owned session from an imported device driver. |
-| `connectors.fromClient(...)` | Build a session from an already connected device client. |
+| `connect(...)` | Build an owned, closeable session from an imported device driver. |
 | `getVersion({ session })` | Read the device/app version exposed by the vendor API. |
 | `getMasterFingerprint({ session })` | Read and cache the BIP32 master fingerprint. |
 | `getXpub({ session, originPath })` | Read and cache an account xpub. |
@@ -149,21 +149,23 @@ npm install bitbox-api
 
 This installs support for BitBox browser WebHID and BitBoxBridge connections.
 
-Pass the selected package as a literal import in `driver.module`. This keeps the
-dependency visible to Metro and other bundlers. If your app already has a
-connected client, use `connectors.fromClient(...)` instead.
+Pass each selected package as a literal import in the driver. This keeps the
+dependency visible to Metro and other bundlers. Ledger receives separate
+`driver.transport` and `driver.bitcoinApi` modules. BitBox receives one
+`driver.module` provider.
 
 ## Connect To A Ledger
 
 ```ts
 import { networks } from '@bitcoinerlab/descriptors';
-import { connectors } from '@bitcoinerlab/descriptors/ledger';
+import { connect } from '@bitcoinerlab/descriptors/ledger';
 
 const ledgerStore = {};
 
-const session = await connectors.connect({
+const session = await connect({
   driver: {
-    module: import('@ledgerhq/hw-transport-node-hid'),
+    transport: import('@ledgerhq/hw-transport-node-hid'),
+    bitcoinApi: import('@ledgerhq/ledger-bitcoin'),
     openTimeout: 3000,
     listenTimeout: 3000,
     app: { name: 'Bitcoin', minVersion: '2.1.0' }
@@ -173,8 +175,8 @@ const session = await connectors.connect({
 });
 ```
 
-The `session` contains the connected Ledger client, the Bitcoin network, and a
-mutable `store` object. It also owns the opened transport, so call
+The `session` contains the connected Ledger client, injected Bitcoin API, Bitcoin
+network, and mutable `store` object. It owns the opened transport, so call
 `session.close()` when finished.
 
 Each Ledger package supplies one transport, so no mode is needed. When
@@ -246,14 +248,19 @@ Use `react-native-hid` for Android USB/HID. It is not an iOS transport.
 
 ```ts
 import * as LedgerHID from '@ledgerhq/react-native-hid';
+import * as LedgerBitcoin from '@ledgerhq/ledger-bitcoin';
 import { networks } from '@bitcoinerlab/descriptors';
-import { connectors } from '@bitcoinerlab/descriptors/ledger';
+import { connect } from '@bitcoinerlab/descriptors/ledger';
 
 const devices = await LedgerHID.default.list();
 const device = devices[0]; // Let the user choose in a real app.
 
-const session = await connectors.connect({
-  driver: { module: LedgerHID, device },
+const session = await connect({
+  driver: {
+    transport: LedgerHID,
+    bitcoinApi: LedgerBitcoin,
+    device
+  },
   network: networks.bitcoin,
   store: {}
 });
@@ -269,14 +276,16 @@ React Native BLE transport, which uses `react-native-ble-plx` under the hood.
 
 ```ts
 import * as LedgerBLE from '@ledgerhq/react-native-hw-transport-ble';
+import * as LedgerBitcoin from '@ledgerhq/ledger-bitcoin';
 import { networks } from '@bitcoinerlab/descriptors';
-import { connectors } from '@bitcoinerlab/descriptors/ledger';
+import { connect } from '@bitcoinerlab/descriptors/ledger';
 
 // First scan with LedgerBLE.default.listen(...) and let the user choose a device.
 // The chosen device object, or a saved device.id string, can be used here.
-const session = await connectors.connect({
+const session = await connect({
   driver: {
-    module: LedgerBLE,
+    transport: LedgerBLE,
+    bitcoinApi: LedgerBitcoin,
     device,
     openTimeout: 10000
   },
@@ -285,8 +294,8 @@ const session = await connectors.connect({
 });
 ```
 
-For explicit selection, scan with the driver before calling
-`connectors.connect(...)`. If `driver.device` is omitted, the Ledger transport
+For explicit selection, scan with the driver before calling `connect(...)`. If
+`driver.device` is omitted, the Ledger transport
 uses its normal `create()` behavior and opens the first discovered Ledger. In
 both cases the app must handle Bluetooth state and runtime permissions. On
 Android 12 and newer, ask for `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT`. Unless
@@ -319,26 +328,15 @@ async function requestLedgerBlePermissions() {
 }
 ```
 
-If your app already created a Ledger Bitcoin app client with another transport,
-use `fromClient(...)` instead:
-
-```ts
-const session = connectors.fromClient({
-  client: ledgerClient,
-  network: networks.bitcoin,
-  store: ledgerStore
-});
-```
-
 ## Connect To A BitBox
 
 ```ts
 import { networks } from '@bitcoinerlab/descriptors';
-import { connectors } from '@bitcoinerlab/descriptors/bitbox';
+import { connect } from '@bitcoinerlab/descriptors/bitbox';
 
 const store = {};
 
-const session = await connectors.connect({
+const session = await connect({
   driver: {
     module: import('bitbox-api'),
     mode: 'webhid-or-bridge',
@@ -391,9 +389,9 @@ work in Expo Go; use a development build or a production native build.
 
 ```ts
 import { networks } from '@bitcoinerlab/descriptors';
-import { connectors } from '@bitcoinerlab/descriptors/bitbox';
+import { connect } from '@bitcoinerlab/descriptors/bitbox';
 
-const session = await connectors.connect({
+const session = await connect({
   driver: {
     module: import('@bitcoinerlab/bitbox-react-native'),
     mode: 'ble',
@@ -424,7 +422,7 @@ const devices = await module.discoverBitBoxNovaBleDevices({
 });
 const device = await chooseDevice(devices);
 
-const session = await connectors.connect({
+const session = await connect({
   driver: { module, mode: 'ble', device },
   network: networks.bitcoin,
   store: {}
@@ -433,17 +431,6 @@ const session = await connectors.connect({
 
 For Android USB, use `listAttachedBitBoxUsbDevices()`. USB device IDs identify
 the current attachment and should not be persisted across reconnects.
-
-If your app already owns a paired BitBox-compatible client, use
-`fromClient(...)`. Descriptors does not close clients passed this way.
-
-```ts
-const session = connectors.fromClient({
-  client,
-  network: networks.bitcoin,
-  store
-});
-```
 
 Pass a Bitcoin `network`, not a BitBox coin string. The connector maps mainnet to
 `btc` and test networks, signet and regtest to `tbtc` for the BitBox API.
@@ -676,7 +663,7 @@ BitBox signing also accepts a display unit preference:
 ```ts
 const store = {};
 
-const session = await bitbox.connectors.connect({
+const session = await bitbox.connect({
   driver: {
     module: import('bitbox-api'),
     mode: 'webhid-or-bridge',
@@ -696,7 +683,8 @@ connector passes `default`.
 
 Ledger adds these device-specific extensions on top of the common API:
 
-- `driver.module` accepts one imported Node, browser or React Native transport.
+- `driver.transport` accepts an imported Node, browser or React Native transport.
+- `driver.bitcoinApi` accepts the imported `@ledgerhq/ledger-bitcoin` module.
 - `driver.device` selects a discovered device; when omitted, the transport uses
   its normal first-device `create()` behavior.
 - `driver.app` optionally checks the open app name and minimum version.
@@ -705,10 +693,6 @@ Ledger adds these device-specific extensions on top of the common API:
 - Deprecated 3.x compatibility names such as `LedgerManager`,
   `registerLedgerWallet(...)`, `keyExpressionLedger(...)`,
   `signers.signLedger(...)` and `scriptExpressions.wpkhLedger(...)`.
-
-Deprecated `LedgerManager` helpers still accept 3.x `LedgerState` values. They
-convert byte fields and old policy field names in place to the JSON-safe store
-format used by the current API.
 
 For message signing, Ledger supports standard single-key `pkh(KEY)`,
 `sh(wpkh(KEY))` and `wpkh(KEY)` descriptors. `tr(KEY)` and non-standard policies

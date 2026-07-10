@@ -11,6 +11,10 @@
  * After next-major version of the lib (allowing breaking changes),
  * this file can be exactly this:
  *
+ * The optional @ledgerhq/ledger-bitcoin peer remains in 3.x only for these
+ * deprecated Ledger shims. The modern /ledger API receives it explicitly in
+ * driver.bitcoinApi. Remove the peer together with these shims in v4.
+ *
  * ```ts
  * import { createBitcoinjsLib } from '@bitcoinerlab/descriptors-core/bitcoinjs';
  * import * as ecc from '@bitcoinerlab/secp256k1';

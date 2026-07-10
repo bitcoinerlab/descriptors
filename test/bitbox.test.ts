@@ -10,7 +10,7 @@ import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { createPsbt } from './helpers/psbt';
 import {
-  connectors,
+  connect,
   displayAddress,
   keyExpression,
   registerPolicy,
@@ -26,7 +26,7 @@ const SHA256_DIGEST =
   '6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333';
 const MESSAGE_SIGNATURE = new Uint8Array(65).fill(2);
 
-type ProviderClient = Parameters<typeof connectors.fromClient>[0]['client'];
+type ProviderClient = Session['client'];
 type BitBoxScriptConfig = Parameters<ProviderClient['btcAddress']>[2];
 
 type FakeBitBoxClient = ProviderClient & {
@@ -80,12 +80,13 @@ function sessionFor(
   master: BIP32InterfaceLike,
   client: ProviderClient,
   network = NETWORK
-) {
-  return connectors.fromClient({
+): Session {
+  return {
     client,
     store: { masterFingerprint: toHex(master.fingerprint) },
-    network
-  }) satisfies Session;
+    network,
+    close: () => Promise.resolve()
+  } satisfies Session;
 }
 
 function fakeClientFor(master: BIP32InterfaceLike) {
@@ -217,7 +218,7 @@ describe('BitBox helpers', () => {
     const store = {};
     const connectBitBoxNovaBle = jest.fn(async () => client);
 
-    const session = await connectors.connect({
+    const session = await connect({
       driver: {
         module: Promise.resolve({ connectBitBoxNovaBle }),
         device: { deviceId: 'ble-device' },
@@ -247,7 +248,7 @@ describe('BitBox helpers', () => {
     const client = fakeClientFor(bitboxMaster);
 
     await expect(
-      connectors.connect({
+      connect({
         driver: {
           module: {
             connectBitBoxNovaBle: async () => client,
@@ -267,7 +268,7 @@ describe('BitBox helpers', () => {
     const client = fakeClientFor(bitboxMaster);
 
     await expect(
-      connectors.connect({
+      connect({
         driver: {
           module: {
             connectBitBoxUsb: async () => client
@@ -289,7 +290,7 @@ describe('BitBox helpers', () => {
     const onPairingCode = jest.fn(async () => undefined);
     const waitConfirm = jest.fn(async () => client);
 
-    const session = await connectors.connect({
+    const session = await connect({
       driver: {
         module: {
           bitbox02ConnectBridge: async () => ({

@@ -3,16 +3,16 @@
 
 import { fromHex, toHex } from 'uint8array-tools';
 import type {
+  LedgerBitcoinApi,
   LedgerManager,
   LedgerPolicy,
   LedgerSession,
   LedgerStore
 } from './types';
 
-type LedgerBitcoinModule = typeof import('@ledgerhq/ledger-bitcoin');
-
 /**
- * Builds a modern session and migrates state used by deprecated 3.x helpers.
+ * Builds an internal session and migrates state for deprecated 3.x helpers.
+ * The optional peer is loaded only if a policy helper uses `bitcoinApi`.
  *
  * @deprecated Remove with `LedgerManager` compatibility in the next major release.
  * @internal
@@ -21,6 +21,7 @@ export function sessionFromLedgerManager(
   ledgerManager: LedgerManager
 ): LedgerSession {
   const state = ledgerManager.ledgerState;
+  let bitcoinApi: LedgerBitcoinApi | undefined;
   if (state.masterFingerprint instanceof Uint8Array)
     state.masterFingerprint = toHex(state.masterFingerprint);
   if (state.policies?.some(policy => 'ledgerTemplate' in policy)) {
@@ -42,29 +43,37 @@ export function sessionFromLedgerManager(
   }
   return {
     client: ledgerManager.ledgerClient,
+    // Load the policy API only when it is first needed, then reuse it.
+    get bitcoinApi() {
+      bitcoinApi ??= importLedgerBitcoinModule();
+      return bitcoinApi;
+    },
     store: state as LedgerStore,
-    network: ledgerManager.network
+    network: ledgerManager.network,
+    // The deprecated manager keeps ownership of its existing transport.
+    close: async () => undefined
   };
 }
 
 /**
- * Loads the optional Ledger Bitcoin package only when a Ledger helper needs it.
+ * Loads the optional Ledger Bitcoin peer for deprecated policy helpers.
  *
- * This keeps non-Ledger users from loading `@ledgerhq/ledger-bitcoin` at module
- * startup. It does not validate clients; callers use the structural
- * `LedgerClient` type instead.
+ * Modern sessions receive this module explicitly in `driver.bitcoinApi`.
+ *
+ * @deprecated Remove with `LedgerManager` compatibility in v4.
+ * @internal
  */
-export async function importLedgerBitcoinModule(): Promise<LedgerBitcoinModule> {
-  let ledgerBitcoinModule: LedgerBitcoinModule;
+export function importLedgerBitcoinModule(): LedgerBitcoinApi {
+  let ledgerBitcoinModule: LedgerBitcoinApi;
   try {
     // Keep the optional Ledger peer out of module initialization for non-Ledger users.
     ledgerBitcoinModule =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('@ledgerhq/ledger-bitcoin') as LedgerBitcoinModule;
+      require('@ledgerhq/ledger-bitcoin') as LedgerBitcoinApi;
   } catch (error) {
     void error;
     throw new Error(
-      'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using Ledger helpers. Please run "npm install @ledgerhq/ledger-bitcoin" or import only non-Ledger APIs.'
+      'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using deprecated LedgerManager helpers. Please run "npm install @ledgerhq/ledger-bitcoin" or migrate to connect({ driver: { bitcoinApi } }).'
     );
   }
   return ledgerBitcoinModule;
@@ -76,9 +85,9 @@ async function ledgerAppInfo(transport: any) {
   let i = 0;
   const format = r[i++];
   const nameLength = r[i++];
-  const name = r.slice(i, (i += nameLength!)).toString('ascii');
+  const name = String.fromCharCode(...r.slice(i, (i += nameLength!)));
   const versionLength = r[i++];
-  const version = r.slice(i, (i += versionLength!)).toString('ascii');
+  const version = String.fromCharCode(...r.slice(i, (i += versionLength!)));
   const flagLength = r[i++];
   const flags = r.slice(i, (i += flagLength!));
   return { name, version, flags, format };
@@ -128,6 +137,8 @@ export async function assertLedgerApp({
         `Pass a minVersion using semver notation: major.minor.patch`
       );
     }
+    if (major === undefined || minor === undefined || patch === undefined)
+      throw new Error(`Ledger returned an invalid app version: ${version}`);
     if (
       major < mVmajor ||
       (major === mVmajor && minor < mVminor) ||

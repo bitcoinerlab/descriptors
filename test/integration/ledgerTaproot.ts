@@ -111,9 +111,10 @@ async function runSpendScenario({
 
 let closeSession = async () => {};
 (async () => {
-  const ledgerSession = await ledger.connectors.connect({
+  const ledgerSession = await ledger.connect({
     driver: {
-      module: import('@ledgerhq/hw-transport-node-hid'),
+      transport: import('@ledgerhq/hw-transport-node-hid'),
+      bitcoinApi: import('@ledgerhq/ledger-bitcoin'),
       app: { name: 'Bitcoin Test', minVersion: '2.1.0' }
     },
     network: NETWORK,

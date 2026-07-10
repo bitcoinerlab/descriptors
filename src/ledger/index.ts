@@ -42,11 +42,7 @@
  * All the conditions above are checked when deriving the common HWW policy.
  */
 
-import {
-  getMasterFingerprint,
-  importLedgerBitcoinModule,
-  sessionFromLedgerManager
-} from './client';
+import { getMasterFingerprint, sessionFromLedgerManager } from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
 import {
   derivePolicyFromOutput,
@@ -69,18 +65,10 @@ import type {
   LedgerManager,
   LedgerPolicy,
   LedgerSession,
-  LedgerState,
   LedgerStore
 } from './types';
 
-export type {
-  LedgerClient,
-  LedgerManager,
-  LedgerPolicy,
-  LedgerSession,
-  LedgerState,
-  LedgerStore
-} from './types';
+export type { LedgerManager, LedgerState } from './types';
 
 export {
   assertLedgerApp,
@@ -135,7 +123,7 @@ export async function registerPolicy({
   name: string;
 }): Promise<LedgerStore> {
   const { client, store, network } = session;
-  const { WalletPolicy } = await importLedgerBitcoinModule();
+  const { WalletPolicy } = session.bitcoinApi;
   const output = outputFromDescriptor({
     descriptor,
     network,
@@ -183,38 +171,6 @@ export async function registerPolicy({
 /**
  * @deprecated Use `registerPolicy(...)` instead.
  */
-export async function registerWalletPolicy({
-  descriptor,
-  session,
-  name
-}: {
-  descriptor: string;
-  session: LedgerSession;
-  /** Name shown by the device for this policy. */
-  name: string;
-}): Promise<LedgerStore> {
-  return registerPolicy({ descriptor, session, name });
-}
-
-/**
- * @deprecated Use `registerPolicy(...)` instead.
- */
-export async function registerWallet({
-  descriptor,
-  session,
-  policyName
-}: {
-  descriptor: string;
-  session: LedgerSession;
-  /** Name shown by the device for this policy. */
-  policyName: string;
-}): Promise<LedgerStore> {
-  return registerPolicy({ descriptor, session, name: policyName });
-}
-
-/**
- * @deprecated Use `registerPolicy(...)` instead.
- */
 export async function registerLedgerWallet({
   descriptor,
   ledgerManager,
@@ -233,11 +189,7 @@ export async function registerLedgerWallet({
 }
 
 export type Session = LedgerSession;
-/** @deprecated Use `Session`. */
-export type Manager = LedgerManager;
 export type Store = LedgerStore;
-/** @deprecated Use `Store`. */
-export type State = LedgerState;
 
 export async function keyExpression({
   session,
@@ -275,8 +227,7 @@ export async function displayAddress({
   };
   assertDescriptorParams(descriptorParams);
 
-  const { DefaultWalletPolicy, WalletPolicy } =
-    await importLedgerBitcoinModule();
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
   const ledgerClient: LedgerClient = client;
 
   const output = outputFromDescriptor({
@@ -376,4 +327,4 @@ export async function signMessage({
 export * as signers from './signers';
 export { keyExpressionLedger };
 export * as scriptExpressions from './scriptExpressions';
-export * as connectors from './connectors';
+export { connect } from './connectors';

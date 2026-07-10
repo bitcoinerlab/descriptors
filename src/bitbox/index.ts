@@ -1,9 +1,8 @@
 /**
  * BitBox helpers shared by both preset packages.
  *
- * This entrypoint does not import `bitbox-api` directly. Pass a connected and
- * paired BitBox client from whichever transport/runtime integration your app
- * uses.
+ * This entrypoint does not import a BitBox provider directly. Pass the selected
+ * provider as a literal import to `connect(...)`.
  *
  * @module bitbox
  */
@@ -32,19 +31,11 @@ import {
 import { apiNetwork, getMasterFingerprint, simpleType } from './client';
 import type { BitBoxPolicy, BitBoxSession, BitBoxStore } from './types';
 
-export type {
-  BitBoxClient,
-  BitBoxFormatUnit,
-  BitBoxPolicy,
-  BitBoxSession,
-  BitBoxStore
-} from './types';
-
 export { getMasterFingerprint, getVersion, getXpub } from './client';
 export { keyExpression } from './keyExpressions';
 export * as scriptExpressions from './scriptExpressions';
 export * as signers from './signers';
-export * as connectors from './connectors';
+export { connect } from './connectors';
 
 export type Session = BitBoxSession;
 export type Store = BitBoxStore;
@@ -217,7 +208,7 @@ export async function displayAddress({
   session,
   change,
   index
-}: AddressDisplayParams): Promise<string | void> {
+}: AddressDisplayParams): Promise<string> {
   const descriptorParams = {
     descriptor,
     ...(change !== undefined ? { change } : {}),

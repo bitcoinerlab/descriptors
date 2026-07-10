@@ -8,7 +8,6 @@ import { policyForPsbtInput, samePolicy } from '../hww/policies';
 import {
   getMasterFingerprint,
   getXpub,
-  importLedgerBitcoinModule,
   sessionFromLedgerManager
 } from './client';
 import { fromHex } from 'uint8array-tools';
@@ -102,8 +101,7 @@ export async function signInput({
 }): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy } =
-    await importLedgerBitcoinModule();
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
 
   const policy = (await policyForPsbtInput({
     psbt,
@@ -175,8 +173,7 @@ export async function sign({
 }): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy } =
-    await importLedgerBitcoinModule();
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
 
   const ledgerPolicies = [];
   for (let index = 0; index < psbt.data.inputs.length; index++) {

@@ -41,7 +41,7 @@ import { DescriptorsFactory, keyExpressionBIP32, networks } from '../../dist';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { signBIP32 } from '../../dist/signers';
 import {
-  connectors,
+  connect,
   getVersion,
   getXpub,
   keyExpression,
@@ -120,7 +120,7 @@ const SOFT_MNEMONIC =
 let closeSession = async () => {};
 (async () => {
   await ready;
-  const session = await connectors.connect({
+  const session = await connect({
     driver: {
       module: import('bitbox-api'),
       mode: 'bridge',

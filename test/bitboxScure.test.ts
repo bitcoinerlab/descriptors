@@ -7,12 +7,9 @@ import * as btc from '@scure/btc-signer';
 import { Transaction as BitcoinjsTransaction } from 'bitcoinjs-lib';
 import { DescriptorsFactory, networks } from '../dist';
 import { createScureLib } from '../dist/scure';
-import {
-  connectors,
-  scriptExpressions,
-  signers,
-  type BitBoxClient
-} from '../dist/bitbox';
+import { scriptExpressions, signers, type Session } from '../dist/bitbox';
+
+type BitBoxClient = Session['client'];
 
 const NETWORK = networks.regtest;
 const { Output } = DescriptorsFactory(createScureLib());
@@ -42,11 +39,12 @@ test('merges BitBox signatures into scure transactions', async () => {
       return base64.encode(signed.toPSBT());
     }
   } satisfies BitBoxClient;
-  const session = connectors.fromClient({
+  const session = {
     client,
     network: NETWORK,
-    store: { masterFingerprint }
-  });
+    store: { masterFingerprint },
+    close: async () => undefined
+  } satisfies Session;
   const descriptor = await scriptExpressions.wpkh({
     session,
     account: 0,

@@ -60,31 +60,31 @@ type BitBoxApiModule =
       bitbox02ConnectWebHID: BitBoxApiConnect;
     };
 
-/**
- * Builds a BitBox session from a paired client that the application owns.
- *
- * Descriptors does not close this client. The application remains responsible
- * for its transport and connection lifetime.
- */
-export function fromClient({
-  client,
-  network,
-  store,
-  formatUnit
-}: {
-  /** Connected and paired BitBox-compatible client. */
-  client: BitBoxClient;
-  /** Bitcoin network used for descriptors and policies. */
-  network: Network;
-  /** App-owned JSON store for cached keys and hardware-wallet policies. */
-  store: BitBoxStore;
-  /** Default amount unit shown while signing. */
-  formatUnit?: BitBoxFormatUnit;
-}): BitBoxSession {
-  const session: BitBoxSession = { client, store, network };
-  if (formatUnit !== undefined) session.formatUnit = formatUnit;
-  return session;
-}
+type BitBoxDriver =
+  | {
+      /** Imported BitBox React Native module, or its import promise. */
+      module: BitBoxReactNativeModule | Promise<BitBoxReactNativeModule>;
+      /** Select BLE or USB when both are available. */
+      mode?: 'ble' | 'usb';
+      /** Device returned by provider discovery, or a saved device id. */
+      device?: string | { deviceId: string };
+      /** Timeout passed to the native BitBox provider. */
+      timeoutMs?: number;
+      /** Default amount unit shown while signing. */
+      formatUnit?: BitBoxFormatUnit;
+    }
+  | {
+      /** Imported `bitbox-api` module, or its import promise. */
+      module: BitBoxApiModule | Promise<BitBoxApiModule>;
+      /** Select the browser or bridge connection mechanism. */
+      mode?: 'webhid' | 'bridge' | 'webhid-or-bridge';
+      /** Shows the code that the user must compare with the BitBox. */
+      onPairingCode(code: string): void | Promise<void>;
+      /** Called when `bitbox-api` reports a closed connection. */
+      onClose?: () => void;
+      /** Default amount unit shown while signing. */
+      formatUnit?: BitBoxFormatUnit;
+    };
 
 /**
  * Opens a BitBox driver supplied by the application and builds a session.
@@ -102,41 +102,12 @@ export async function connect({
   store
 }: {
   /** Everything specific to the selected BitBox driver. */
-  driver:
-    | {
-        /** Imported BitBox React Native module, or its import promise. */
-        module: BitBoxReactNativeModule | Promise<BitBoxReactNativeModule>;
-        /** Select BLE or USB when both are available. */
-        mode?: 'ble' | 'usb';
-        /** Device returned by provider discovery, or a saved device id. */
-        device?: string | { deviceId: string };
-        /** Timeout passed to the native BitBox provider. */
-        timeoutMs?: number;
-        /** Default amount unit shown while signing. */
-        formatUnit?: BitBoxFormatUnit;
-      }
-    | {
-        /** Imported `bitbox-api` module, or its import promise. */
-        module: BitBoxApiModule | Promise<BitBoxApiModule>;
-        /** Select the browser or bridge connection mechanism. */
-        mode?: 'webhid' | 'bridge' | 'webhid-or-bridge';
-        /** Shows the code that the user must compare with the BitBox. */
-        onPairingCode(code: string): void | Promise<void>;
-        /** Called when `bitbox-api` reports a closed connection. */
-        onClose?: () => void;
-        /** Default amount unit shown while signing. */
-        formatUnit?: BitBoxFormatUnit;
-      };
+  driver: BitBoxDriver;
   /** Bitcoin network used for descriptors and policies. */
   network: Network;
   /** App-owned JSON store for cached keys and hardware-wallet policies. */
   store: BitBoxStore;
-}): Promise<
-  BitBoxSession & {
-    /** Closes the client owned by this connected session. */
-    close(): Promise<void>;
-  }
-> {
+}): Promise<BitBoxSession> {
   const driverModule = await driver.module;
   const modes: string[] = [];
   if (
@@ -255,14 +226,12 @@ export async function connect({
 
     let closing: Promise<void> | undefined;
     return {
-      ...fromClient({
-        client,
-        network,
-        store,
-        ...('formatUnit' in driver && driver.formatUnit !== undefined
-          ? { formatUnit: driver.formatUnit }
-          : {})
-      }),
+      client,
+      network,
+      store,
+      ...('formatUnit' in driver && driver.formatUnit !== undefined
+        ? { formatUnit: driver.formatUnit }
+        : {}),
       close: () => {
         closing ??= Promise.resolve().then(() => client.close());
         return closing;

@@ -123,4 +123,6 @@ export type BitBoxSession = {
   network: Network;
   /** Optional display unit passed to `btcSignPSBT`. */
   formatUnit?: BitBoxFormatUnit;
+  /** Closes the client owned by this session. */
+  close(): Promise<void>;
 };

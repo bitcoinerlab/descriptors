@@ -2,67 +2,47 @@
 // Distributed under the MIT software license
 
 import type { Network } from '../networks';
-import { assertLedgerApp, importLedgerBitcoinModule } from './client';
-import type { LedgerClient, LedgerSession, LedgerStore } from './types';
+import { assertLedgerApp } from './client';
+import type {
+  LedgerBitcoinApi,
+  LedgerSession,
+  LedgerStore,
+  LedgerTransport
+} from './types';
 
-type LedgerTransport = {
-  send(cla: number, ins: number, p1: number, p2: number): Promise<Uint8Array>;
-  close(): void | Promise<void>;
-};
-
-type LedgerTransportModule<TDevice> = {
+type LedgerTransportModule<TDevice, TTransport extends LedgerTransport> = {
   default: {
-    create(
-      openTimeout?: number,
-      listenTimeout?: number
-    ): Promise<LedgerTransport>;
-    open(device: TDevice, openTimeout?: number): Promise<LedgerTransport>;
+    create(openTimeout?: number, listenTimeout?: number): Promise<TTransport>;
+    open(device: TDevice, openTimeout?: number): Promise<TTransport>;
   };
 };
 
 /**
- * Builds a Ledger session from a client that the application already owns.
- *
- * Descriptors does not close this client. The application remains responsible
- * for its transport and connection lifetime.
- */
-export function fromClient({
-  client,
-  network,
-  store
-}: {
-  /** Ledger Bitcoin app client instance. */
-  client: LedgerClient;
-  /** Bitcoin network used for descriptors and policies. */
-  network: Network;
-  /** App-owned JSON store for cached keys and Ledger policy receipts. */
-  store: LedgerStore;
-}): LedgerSession {
-  return { client, store, network };
-}
-
-/**
  * Opens a Ledger transport supplied by the application and builds a session.
  *
- * Pass a literal module import in `driver.module`, for example
- * `import('@ledgerhq/react-native-hid')`. This lets Metro and other bundlers see
- * the selected optional dependency. If `driver.device` is omitted, the Ledger
- * transport's normal `create()` behavior is used.
+ * Pass literal module imports in `driver.transport` and `driver.bitcoinApi`.
+ * This lets Metro and other bundlers see both Ledger dependencies. If
+ * `driver.device` is omitted, the transport's normal `create()` behavior is
+ * used.
  *
  * The returned session owns the transport. Call `session.close()` when the
  * connection is no longer needed.
  */
-export async function connect<TDevice>({
+export async function connect<TDevice, TTransport extends LedgerTransport>({
   driver,
   network,
   store
 }: {
-  /** Everything specific to the selected Ledger transport and app. */
+  /** Everything specific to the selected Ledger transport and Bitcoin API. */
   driver: {
     /** Imported Ledger transport module, or its import promise. */
-    module:
-      | LedgerTransportModule<TDevice>
-      | Promise<LedgerTransportModule<TDevice>>;
+    transport:
+      | LedgerTransportModule<TDevice, TTransport>
+      | Promise<LedgerTransportModule<TDevice, TTransport>>;
+    /** Imported `@ledgerhq/ledger-bitcoin` module, or its import promise. */
+    bitcoinApi:
+      | LedgerBitcoinApi<TTransport>
+      | Promise<LedgerBitcoinApi<TTransport>>;
     /** Device descriptor returned by the transport's discovery API. */
     device?: TDevice;
     /** Timeout passed to the transport while opening a device. */
@@ -76,19 +56,20 @@ export async function connect<TDevice>({
   network: Network;
   /** App-owned JSON store for cached keys and Ledger policy receipts. */
   store: LedgerStore;
-}): Promise<
-  LedgerSession & {
-    /** Closes the transport owned by this connected session. */
-    close(): Promise<void>;
-  }
-> {
-  const [transportModule, ledgerBitcoin] = await Promise.all([
-    driver.module,
-    importLedgerBitcoinModule()
+}): Promise<LedgerSession> {
+  const [transportModule, bitcoinApi] = await Promise.all([
+    driver.transport,
+    driver.bitcoinApi
   ]);
   const Transport = transportModule.default;
   if (!Transport)
     throw new Error(`Ledger driver must have a default transport export`);
+  if (
+    typeof bitcoinApi.AppClient !== 'function' ||
+    typeof bitcoinApi.WalletPolicy !== 'function' ||
+    typeof bitcoinApi.DefaultWalletPolicy !== 'function'
+  )
+    throw new Error(`Ledger bitcoinApi is missing required constructors`);
 
   const transport =
     driver.device === undefined
@@ -114,9 +95,7 @@ export async function connect<TDevice>({
         minVersion: driver.app.minVersion
       });
 
-    const client: LedgerClient = new ledgerBitcoin.AppClient(
-      transport as ConstructorParameters<typeof ledgerBitcoin.AppClient>[0]
-    );
+    const client = new bitcoinApi.AppClient(transport);
     const masterFingerprint = (
       await client.getMasterFingerprint()
     ).toLowerCase();
@@ -133,7 +112,10 @@ export async function connect<TDevice>({
 
     let closing: Promise<void> | undefined;
     return {
-      ...fromClient({ client, network, store }),
+      client,
+      bitcoinApi,
+      network,
+      store,
       close: () => {
         closing ??= Promise.resolve().then(() => transport.close());
         return closing;
