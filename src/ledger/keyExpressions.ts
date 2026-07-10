@@ -2,7 +2,11 @@
 // Distributed under the MIT software license
 
 import { keyExpressionHWW } from '../hww/helpers';
-import { getMasterFingerprint, getXpub } from './client';
+import {
+  getMasterFingerprint,
+  getXpub,
+  sessionFromLedgerManager
+} from './client';
 import type { LedgerManager, LedgerSession } from './types';
 
 export async function keyExpression({
@@ -45,11 +49,7 @@ export async function keyExpressionLedger({
   keyPath?: string;
 }): Promise<string> {
   return keyExpression({
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    },
+    session: sessionFromLedgerManager(ledgerManager),
     originPath,
     ...(keyPath !== undefined ? { keyPath } : {}),
     ...(change !== undefined ? { change } : {}),

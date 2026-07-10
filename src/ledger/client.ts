@@ -1,10 +1,51 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { fromHex } from 'uint8array-tools';
-import type { LedgerManager, LedgerSession } from './types';
+import { fromHex, toHex } from 'uint8array-tools';
+import type {
+  LedgerManager,
+  LedgerPolicy,
+  LedgerSession,
+  LedgerStore
+} from './types';
 
 type LedgerBitcoinModule = typeof import('@ledgerhq/ledger-bitcoin');
+
+/**
+ * Builds a modern session and migrates state used by deprecated 3.x helpers.
+ *
+ * @deprecated Remove with `LedgerManager` compatibility in the next major release.
+ * @internal
+ */
+export function sessionFromLedgerManager(
+  ledgerManager: LedgerManager
+): LedgerSession {
+  const state = ledgerManager.ledgerState;
+  if (state.masterFingerprint instanceof Uint8Array)
+    state.masterFingerprint = toHex(state.masterFingerprint);
+  if (state.policies?.some(policy => 'ledgerTemplate' in policy)) {
+    state.policies = state.policies.map(policy => {
+      if (!('ledgerTemplate' in policy)) return policy;
+      const normalized: LedgerPolicy = {
+        ...(policy.policyName !== undefined ? { name: policy.policyName } : {}),
+        descriptorTemplate: policy.ledgerTemplate,
+        keyRoots: policy.keyRoots,
+        ...(policy.policyId !== undefined
+          ? { policyId: toHex(policy.policyId) }
+          : {}),
+        ...(policy.policyHmac !== undefined
+          ? { policyHmac: toHex(policy.policyHmac) }
+          : {})
+      };
+      return normalized;
+    });
+  }
+  return {
+    client: ledgerManager.ledgerClient,
+    store: state as LedgerStore,
+    network: ledgerManager.network
+  };
+}
 
 /**
  * Loads the optional Ledger Bitcoin package only when a Ledger helper needs it.
@@ -155,11 +196,7 @@ export async function getLedgerMasterFingerPrint({
   ledgerManager: LedgerManager;
 }): Promise<Uint8Array> {
   return getMasterFingerprint({
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    }
+    session: sessionFromLedgerManager(ledgerManager)
   });
 }
 
@@ -177,10 +214,6 @@ export async function getLedgerXpub({
 }): Promise<string> {
   return getXpub({
     originPath,
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    }
+    session: sessionFromLedgerManager(ledgerManager)
   });
 }

@@ -71,8 +71,25 @@ export type LedgerStore = {
   xpubs?: { [key: string]: string };
 };
 
-/** @deprecated Use `LedgerStore`. */
-export type LedgerState = LedgerStore;
+type LegacyLedgerPolicy = {
+  policyName?: string;
+  ledgerTemplate: string;
+  keyRoots: string[];
+  policyId?: Uint8Array;
+  policyHmac?: Uint8Array;
+};
+
+/**
+ * @deprecated Use `LedgerStore` for new integrations.
+ *
+ * Existing 3.x state is still accepted by deprecated `LedgerManager` helpers
+ * and is migrated to the JSON-safe `LedgerStore` format in place.
+ */
+export type LedgerState = {
+  masterFingerprint?: string | Uint8Array;
+  policies?: (LedgerPolicy | LegacyLedgerPolicy)[];
+  xpubs?: { [key: string]: string };
+};
 
 /** Connected Ledger session. Persist the store, not the session. */
 export type LedgerSession = {
@@ -91,7 +108,7 @@ export type LedgerManager = {
   /** Ledger Bitcoin app client instance. */
   ledgerClient: LedgerClient;
   /** App-owned store for cached keys and registered Ledger policy receipts. */
-  ledgerState: LedgerStore;
+  ledgerState: LedgerState;
   /** @deprecated Ignored by modern helpers; backend binding is package-wide. */
   Output?: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */

@@ -13,10 +13,13 @@ import { createBitcoinjsLib } from '../dist/bitcoinjs';
 import {
   connectors,
   displayAddress,
+  getLedgerMasterFingerPrint,
   getVersion,
   signers,
   signMessage,
   type LedgerClient,
+  type LedgerManager,
+  type LedgerState,
   type LedgerSession
 } from '../dist/ledger/index';
 import {
@@ -453,6 +456,115 @@ describeIfNotScure(
         'psbt-base64',
         expect.objectContaining({ name: 'No id policy' }),
         fromHex(policyHmac)
+      );
+      expect(updateInput).toHaveBeenCalledWith(0, {
+        partialSig: [
+          {
+            pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
+            signature: new Uint8Array([1])
+          }
+        ]
+      });
+    });
+
+    test('migrates populated 3.x Ledger state before deprecated helpers use it', async () => {
+      const ledgerMaster = makeMaster(263);
+      const otherMaster = makeMaster(264);
+      const ledgerKeyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/7'
+      });
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${ledgerKeyAtIndex},${keyExpressionNoOrigin(otherMaster, '/0/7')}))`,
+        network: NETWORK
+      });
+      const descriptorTemplate = 'wsh(sortedmulti(1,@0/**,@1/**))';
+      const keyRoots = [
+        keyRootWithOrigin(ledgerMaster),
+        keyRootNoOrigin(otherMaster)
+      ];
+      const policyId = fromHex('aabbccdd');
+      const policyHmac = fromHex('00112233445566778899aabbccddeeff');
+      const ledgerState: LedgerState = {
+        masterFingerprint: ledgerMaster.fingerprint,
+        policies: [
+          {
+            policyName: 'Legacy policy',
+            ledgerTemplate: descriptorTemplate,
+            keyRoots,
+            policyId,
+            policyHmac
+          }
+        ],
+        xpubs: { "/48'/1'/0'": 'cached-xpub' }
+      };
+      const ledgerClient = {
+        getMasterFingerprint: jest.fn(async () => 'unexpected'),
+        signPsbt: jest.fn(async () => [
+          [
+            0,
+            {
+              pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
+              signature: new Uint8Array([1])
+            }
+          ]
+        ])
+      } as unknown as LedgerClient;
+      const ledgerManager: LedgerManager = {
+        ledgerClient,
+        ledgerState,
+        network: NETWORK
+      };
+      const updateInput = jest.fn();
+      const psbt = {
+        data: {
+          inputs: [
+            {
+              witnessUtxo: {
+                script: output.getScriptPubKey(),
+                value: 50_000n
+              },
+              bip32Derivation: [
+                {
+                  masterFingerprint: ledgerMaster.fingerprint,
+                  path: "m/48'/1'/0'/0/7",
+                  pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
+                }
+              ]
+            }
+          ]
+        },
+        txInputs: [],
+        toBase64: () => 'psbt-base64',
+        updateInput
+      } as unknown as Psbt;
+
+      await expect(
+        getLedgerMasterFingerPrint({ ledgerManager })
+      ).resolves.toEqual(ledgerMaster.fingerprint);
+      const normalizedPolicies = ledgerState.policies;
+      await signers.signLedger({ psbt, ledgerManager });
+
+      expect(ledgerClient.getMasterFingerprint).not.toHaveBeenCalled();
+      expect(ledgerState).toEqual({
+        masterFingerprint: toHex(ledgerMaster.fingerprint),
+        policies: [
+          {
+            name: 'Legacy policy',
+            descriptorTemplate,
+            keyRoots,
+            policyId: toHex(policyId),
+            policyHmac: toHex(policyHmac)
+          }
+        ],
+        xpubs: { "/48'/1'/0'": 'cached-xpub' }
+      });
+      expect(ledgerState.policies).toBe(normalizedPolicies);
+      expect(ledgerClient.signPsbt).toHaveBeenCalledWith(
+        'psbt-base64',
+        expect.objectContaining({ name: 'Legacy policy' }),
+        policyHmac
       );
       expect(updateInput).toHaveBeenCalledWith(0, {
         partialSig: [

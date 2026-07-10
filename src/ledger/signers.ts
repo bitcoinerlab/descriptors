@@ -8,7 +8,8 @@ import { policyForPsbtInput, samePolicy } from '../hww/policies';
 import {
   getMasterFingerprint,
   getXpub,
-  importLedgerBitcoinModule
+  importLedgerBitcoinModule,
+  sessionFromLedgerManager
 } from './client';
 import { fromHex } from 'uint8array-tools';
 import type {
@@ -161,11 +162,7 @@ export async function signInputLedger({
   return signInput({
     psbt,
     index,
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    }
+    session: sessionFromLedgerManager(ledgerManager)
   });
 }
 
@@ -257,10 +254,6 @@ export async function signLedger({
 }): Promise<void> {
   return sign({
     psbt,
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    }
+    session: sessionFromLedgerManager(ledgerManager)
   });
 }

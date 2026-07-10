@@ -42,7 +42,11 @@
  * All the conditions above are checked when deriving the common HWW policy.
  */
 
-import { getMasterFingerprint, importLedgerBitcoinModule } from './client';
+import {
+  getMasterFingerprint,
+  importLedgerBitcoinModule,
+  sessionFromLedgerManager
+} from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
 import {
   derivePolicyFromOutput,
@@ -223,11 +227,7 @@ export async function registerLedgerWallet({
 }): Promise<void> {
   await registerPolicy({
     descriptor,
-    session: {
-      client: ledgerManager.ledgerClient,
-      store: ledgerManager.ledgerState,
-      network: ledgerManager.network
-    },
+    session: sessionFromLedgerManager(ledgerManager),
     name: policyName
   });
 }

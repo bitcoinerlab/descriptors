@@ -706,6 +706,10 @@ Ledger adds these device-specific extensions on top of the common API:
   `registerLedgerWallet(...)`, `keyExpressionLedger(...)`,
   `signers.signLedger(...)` and `scriptExpressions.wpkhLedger(...)`.
 
+Deprecated `LedgerManager` helpers still accept 3.x `LedgerState` values. They
+convert byte fields and old policy field names in place to the JSON-safe store
+format used by the current API.
+
 For message signing, Ledger supports standard single-key `pkh(KEY)`,
 `sh(wpkh(KEY))` and `wpkh(KEY)` descriptors. `tr(KEY)` and non-standard policies
 throw before calling the device.
