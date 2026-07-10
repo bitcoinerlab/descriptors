@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import type { PsbtLike, ScureTransactionLike } from '../bitcoinLib';
+import {
+  getBitcoinLibOrThrow,
+  type PsbtLike,
+  type ScureTransactionLike
+} from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { policyForPsbtInput } from '../hww/policies';
 import {
@@ -16,11 +20,6 @@ import {
   scriptConfigFromPolicy
 } from './scriptConfig';
 import type { BitBoxScriptConfigWithKeypath, BitBoxSession } from './types';
-
-type MergeablePsbt = PsbtLike & {
-  combine(...psbts: PsbtLike[]): unknown;
-  constructor: { fromBase64?(psbt: string): PsbtLike };
-};
 
 /**
  * Finds the explicit BitBox script config needed to sign this PSBT.
@@ -79,23 +78,6 @@ async function forcedScriptConfigForPsbt({
   return [...configs.values()][0];
 }
 
-function mergeSignedPsbtIfPossible({
-  psbt,
-  signedPsbt
-}: {
-  psbt: PsbtLike;
-  signedPsbt: string;
-}) {
-  const maybeMergeable = psbt as Partial<MergeablePsbt>;
-  const PsbtConstructor = maybeMergeable.constructor;
-  if (
-    typeof maybeMergeable.combine !== 'function' ||
-    typeof PsbtConstructor?.fromBase64 !== 'function'
-  )
-    return;
-  maybeMergeable.combine(PsbtConstructor.fromBase64(signedPsbt));
-}
-
 export async function sign({
   psbt,
   session
@@ -111,7 +93,7 @@ export async function sign({
     forcedScriptConfig,
     formatUnit(session)
   );
-  mergeSignedPsbtIfPossible({ psbt, signedPsbt });
+  getBitcoinLibOrThrow().mergePsbt(psbt, signedPsbt);
   return signedPsbt;
 }
 

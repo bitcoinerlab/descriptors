@@ -27,7 +27,7 @@ import { createScureAddressAdapter } from './scure/address';
 import { createScureECPairAdapter } from './scure/ecpair';
 import { createScureBIP32Adapter } from './scure/bip32';
 import { createScureCryptoAdapter } from './scure/crypto';
-import { wrapScureTransaction } from './scure/psbt';
+import { mergePsbt, wrapScureTransaction } from './scure/psbt';
 import { wrapScureHDKey, wrapScurePrivateKey } from './scureKeys';
 export { wrapScureTransaction } from './scure/psbt';
 
@@ -51,6 +51,7 @@ export function createScureLib(): BitcoinLib {
           )
         : psbt;
     },
+    mergePsbt,
     toECPairInterface(ecpair: ECPairInterfaceLike | Uint8Array) {
       return ecpair instanceof Uint8Array
         ? wrapScurePrivateKey(ecpair)

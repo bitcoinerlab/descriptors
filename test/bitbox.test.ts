@@ -2,7 +2,7 @@
 // Distributed under the MIT software license
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { networks, Transaction } from 'bitcoinjs-lib';
+import { networks, Psbt, Transaction } from 'bitcoinjs-lib';
 import { fromUtf8, toHex } from 'uint8array-tools';
 import type { BIP32InterfaceLike } from '../dist/bitcoinLib';
 import { DescriptorsFactory } from '../dist/descriptors';
@@ -186,7 +186,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
       formatUnit: string
     ) => {
       client.signed = { apiNetwork, psbt, forceScriptConfig, formatUnit };
-      return `${psbt}:signed`;
+      return psbt;
     },
     btcSignMessage: async (
       apiNetwork: string,
@@ -678,50 +678,20 @@ describe('BitBox helpers', () => {
     const bitboxMaster = makeMaster(4);
     const client = fakeClientFor(bitboxMaster);
     const bitboxSession = sessionFor(bitboxMaster, client);
-    const signedPsbt = { signed: true };
-    const psbtConstructor = {
-      fromBuffer: jest.fn(() => signedPsbt),
-      fromBase64(
-        this: { fromBuffer(psbtBase64: string): unknown },
-        psbtBase64: string
-      ) {
-        return this.fromBuffer(psbtBase64);
-      }
-    };
-    const psbt = {
-      addInput: jest.fn(),
-      addOutput: jest.fn(),
-      inputCount: 0,
-      data: { inputs: [] },
-      txInputs: [],
-      locktime: 0,
-      setLocktime: jest.fn(),
-      signInput: jest.fn(),
-      signAllInputs: jest.fn(),
-      signInputHD: jest.fn(),
-      signAllInputsHD: jest.fn(),
-      finalizeInput: jest.fn(),
-      finalizeTaprootInput: jest.fn(),
-      validateSignaturesOfInput: jest.fn(),
-      updateInput: jest.fn(),
-      combine: jest.fn(),
-      constructor: psbtConstructor,
-      toBase64: () => 'cHNidP8BAA='
-    };
+    const psbt = new Psbt({ network: NETWORK });
+    const combine = jest.spyOn(psbt, 'combine');
+    const psbtBase64 = psbt.toBase64();
 
     await expect(signers.sign({ psbt, session: bitboxSession })).resolves.toBe(
-      'cHNidP8BAA=:signed'
+      psbtBase64
     );
     expect(client.signed).toEqual({
       apiNetwork: 'tbtc',
-      psbt: 'cHNidP8BAA=',
+      psbt: psbtBase64,
       forceScriptConfig: undefined,
       formatUnit: 'default'
     });
-    expect(psbtConstructor.fromBuffer).toHaveBeenCalledWith(
-      'cHNidP8BAA=:signed'
-    );
-    expect(psbt.combine).toHaveBeenCalledWith(signedPsbt);
+    expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
   });
 
   test('signs messages through bitbox-api btcSignMessage', async () => {

@@ -13,6 +13,7 @@ import {
   address,
   crypto,
   payments,
+  Psbt,
   Transaction,
   initEccLib,
   script
@@ -66,6 +67,12 @@ export function createBitcoinjsLib(ecc: TinySecp256k1Interface): BitcoinLib {
         );
       }
       return psbt;
+    },
+    /** Merges a base64 signed PSBT into the original bitcoinjs PSBT. */
+    mergePsbt(psbt: PsbtLike, signedPsbt: string) {
+      if (!(psbt instanceof Psbt))
+        throw new Error('Expected a bitcoinjs-lib Psbt');
+      psbt.combine(Psbt.fromBase64(signedPsbt));
     },
     toECPairInterface(ecpair: ECPairInterfaceLike | Uint8Array) {
       if (ecpair instanceof Uint8Array) {

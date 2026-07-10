@@ -449,3 +449,16 @@ class ScurePsbtAdapter implements PsbtLike {
 export function wrapScureTransaction(transaction: btc.Transaction) {
   return new ScurePsbtAdapter(transaction);
 }
+
+/** Merges a base64 signed PSBT into the original scure transaction. */
+export function mergePsbt(psbt: PsbtLike, signedPsbt: string) {
+  if (!(psbt instanceof ScurePsbtAdapter))
+    throw new Error('Expected a scure PSBT adapter');
+  const transaction = psbt.raw;
+  const combined = transaction.clone();
+  combined.combine(btc.Transaction.fromPSBT(base64.decode(signedPsbt)));
+  for (let i = 0; i < combined.inputsLength; i++)
+    transaction.updateInput(i, combined.getInput(i), true);
+  for (let i = 0; i < combined.outputsLength; i++)
+    transaction.updateOutput(i, combined.getOutput(i), true);
+}

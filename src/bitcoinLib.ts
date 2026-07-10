@@ -502,6 +502,7 @@ export interface BitcoinLib {
 
   // ── Interop hooks ──
   toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike;
+  mergePsbt(psbt: PsbtLike, signedPsbt: string): void;
   toECPairInterface(
     ecpair: ECPairInterfaceLike | Uint8Array
   ): ECPairInterfaceLike;
