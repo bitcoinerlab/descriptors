@@ -389,6 +389,8 @@ export async function derivePolicyFromOutput({
         );
       }
     }
+    // The sample Output has one concrete key position, but the device policy
+    // represents the whole range. Replace the concrete position with /** here.
     placeholderToHwwPlaceholder.set(key, `@${index}/**`);
     const keyInfo = expansionMap[key]!;
     const keyBip32 = keyInfo.bip32 ? toBIP32Interface(keyInfo.bip32) : null;

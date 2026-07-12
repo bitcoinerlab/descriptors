@@ -17,6 +17,7 @@ import {
   displayAddress,
   getLedgerMasterFingerPrint,
   getVersion,
+  registerPolicy,
   signers,
   signMessage,
   type LedgerManager,
@@ -481,6 +482,36 @@ describeIfNotScure(
         ]
       });
     });
+
+    test.each(['/**', '/<0;1>/*'])(
+      'registers policies from the generalized key path %s',
+      async keyPath => {
+        const ledgerMaster = makeMaster(281);
+        const session = mockLedgerSession(ledgerMaster.fingerprint);
+        const registerWallet = jest.fn(async () => [
+          fromHex('aabbccdd'),
+          fromHex('00112233445566778899aabbccddeeff')
+        ]);
+        Object.assign(session.client, { registerWallet });
+        const ledgerKey = keyExpressionBIP32({
+          masterNode: ledgerMaster,
+          originPath: "/48'/1'/0'",
+          keyPath
+        });
+
+        await registerPolicy({
+          descriptor: `wsh(and_v(v:pk(${ledgerKey}),older(5)))`,
+          session,
+          name: 'Generalized policy'
+        });
+
+        expect(registerWallet).toHaveBeenCalledTimes(1);
+        expect(session.store.policies?.[0]).toMatchObject({
+          name: 'Generalized policy',
+          descriptorTemplate: 'wsh(and_v(v:pk(@0/**),older(5)))'
+        });
+      }
+    );
 
     test('migrates populated 3.x Ledger state before deprecated helpers use it', async () => {
       const ledgerMaster = makeMaster(263);

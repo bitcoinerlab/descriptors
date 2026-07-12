@@ -675,6 +675,56 @@ describe('BitBox helpers', () => {
     expect(client.displayed?.keypath).toBe("m/48'/1'/1'/2'/0/9");
   });
 
+  test.each(['/**', '/<0;1>/*'])(
+    'registers BitBox policies from the generalized key path %s',
+    async keyPath => {
+      const bitboxMaster = makeMaster(19);
+      const client = fakeClientFor(bitboxMaster);
+      const bitboxSession = sessionFor(bitboxMaster, client);
+      const bitboxKey = await keyExpression({
+        session: bitboxSession,
+        originPath: "/48'/1'/0'/2'",
+        keyPath
+      });
+
+      await registerPolicy({
+        descriptor: `wsh(and_v(v:pk(${bitboxKey}),older(5)))`,
+        session: bitboxSession,
+        name: 'Generalized policy'
+      });
+
+      expect(client.registered?.scriptConfig).toMatchObject({
+        policy: { policy: 'wsh(and_v(v:pk(@0/**),older(5)))' }
+      });
+      expect(bitboxSession.store.policies?.[0]).toMatchObject({
+        name: 'Generalized policy',
+        descriptorTemplate: 'wsh(and_v(v:pk(@0/**),older(5)))'
+      });
+    }
+  );
+
+  test('rejects non-receive/change multipath policies', async () => {
+    const bitboxMaster = makeMaster(20);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const bitboxKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/<2;3>/*'
+    });
+
+    await expect(
+      registerPolicy({
+        descriptor: `wsh(and_v(v:pk(${bitboxKey}),older(5)))`,
+        session: bitboxSession,
+        name: 'Unsupported policy'
+      })
+    ).rejects.toThrow(
+      'hardware wallet policies support only receive/change multipath'
+    );
+    expect(client.registered).toBeUndefined();
+  });
+
   test('signs PSBTs through bitbox-api btcSignPSBT', async () => {
     const bitboxMaster = makeMaster(4);
     const client = fakeClientFor(bitboxMaster);

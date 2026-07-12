@@ -26,7 +26,8 @@ import {
   assertLegacyMessageSignature,
   messageBytes,
   originPathFromKeyRoot,
-  outputFromDescriptor
+  outputFromDescriptor,
+  sampleOutputFromPolicyDescriptor
 } from '../hww/helpers';
 import { apiNetwork, getMasterFingerprint, simpleType } from './client';
 import type { BitBoxPolicy, BitBoxSession, BitBoxStore } from './types';
@@ -58,6 +59,14 @@ type MessageSigningParams = AddressDisplayParams & {
  * script config internally, while this function stores the descriptor policy in
  * the app-owned JSON store so address display and PSBT signing can rebuild the
  * same script config later.
+ *
+ * A descriptor might point to one output, but the stored BitBox policy is
+ * generalized to cover receive and change outputs at every index.
+ *
+ * For a ranged descriptor, registration expands one deterministic sample using
+ * index `0`. It also uses branch `0` when the branch is the receive/change range
+ * `/**`. A fixed branch stays unchanged. The sample is used to parse and
+ * validate the descriptor; it is not the policy sent to the device.
  */
 export async function registerPolicy({
   descriptor,
@@ -70,16 +79,16 @@ export async function registerPolicy({
   name: string;
 }): Promise<BitBoxStore> {
   const { client, store, network } = session;
-  const output = outputFromDescriptor({
+  // Parse the policy through one deterministic output. The policy derived
+  // below is generalized back to /** and is not limited to that sample.
+  const sampleOutput = sampleOutputFromPolicyDescriptor({
     descriptor,
-    network,
-    ...(descriptor.includes('/<') ? { change: 0 } : {}),
-    index: 0
+    network
   });
   const readMasterFingerprint = () => getMasterFingerprint({ session });
 
   const standardPolicy = await standardPolicyFromOutput({
-    output,
+    output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
   });
   if (standardPolicy) {
@@ -91,14 +100,14 @@ export async function registerPolicy({
   }
 
   const result = await derivePolicyFromOutput({
-    output,
+    output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
   });
   if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
   if (!store.policies) store.policies = [];
 
   const existingPolicy = await knownPolicyFromOutput({
-    output,
+    output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint,
     knownPolicies: store.policies
   });

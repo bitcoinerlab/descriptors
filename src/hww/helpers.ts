@@ -58,6 +58,41 @@ export function outputFromDescriptor({
   });
 }
 
+/**
+ * Builds one sample `Output` so policy derivation can reuse the existing
+ * descriptor expansion and validation code.
+ *
+ * An `Output` needs one concrete key position, while a hardware-wallet policy
+ * covers a range. This function uses index `0` as a deterministic sample. When
+ * the descriptor contains the receive/change range `/**` or `/<0;1>/*`, it also
+ * selects branch `0`; a fixed branch such as `/1/*` stays unchanged. Policy
+ * derivation later replaces the concrete position with `/**`, so the resulting
+ * policy still covers receive and change outputs at every index. The sample
+ * `Output` is used only in memory and is never sent to the device.
+ */
+export function sampleOutputFromPolicyDescriptor({
+  descriptor,
+  network
+}: {
+  descriptor: string;
+  network: Network;
+}): OutputInstance {
+  const multipathTokens = descriptor.match(/\/(?:\*\*|<[^<>]+>)/g) ?? [];
+  if (multipathTokens.some(token => token !== '/**' && token !== '/<0;1>'))
+    throw new Error(
+      `Error: hardware wallet policies support only receive/change multipath /** or /<0;1>/*`
+    );
+
+  // Resolve only what Output needs. These values identify the sample output;
+  // they do not limit the policy produced from it.
+  return outputFromDescriptor({
+    descriptor,
+    network,
+    ...(multipathTokens.length > 0 ? { change: 0 } : {}),
+    index: 0
+  });
+}
+
 /** Builds a descriptor key expression from hardware-wallet device callbacks. */
 export async function keyExpressionHWW({
   getMasterFingerprint,

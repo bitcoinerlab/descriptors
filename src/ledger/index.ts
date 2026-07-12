@@ -54,7 +54,8 @@ import {
   assertLegacyMessageSignature,
   messageBytes,
   originPathFromKeyRoot,
-  outputFromDescriptor
+  outputFromDescriptor,
+  sampleOutputFromPolicyDescriptor
 } from '../hww/helpers';
 import {
   keyExpression as keyExpressionFromSession,
@@ -104,12 +105,17 @@ type MessageSigningParams = AddressDisplayParams & {
  * 2. Avoid re-registering if the policy was previously registered.
  * 3. Skip registration if the policy is considered "standard".
  *
- * It's important to understand the nature of the Ledger Policy being registered:
- * - While a descriptor might point to a specific output index of a particular change address,
- *   the corresponding Ledger Policy abstracts this and represents potential outputs for
- *   all addresses (both external and internal).
- * - This means that the registered Ledger Policy is a generalized version of the descriptor,
- *   not assuming specific values for the keyPath.
+ * It's important to understand the nature of the Ledger policy being registered:
+ * - While a descriptor might point to a specific output index of a particular
+ *   change branch, the corresponding Ledger policy abstracts this and represents
+ *   potential outputs for all receive and change indexes.
+ * - This means that the registered Ledger policy is a generalized version of
+ *   the descriptor, not assuming specific values for the key path.
+ *
+ * For a ranged descriptor, registration expands one deterministic sample using
+ * index `0`. It also uses branch `0` when the branch is the receive/change range
+ * `/**`. A fixed branch stays unchanged. The sample is used to parse and
+ * validate the descriptor; it is not the policy sent to the device.
  *
  */
 export async function registerPolicy({
@@ -124,28 +130,29 @@ export async function registerPolicy({
 }): Promise<LedgerStore> {
   const { client, store, network } = session;
   const { WalletPolicy } = session.bitcoinApi;
-  const output = outputFromDescriptor({
+  // Parse the policy through one deterministic output. The policy derived
+  // below is generalized back to /** and is not limited to that sample.
+  const sampleOutput = sampleOutputFromPolicyDescriptor({
     descriptor,
-    network,
-    index: 0
+    network
   });
   const readMasterFingerprint = () => getMasterFingerprint({ session });
   if (
     await standardPolicyFromOutput({
-      output,
+      output: sampleOutput,
       getMasterFingerprint: readMasterFingerprint
     })
   )
     return store;
   const result = await derivePolicyFromOutput({
-    output,
+    output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
   });
   if (!result) throw new Error(`Error: output does not have a ledger input`);
   const { descriptorTemplate, keyRoots } = result;
   if (!store.policies) store.policies = [];
   const policy = (await knownPolicyFromOutput({
-    output,
+    output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint,
     knownPolicies: store.policies
   })) as LedgerPolicy | null;
