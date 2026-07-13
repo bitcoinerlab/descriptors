@@ -34,6 +34,7 @@ export async function keyExpression({
 
 /**
  * @deprecated Use `keyExpression(...)` from the Ledger entrypoint instead.
+ * Remove in v4 with `LedgerManager` compatibility.
  */
 export async function keyExpressionLedger({
   ledgerManager,

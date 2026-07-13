@@ -2,6 +2,8 @@
 // Distributed under the MIT software license
 
 import { type ScureTransactionLike, type PsbtLike } from '../bitcoinLib';
+// Used only to forward deprecated LedgerManager.Output. Remove in v4.
+import type { OutputConstructor } from '../descriptors';
 import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
 import { policyForPsbtInput, samePolicy } from '../hww/policies';
@@ -99,6 +101,28 @@ export async function signInput({
   index: number;
   session: LedgerSession;
 }): Promise<void> {
+  return signInputWithLegacyOutput({ psbt, index, session });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into input matching.
+ * Inline this body into `signInput(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function signInputWithLegacyOutput({
+  psbt,
+  index,
+  session,
+  legacyOutput
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  index: number;
+  session: LedgerSession;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
+}): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
   const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
@@ -111,7 +135,8 @@ export async function signInput({
     getAccountXpub: originPath => getXpub({ originPath, session }),
     ...(session.store.policies !== undefined
       ? { knownPolicies: session.store.policies }
-      : {})
+      : {}),
+    ...(legacyOutput !== undefined ? { legacyOutput } : {})
   })) as LedgerPolicy | undefined;
   if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
 
@@ -146,7 +171,8 @@ export async function signInput({
 }
 
 /**
- * @deprecated Use `signInput(...)` instead.
+ * @deprecated Use `signInput(...)` instead. Remove in v4 with `LedgerManager`
+ * compatibility.
  */
 export async function signInputLedger({
   psbt,
@@ -157,10 +183,13 @@ export async function signInputLedger({
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
-  return signInput({
+  return signInputWithLegacyOutput({
     psbt,
     index,
-    session: sessionFromLedgerManager(ledgerManager)
+    session: sessionFromLedgerManager(ledgerManager),
+    ...(ledgerManager.Output !== undefined
+      ? { legacyOutput: ledgerManager.Output }
+      : {})
   });
 }
 
@@ -170,6 +199,26 @@ export async function sign({
 }: {
   psbt: PsbtLike | ScureTransactionLike;
   session: LedgerSession;
+}): Promise<void> {
+  return signWithLegacyOutput({ psbt, session });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into input matching.
+ * Inline this body into `sign(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function signWithLegacyOutput({
+  psbt,
+  session,
+  legacyOutput
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  session: LedgerSession;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
 }): Promise<void> {
   psbt = toPsbt(psbt);
   const { client } = session;
@@ -185,7 +234,8 @@ export async function sign({
       getAccountXpub: originPath => getXpub({ originPath, session }),
       ...(session.store.policies !== undefined
         ? { knownPolicies: session.store.policies }
-        : {})
+        : {}),
+      ...(legacyOutput !== undefined ? { legacyOutput } : {})
     })) as LedgerPolicy | undefined;
     if (policy) ledgerPolicies.push(policy);
   }
@@ -240,7 +290,8 @@ export async function sign({
 }
 
 /**
- * @deprecated Use `sign(...)` instead.
+ * @deprecated Use `sign(...)` instead. Remove in v4 with `LedgerManager`
+ * compatibility.
  */
 export async function signLedger({
   psbt,
@@ -249,8 +300,11 @@ export async function signLedger({
   psbt: PsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void> {
-  return sign({
+  return signWithLegacyOutput({
     psbt,
-    session: sessionFromLedgerManager(ledgerManager)
+    session: sessionFromLedgerManager(ledgerManager),
+    ...(ledgerManager.Output !== undefined
+      ? { legacyOutput: ledgerManager.Output }
+      : {})
   });
 }

@@ -2,8 +2,11 @@
 // Distributed under the MIT software license
 
 import { fromHex, fromUtf8, toHex } from 'uint8array-tools';
+// OutputConstructor is needed only for the deprecated LedgerManager override.
+// Remove this type import and the optional Output parameters in v4.
 import {
   getOutputConstructorOrThrow,
+  type OutputConstructor,
   type OutputInstance
 } from '../descriptors';
 import { assertChangeIndexKeyPath } from '../keyExpressions';
@@ -42,14 +45,21 @@ export function outputFromDescriptor({
   descriptor,
   network,
   change,
-  index
+  index,
+  legacyOutput
 }: {
   descriptor: string;
   network: Network;
   change?: number;
   index?: number;
+  /**
+   * @deprecated 3.x LedgerManager compatibility only. Remove in v4 and always
+   * use the active package backend.
+   */
+  legacyOutput?: OutputConstructor;
 }): OutputInstance {
-  const Output = getOutputConstructorOrThrow();
+  // In v4, remove legacyOutput and keep getOutputConstructorOrThrow().
+  const Output = legacyOutput ?? getOutputConstructorOrThrow();
   return new Output({
     descriptor,
     ...(descriptor.includes('*') && index !== undefined ? { index } : {}),
@@ -72,10 +82,16 @@ export function outputFromDescriptor({
  */
 export function sampleOutputFromPolicyDescriptor({
   descriptor,
-  network
+  network,
+  legacyOutput
 }: {
   descriptor: string;
   network: Network;
+  /**
+   * @deprecated 3.x LedgerManager compatibility only. Remove in v4 and always
+   * use the active package backend.
+   */
+  legacyOutput?: OutputConstructor;
 }): OutputInstance {
   const multipathTokens = descriptor.match(/\/(?:\*\*|<[^<>]+>)/g) ?? [];
   if (multipathTokens.some(token => token !== '/**' && token !== '/<0;1>'))
@@ -89,7 +105,8 @@ export function sampleOutputFromPolicyDescriptor({
     descriptor,
     network,
     ...(multipathTokens.length > 0 ? { change: 0 } : {}),
-    index: 0
+    index: 0,
+    ...(legacyOutput !== undefined ? { legacyOutput } : {})
   });
 }
 

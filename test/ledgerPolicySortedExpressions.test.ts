@@ -17,6 +17,7 @@ import {
   displayAddress,
   getLedgerMasterFingerPrint,
   getVersion,
+  registerLedgerWallet,
   registerPolicy,
   signers,
   signMessage,
@@ -513,6 +514,43 @@ describeIfNotScure(
       }
     );
 
+    // Remove with LedgerManager.Output compatibility in v4.
+    test('uses LedgerManager Output for deprecated policy registration', async () => {
+      const ledgerMaster = makeMaster(282);
+      let outputConstructions = 0;
+      class LegacyOutput extends Output {
+        constructor(options: ConstructorParameters<typeof Output>[0]) {
+          super(options);
+          outputConstructions += 1;
+        }
+      }
+      const registerWallet = jest.fn(async () => [
+        fromHex('aabbccdd'),
+        fromHex('00112233445566778899aabbccddeeff')
+      ]);
+      const ledgerManager: LedgerManager = {
+        ledgerClient: { registerWallet } as unknown as Session['client'],
+        ledgerState: { masterFingerprint: ledgerMaster.fingerprint },
+        network: NETWORK,
+        Output: LegacyOutput
+      };
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+
+      await registerLedgerWallet({
+        descriptor: `wsh(and_v(v:pk(${ledgerKey}),older(5)))`,
+        ledgerManager,
+        policyName: 'Legacy output policy'
+      });
+
+      expect(outputConstructions).toBe(1);
+      expect(registerWallet).toHaveBeenCalledTimes(1);
+    });
+
+    // Remove with LedgerManager and legacy state migration in v4.
     test('migrates populated 3.x Ledger state before deprecated helpers use it', async () => {
       const ledgerMaster = makeMaster(263);
       const otherMaster = makeMaster(264);
@@ -557,10 +595,18 @@ describeIfNotScure(
           ]
         ])
       } as unknown as Session['client'];
+      let outputConstructions = 0;
+      class LegacyOutput extends Output {
+        constructor(options: ConstructorParameters<typeof Output>[0]) {
+          super(options);
+          outputConstructions += 1;
+        }
+      }
       const ledgerManager: LedgerManager = {
         ledgerClient,
         ledgerState,
-        network: NETWORK
+        network: NETWORK,
+        Output: LegacyOutput
       };
       const updateInput = jest.fn();
       const psbt = {
@@ -591,8 +637,11 @@ describeIfNotScure(
       ).resolves.toEqual(ledgerMaster.fingerprint);
       const normalizedPolicies = ledgerState.policies;
       await signers.signLedger({ psbt, ledgerManager });
+      await signers.signInputLedger({ psbt, index: 0, ledgerManager });
 
       expect(ledgerClient.getMasterFingerprint).not.toHaveBeenCalled();
+      expect(outputConstructions).toBe(2);
+      expect(ledgerClient.signPsbt).toHaveBeenCalledTimes(2);
       expect(ledgerState).toEqual({
         masterFingerprint: toHex(ledgerMaster.fingerprint),
         policies: [

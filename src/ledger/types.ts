@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// Used only by the deprecated LedgerManager.Output field. Remove in v4.
 import type { OutputConstructor } from '../descriptors';
 import type { HWWPolicy } from '../hww/policies';
 import type { Network } from '../networks';
@@ -101,6 +102,12 @@ export type LedgerStore = {
   xpubs?: { [key: string]: string };
 };
 
+/**
+ * Persisted 3.x policy shape.
+ *
+ * @deprecated Remove with LedgerState migration in v4.
+ * @internal
+ */
 type LegacyLedgerPolicy = {
   policyName?: string;
   ledgerTemplate: string;
@@ -110,7 +117,9 @@ type LegacyLedgerPolicy = {
 };
 
 /**
- * @deprecated Use `LedgerStore` for new integrations.
+ * @deprecated Use `Store` from the Ledger entrypoint for new integrations.
+ * Remove in v4 with the deprecated `LedgerManager` helpers and legacy state
+ * migration.
  *
  * Existing 3.x state is still accepted by deprecated `LedgerManager` helpers
  * and is migrated to the JSON-safe `LedgerStore` format in place.
@@ -136,14 +145,18 @@ export type LedgerSession = {
 };
 
 /**
- * @deprecated Use `LedgerSession`.
+ * @deprecated Use `Session` from the Ledger entrypoint. Remove in v4 with all
+ * `LedgerManager` helpers and their backend compatibility plumbing.
  */
 export type LedgerManager = {
   /** Ledger Bitcoin app client instance. */
   ledgerClient: LedgerClient;
   /** App-owned store for cached keys and registered Ledger policy receipts. */
   ledgerState: LedgerState;
-  /** @deprecated Ignored by modern helpers; backend binding is package-wide. */
+  /**
+   * @deprecated 3.x compatibility only. Deprecated policy helpers use this
+   * backend-bound constructor. Remove this field and its type import in v4.
+   */
   Output?: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;

@@ -15,6 +15,7 @@ type StandardScriptExpressionParams = {
   index?: number | '*';
 };
 
+/** @deprecated 3.x LedgerManager adapter type. Remove in v4. */
 type DeprecatedLedgerStandardScriptExpressionParams = Omit<
   StandardScriptExpressionParams,
   'session'
@@ -51,7 +52,10 @@ export const shWpkh = makeStandardExpression(49, 'sh(wpkh(KEYEXPRESSION))');
 export const wpkh = makeStandardExpression(84, 'wpkh(KEYEXPRESSION)');
 export const tr = makeStandardExpression(86, 'tr(KEYEXPRESSION)');
 
-/** @deprecated Use the session-based standard script expressions instead. */
+/**
+ * @deprecated 3.x LedgerManager adapter. Remove with all functions created by
+ * this helper in v4.
+ */
 function makeStandardExpressionLedger(purpose: number, scriptTemplate: string) {
   const standardScriptExpression = makeStandardExpression(
     purpose,
@@ -69,20 +73,20 @@ function makeStandardExpressionLedger(purpose: number, scriptTemplate: string) {
   };
 }
 
-/** @deprecated Use `pkh(...)` instead. */
+/** @deprecated Use `pkh(...)` instead. Remove in v4. */
 export const pkhLedger = makeStandardExpressionLedger(44, 'pkh(KEYEXPRESSION)');
 
-/** @deprecated Use `shWpkh(...)` instead. */
+/** @deprecated Use `shWpkh(...)` instead. Remove in v4. */
 export const shWpkhLedger = makeStandardExpressionLedger(
   49,
   'sh(wpkh(KEYEXPRESSION))'
 );
 
-/** @deprecated Use `wpkh(...)` instead. */
+/** @deprecated Use `wpkh(...)` instead. Remove in v4. */
 export const wpkhLedger = makeStandardExpressionLedger(
   84,
   'wpkh(KEYEXPRESSION)'
 );
 
-/** @deprecated Use `tr(...)` instead. */
+/** @deprecated Use `tr(...)` instead. Remove in v4. */
 export const trLedger = makeStandardExpressionLedger(86, 'tr(KEYEXPRESSION)');

@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
+// OutputConstructor is needed only for the deprecated LedgerManager override.
+// Remove this type import and the optional Output parameter in v4.
 import {
   getOutputConstructorOrThrow,
+  type OutputConstructor,
   type OutputInstance
 } from '../descriptors';
 import {
@@ -105,7 +108,8 @@ export async function policyForPsbtInput({
   knownPolicies,
   network,
   psbt,
-  index
+  index,
+  legacyOutput
 }: {
   /** Reads the connected device master fingerprint. */
   getMasterFingerprint(): Promise<Uint8Array>;
@@ -117,10 +121,16 @@ export async function policyForPsbtInput({
   network: Network;
   psbt: PsbtLike | ScureTransactionLike;
   index: number;
+  /**
+   * @deprecated 3.x LedgerManager compatibility only. Remove in v4 and always
+   * use the active package backend.
+   */
+  legacyOutput?: OutputConstructor;
 }): Promise<HWWPolicy | undefined> {
   const bitcoinLib = getBitcoinLibOrThrow();
   psbt = toPsbt(psbt);
-  const Output = getOutputConstructorOrThrow();
+  // In v4, remove legacyOutput and keep getOutputConstructorOrThrow().
+  const Output = legacyOutput ?? getOutputConstructorOrThrow();
   const { Transaction } = bitcoinLib;
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);

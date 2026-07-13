@@ -14,7 +14,7 @@ import type {
  * Builds an internal session and migrates state for deprecated 3.x helpers.
  * The optional peer is loaded only if a policy helper uses `bitcoinApi`.
  *
- * @deprecated Remove with `LedgerManager` compatibility in the next major release.
+ * @deprecated Remove with `LedgerManager` compatibility in v4.
  * @internal
  */
 export function sessionFromLedgerManager(
@@ -199,7 +199,8 @@ export async function getXpub({
 /**
  * Retrieves the master fingerprint of a Ledger device.
  *
- * @deprecated Use `getMasterFingerprint(...)` from the Ledger entrypoint instead.
+ * @deprecated Use `getMasterFingerprint(...)` from the Ledger entrypoint
+ * instead. Remove in v4 with `LedgerManager` compatibility.
  */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
@@ -214,7 +215,8 @@ export async function getLedgerMasterFingerPrint({
 /**
  * Retrieves the xpub for a given origin path from a Ledger device.
  *
- * @deprecated Use `getXpub(...)` from the Ledger entrypoint instead.
+ * @deprecated Use `getXpub(...)` from the Ledger entrypoint instead. Remove in
+ * v4 with `LedgerManager` compatibility.
  */
 export async function getLedgerXpub({
   originPath,

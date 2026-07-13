@@ -44,6 +44,8 @@
 
 import { getMasterFingerprint, sessionFromLedgerManager } from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
+// Used only to forward deprecated LedgerManager.Output. Remove in v4.
+import type { OutputConstructor } from '../descriptors';
 import {
   derivePolicyFromOutput,
   knownPolicyFromOutput,
@@ -128,13 +130,36 @@ export async function registerPolicy({
   /** Name shown by the device for this policy. */
   name: string;
 }): Promise<LedgerStore> {
+  return registerPolicyWithLegacyOutput({ descriptor, session, name });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into policy parsing.
+ * Inline this body into `registerPolicy(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function registerPolicyWithLegacyOutput({
+  descriptor,
+  session,
+  name,
+  legacyOutput
+}: {
+  descriptor: string;
+  session: LedgerSession;
+  name: string;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
+}): Promise<LedgerStore> {
   const { client, store, network } = session;
   const { WalletPolicy } = session.bitcoinApi;
   // Parse the policy through one deterministic output. The policy derived
   // below is generalized back to /** and is not limited to that sample.
   const sampleOutput = sampleOutputFromPolicyDescriptor({
     descriptor,
-    network
+    network,
+    ...(legacyOutput !== undefined ? { legacyOutput } : {})
   });
   const readMasterFingerprint = () => getMasterFingerprint({ session });
   if (
@@ -176,7 +201,8 @@ export async function registerPolicy({
 }
 
 /**
- * @deprecated Use `registerPolicy(...)` instead.
+ * @deprecated Use `registerPolicy(...)` instead. Remove in v4 with
+ * `LedgerManager` compatibility.
  */
 export async function registerLedgerWallet({
   descriptor,
@@ -188,10 +214,13 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  await registerPolicy({
+  await registerPolicyWithLegacyOutput({
     descriptor,
     session: sessionFromLedgerManager(ledgerManager),
-    name: policyName
+    name: policyName,
+    ...(ledgerManager.Output !== undefined
+      ? { legacyOutput: ledgerManager.Output }
+      : {})
   });
 }
 
