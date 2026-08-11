@@ -303,6 +303,14 @@ the app is configured with `neverForLocation` and that path has been tested,
 also ask for `ACCESS_FINE_LOCATION`. Older Android versions normally need
 `ACCESS_FINE_LOCATION`. On iOS, add `NSBluetoothAlwaysUsageDescription`.
 
+Ledger BLE pairing and bonding are handled by the operating system and Ledger's
+BLE transport. The phone and Ledger may show a code that the user compares and
+confirms through the native Bluetooth prompt, but the transport does not expose
+that code to JavaScript. Consequently, Ledger's `driver` has no
+`onPairingCode` callback. Ledger USB/HID does not have a connection-pairing
+step; device unlocking and confirmations for addresses, policies and signatures
+are separate from transport pairing.
+
 This is a conservative Android runtime permission helper:
 
 ```ts
@@ -386,6 +394,9 @@ Add its config plugin when using Expo prebuild or EAS Build:
 The BitBox React Native plugin adds the iOS Bluetooth usage text and the Android
 Bluetooth and USB manifest entries used by its native transports. It does not
 work in Expo Go; use a development build or a production native build.
+Unlike the `bitbox-api` browser and bridge flow, this native driver does not use
+`onPairingCode`; native Bluetooth bonding and provider pairing are handled below
+the descriptors API.
 
 ```ts
 import { networks } from '@bitcoinerlab/descriptors';
