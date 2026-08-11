@@ -2,6 +2,7 @@ TODO
 .DS_Store
 *.swp
 node_modules/
+ai/
 dist/
 docs/
 webdocs/
