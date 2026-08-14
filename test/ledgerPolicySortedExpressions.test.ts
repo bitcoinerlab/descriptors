@@ -426,6 +426,76 @@ describeIfNotScure(
       ]);
     });
 
+    test('skips unrelated inputs before requiring UTXO metadata', async () => {
+      const ledgerMaster = makeMaster(259);
+      const otherMaster = makeMaster(260);
+      const getMasterFingerprint = jest.fn(
+        async () => ledgerMaster.fingerprint
+      );
+      const psbt = {
+        data: {
+          inputs: [
+            {},
+            {
+              bip32Derivation: [
+                {
+                  masterFingerprint: otherMaster.fingerprint,
+                  path: "m/84'/1'/0'/0/0",
+                  pubkey: otherMaster.derivePath("m/84'/1'/0'/0/0").publicKey
+                }
+              ]
+            }
+          ]
+        },
+        txInputs: []
+      } as unknown as Psbt;
+      const params = {
+        psbt,
+        network: NETWORK,
+        getMasterFingerprint,
+        getAccountXpub: unexpectedGetAccountXpub
+      };
+
+      await expect(
+        policyForPsbtInput({ ...params, index: 0 })
+      ).resolves.toBeUndefined();
+      expect(getMasterFingerprint).not.toHaveBeenCalled();
+      await expect(
+        policyForPsbtInput({ ...params, index: 1 })
+      ).resolves.toBeUndefined();
+      expect(getMasterFingerprint).toHaveBeenCalledTimes(1);
+    });
+
+    test('requires UTXO metadata for inputs owned by the device', async () => {
+      const ledgerMaster = makeMaster(258);
+      const psbt = {
+        data: {
+          inputs: [
+            {
+              bip32Derivation: [
+                {
+                  masterFingerprint: ledgerMaster.fingerprint,
+                  path: "m/84'/1'/0'/0/0",
+                  pubkey: ledgerMaster.derivePath("m/84'/1'/0'/0/0").publicKey
+                }
+              ]
+            }
+          ]
+        },
+        txInputs: []
+      } as unknown as Psbt;
+
+      await expect(
+        policyForPsbtInput({
+          psbt,
+          index: 0,
+          network: NETWORK,
+          getMasterFingerprint: async () => ledgerMaster.fingerprint,
+          getAccountXpub: unexpectedGetAccountXpub
+        })
+      ).rejects.toThrow('Could not retrieve scriptPubKey for input 0');
+    });
+
     test('signs registered policy inputs using policyHmac without requiring policyId', async () => {
       const ledgerMaster = makeMaster(261);
       const otherMaster = makeMaster(262);
@@ -452,16 +522,17 @@ describeIfNotScure(
           policyHmac
         }
       ];
+      const signPsbt = jest.fn(async () => [
+        [
+          0,
+          {
+            pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
+            signature: new Uint8Array([1])
+          }
+        ]
+      ]);
       Object.assign(session.client, {
-        signPsbt: jest.fn(async () => [
-          [
-            0,
-            {
-              pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
-              signature: new Uint8Array([1])
-            }
-          ]
-        ])
+        signPsbt
       });
       const updateInput = jest.fn();
       const psbt = {
@@ -479,7 +550,27 @@ describeIfNotScure(
                   pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
                 }
               ]
-            }
+            },
+            {
+              witnessUtxo: {
+                script: new Uint8Array([0x51]),
+                value: 40_000n
+              }
+            },
+            {
+              witnessUtxo: {
+                script: new Uint8Array([0x51]),
+                value: 30_000n
+              },
+              bip32Derivation: [
+                {
+                  masterFingerprint: otherMaster.fingerprint,
+                  path: "m/84'/1'/0'/0/0",
+                  pubkey: otherMaster.derivePath("m/84'/1'/0'/0/0").publicKey
+                }
+              ]
+            },
+            {}
           ]
         },
         txInputs: [],
@@ -489,7 +580,7 @@ describeIfNotScure(
 
       await signers.signInput({ psbt, index: 0, session });
 
-      expect(session.client.signPsbt).toHaveBeenCalledWith(
+      expect(signPsbt).toHaveBeenCalledWith(
         'psbt-base64',
         expect.objectContaining({ name: 'No id policy' }),
         fromHex(policyHmac)
@@ -502,6 +593,12 @@ describeIfNotScure(
           }
         ]
       });
+
+      signPsbt.mockClear();
+      updateInput.mockClear();
+      await signers.sign({ psbt, session });
+      expect(signPsbt).toHaveBeenCalledTimes(1);
+      expect(updateInput).toHaveBeenCalledWith(0, expect.any(Object));
     });
 
     test.each(['/**', '/<0;1>/*'])(

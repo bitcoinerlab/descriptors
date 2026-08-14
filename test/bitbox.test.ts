@@ -851,11 +851,41 @@ describe('BitBox helpers', () => {
     expect(client.registered).toBeUndefined();
   });
 
-  test('signs PSBTs through bitbox-api btcSignPSBT', async () => {
+  test('signs PSBTs containing unrelated inputs', async () => {
     const bitboxMaster = makeMaster(4);
+    const otherMaster = makeMaster(25);
     const client = fakeClientFor(bitboxMaster);
     const bitboxSession = sessionFor(bitboxMaster, client);
+    const descriptor = await scriptExpressions.wpkh({
+      session: bitboxSession,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+    const output = new Output({ descriptor, index: 0, network: NETWORK });
+    const fundingTx = new Transaction();
+    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
+    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 50_000n);
     const psbt = new Psbt({ network: NETWORK });
+    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+    psbt.addInput({
+      hash: Buffer.alloc(32, 2),
+      index: 0,
+      witnessUtxo: { script: Buffer.from([0x51]), value: 40_000n }
+    });
+    psbt.addInput({
+      hash: Buffer.alloc(32, 3),
+      index: 0,
+      witnessUtxo: { script: Buffer.from([0x51]), value: 30_000n },
+      bip32Derivation: [
+        {
+          masterFingerprint: otherMaster.fingerprint,
+          path: "m/84'/1'/0'/0/0",
+          pubkey: otherMaster.derivePath("m/84'/1'/0'/0/0").publicKey
+        }
+      ]
+    });
+    psbt.addInput({ hash: Buffer.alloc(32, 4), index: 0 });
     const combine = jest.spyOn(psbt, 'combine');
     const psbtBase64 = psbt.toBase64();
 

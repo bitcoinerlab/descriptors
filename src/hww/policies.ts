@@ -134,6 +134,22 @@ export async function policyForPsbtInput({
   const { Transaction } = bitcoinLib;
   const input = psbt.data.inputs[index];
   if (!input) throw new Error(`Error: input ${index} not available`);
+
+  const keyDerivations = [
+    ...(input.bip32Derivation || []),
+    ...(input.tapBip32Derivation || [])
+  ];
+  if (keyDerivations.length === 0) return;
+
+  const masterFingerprint = await getMasterFingerprint();
+  if (
+    !keyDerivations.some(
+      keyDerivation =>
+        compare(keyDerivation.masterFingerprint, masterFingerprint) === 0
+    )
+  )
+    return;
+
   let scriptPubKey: Uint8Array | undefined;
   if (input.nonWitnessUtxo) {
     const txInput = psbt.txInputs[index];
@@ -149,16 +165,6 @@ export async function policyForPsbtInput({
   if (!scriptPubKey)
     throw new Error(`Could not retrieve scriptPubKey for input ${index}.`);
 
-  const keyDerivations = [
-    ...(input.bip32Derivation || []),
-    ...(input.tapBip32Derivation || [])
-  ];
-  if (keyDerivations.length === 0)
-    throw new Error(
-      `Input ${index} does not contain bip32 or tapBip32 derivations.`
-    );
-
-  const masterFingerprint = await getMasterFingerprint();
   for (const keyDerivation of keyDerivations) {
     if (compare(keyDerivation.masterFingerprint, masterFingerprint) === 0) {
       const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
