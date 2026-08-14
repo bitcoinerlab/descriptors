@@ -1000,6 +1000,7 @@ describeIfNotScure(
 
     test('closes an automatically opened Ledger when its fingerprint does not match', async () => {
       const transport = mockLedgerTransport();
+      transport.close.mockRejectedValue(new Error('Ledger cleanup failed'));
       const create = jest.fn(async () => transport);
 
       await expect(
@@ -1018,6 +1019,28 @@ describeIfNotScure(
       );
 
       expect(create).toHaveBeenCalledWith();
+      expect(transport.close).toHaveBeenCalledTimes(1);
+    });
+
+    test('reuses a rejected Ledger session close promise', async () => {
+      const transport = mockLedgerTransport();
+      transport.close.mockRejectedValue(new Error('Ledger close failed'));
+      mockHidOpen.mockResolvedValueOnce(transport);
+      const session = await connect({
+        driver: {
+          transport: {
+            default: { create: jest.fn(), open: mockHidOpen }
+          },
+          bitcoinApi: BITCOIN_API,
+          device: { vendorId: 11415, productId: 1 }
+        },
+        network: NETWORK,
+        store: {}
+      });
+
+      const closing = session.close();
+      expect(session.close()).toBe(closing);
+      await expect(closing).rejects.toThrow('Ledger close failed');
       expect(transport.close).toHaveBeenCalledTimes(1);
     });
   }

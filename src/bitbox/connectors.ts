@@ -43,6 +43,14 @@ type BitBoxApiConnect = (
   onClose: (() => void) | undefined
 ) => Promise<BitBoxConnection>;
 
+function freePairingResource(resource: { free?(): void }): void {
+  try {
+    resource.free?.();
+  } catch {
+    // Keep the pairing error that caused cleanup.
+  }
+}
+
 type BitBoxApiModule =
   | {
       bitbox02ConnectAuto: BitBoxApiConnect;
@@ -196,7 +204,7 @@ export async function connect({
     try {
       pairing = await unpaired.unlockAndPair();
     } catch (error) {
-      unpaired.free?.();
+      freePairingResource(unpaired);
       throw error;
     }
     try {
@@ -204,7 +212,7 @@ export async function connect({
       if (pairingCode !== undefined) await driver.onPairingCode(pairingCode);
       client = await pairing.waitConfirm();
     } catch (error) {
-      pairing.free?.();
+      freePairingResource(pairing);
       throw error;
     }
   }

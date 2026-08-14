@@ -266,6 +266,7 @@ describe('BitBox helpers', () => {
   test('closes a BitBox when its fingerprint does not match the store', async () => {
     const bitboxMaster = makeMaster(18);
     const client = fakeClientFor(bitboxMaster);
+    client.close.mockRejectedValue(new Error('BitBox cleanup failed'));
 
     await expect(
       connect({
@@ -282,6 +283,75 @@ describe('BitBox helpers', () => {
     );
 
     expect(client.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('reuses a rejected BitBox session close promise', async () => {
+    const bitboxMaster = makeMaster(22);
+    const client = fakeClientFor(bitboxMaster);
+    client.close.mockRejectedValue(new Error('BitBox close failed'));
+    const session = await connect({
+      driver: { module: { connectBitBoxUsb: async () => client } },
+      network: NETWORK,
+      store: {}
+    });
+
+    const closing = session.close();
+    expect(session.close()).toBe(closing);
+    await expect(closing).rejects.toThrow('BitBox close failed');
+    expect(client.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves unlock errors when freeing a BitBox connection fails', async () => {
+    const free = jest.fn(() => {
+      throw new Error('BitBox connection cleanup failed');
+    });
+
+    await expect(
+      connect({
+        driver: {
+          module: {
+            bitbox02ConnectBridge: async () => ({
+              free,
+              unlockAndPair: async () => {
+                throw new Error('BitBox unlock failed');
+              }
+            })
+          },
+          onPairingCode: jest.fn()
+        },
+        network: NETWORK,
+        store: {}
+      })
+    ).rejects.toThrow('BitBox unlock failed');
+    expect(free).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves confirmation errors when freeing BitBox pairing fails', async () => {
+    const free = jest.fn(() => {
+      throw new Error('BitBox pairing cleanup failed');
+    });
+
+    await expect(
+      connect({
+        driver: {
+          module: {
+            bitbox02ConnectBridge: async () => ({
+              unlockAndPair: async () => ({
+                free,
+                getPairingCode: () => undefined,
+                waitConfirm: async () => {
+                  throw new Error('BitBox confirmation failed');
+                }
+              })
+            })
+          },
+          onPairingCode: jest.fn()
+        },
+        network: NETWORK,
+        store: {}
+      })
+    ).rejects.toThrow('BitBox confirmation failed');
+    expect(free).toHaveBeenCalledTimes(1);
   });
 
   test('shows bitbox-api pairing codes before confirmation', async () => {
