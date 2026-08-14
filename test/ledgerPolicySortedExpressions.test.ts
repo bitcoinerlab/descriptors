@@ -35,6 +35,7 @@ import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
 type LedgerBitcoinApi = Awaited<
   Parameters<typeof connect>[0]['driver']['bitcoinApi']
 >;
+type LedgerSignatures = Awaited<ReturnType<Session['client']['signPsbt']>>;
 
 const mockHidOpen = jest.fn();
 const mockBleOpen = jest.fn();
@@ -127,6 +128,66 @@ function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
   return `[${toHex(masterNode.fingerprint)}/48'/1'/0']${keyRootNoOrigin(
     masterNode
   )}`;
+}
+
+function taprootSigningFixture(signatures: LedgerSignatures) {
+  const ledgerMaster = makeMaster(284);
+  const otherMaster = makeMaster(285);
+  const internalMaster = makeMaster(286);
+  const ledgerKeyAtIndex = keyExpressionBIP32({
+    masterNode: ledgerMaster,
+    originPath: "/48'/1'/0'",
+    keyPath: '/0/5'
+  });
+  const output = new Output({
+    descriptor: `tr(${keyExpressionNoOrigin(internalMaster, '/0/5')},sortedmulti_a(1,${keyExpressionNoOrigin(otherMaster, '/0/5')},${ledgerKeyAtIndex}))`,
+    network: NETWORK
+  });
+  const session = mockLedgerSession(ledgerMaster.fingerprint);
+  session.store.policies = [
+    {
+      name: 'Taproot policy',
+      descriptorTemplate: 'tr(@0/**,sortedmulti_a(1,@1/**,@2/**))',
+      keyRoots: [
+        keyRootNoOrigin(internalMaster),
+        keyRootNoOrigin(otherMaster),
+        keyRootWithOrigin(ledgerMaster)
+      ],
+      policyHmac: '00112233445566778899aabbccddeeff'
+    }
+  ];
+  const signPsbt = jest.fn(async () => signatures);
+  Object.assign(session.client, { signPsbt });
+  const updateInput = jest.fn();
+  const psbt = {
+    data: {
+      inputs: [
+        {
+          witnessUtxo: {
+            script: output.getScriptPubKey(),
+            value: 50_000n
+          },
+          tapInternalKey: internalMaster
+            .derivePath("m/48'/1'/0'/0/5")
+            .publicKey.slice(1, 33),
+          tapBip32Derivation: [
+            {
+              masterFingerprint: ledgerMaster.fingerprint,
+              path: "m/48'/1'/0'/0/5",
+              pubkey: ledgerMaster
+                .derivePath("m/48'/1'/0'/0/5")
+                .publicKey.slice(1, 33),
+              leafHashes: []
+            }
+          ]
+        }
+      ]
+    },
+    txInputs: [],
+    toBase64: () => 'taproot-psbt',
+    updateInput
+  } as unknown as Psbt;
+  return { psbt, session, signPsbt, updateInput };
 }
 
 function buildWitnessPsbt({
@@ -424,6 +485,122 @@ describeIfNotScure(
         keyRootNoOrigin(otherMaster),
         keyRootWithOrigin(ledgerMaster)
       ]);
+    });
+
+    test('inserts Ledger Taproot key-path signatures', async () => {
+      const signature = new Uint8Array([1]);
+      const fixture = taprootSigningFixture([
+        [0, { pubkey: new Uint8Array(32).fill(2), signature }]
+      ]);
+
+      await signers.signInput({
+        psbt: fixture.psbt,
+        index: 0,
+        session: fixture.session
+      });
+
+      expect(fixture.updateInput).toHaveBeenCalledWith(0, {
+        tapKeySig: signature
+      });
+    });
+
+    test('inserts multiple Ledger Taproot script-path signatures', async () => {
+      const signatureA = new Uint8Array([1]);
+      const signatureB = new Uint8Array([2]);
+      const leafHashA = new Uint8Array(32).fill(3);
+      const leafHashB = new Uint8Array(32).fill(4);
+      const pubkeyA = new Uint8Array(32).fill(5);
+      const pubkeyB = new Uint8Array(32).fill(6);
+      const fixture = taprootSigningFixture([
+        [0, { pubkey: pubkeyA, signature: signatureA, tapleafHash: leafHashA }],
+        [0, { pubkey: pubkeyB, signature: signatureB, tapleafHash: leafHashB }]
+      ]);
+
+      await signers.signInput({
+        psbt: fixture.psbt,
+        index: 0,
+        session: fixture.session
+      });
+
+      expect(fixture.updateInput).toHaveBeenCalledWith(0, {
+        tapScriptSig: [
+          { pubkey: pubkeyA, signature: signatureA, leafHash: leafHashA },
+          { pubkey: pubkeyB, signature: signatureB, leafHash: leafHashB }
+        ]
+      });
+    });
+
+    test('inserts mixed Ledger Taproot key-path and script-path signatures', async () => {
+      const keySignature = new Uint8Array([1]);
+      const scriptSignature = new Uint8Array([2]);
+      const leafHash = new Uint8Array(32).fill(3);
+      const scriptPubkey = new Uint8Array(32).fill(4);
+      const fixture = taprootSigningFixture([
+        [
+          0,
+          {
+            pubkey: scriptPubkey,
+            signature: scriptSignature,
+            tapleafHash: leafHash
+          }
+        ],
+        [0, { pubkey: new Uint8Array(32).fill(5), signature: keySignature }]
+      ]);
+
+      await signers.signInput({
+        psbt: fixture.psbt,
+        index: 0,
+        session: fixture.session
+      });
+
+      expect(fixture.updateInput).toHaveBeenNthCalledWith(1, 0, {
+        tapScriptSig: [
+          { pubkey: scriptPubkey, signature: scriptSignature, leafHash }
+        ]
+      });
+      expect(fixture.updateInput).toHaveBeenNthCalledWith(2, 0, {
+        tapKeySig: keySignature
+      });
+    });
+
+    test('rejects multiple Ledger Taproot key-path signatures', async () => {
+      const fixture = taprootSigningFixture([
+        [
+          0,
+          { pubkey: new Uint8Array(32).fill(1), signature: new Uint8Array([1]) }
+        ],
+        [
+          0,
+          { pubkey: new Uint8Array(32).fill(2), signature: new Uint8Array([2]) }
+        ]
+      ]);
+
+      await expect(
+        signers.signInput({
+          psbt: fixture.psbt,
+          index: 0,
+          session: fixture.session
+        })
+      ).rejects.toThrow('expected at most one tapKeySig for input 0');
+      expect(fixture.updateInput).not.toHaveBeenCalled();
+    });
+
+    test('rejects Ledger signatures for another input index', async () => {
+      const fixture = taprootSigningFixture([
+        [
+          1,
+          { pubkey: new Uint8Array(32).fill(1), signature: new Uint8Array([1]) }
+        ]
+      ]);
+
+      await expect(
+        signers.signInput({
+          psbt: fixture.psbt,
+          index: 0,
+          session: fixture.session
+        })
+      ).rejects.toThrow('no ledger signatures found for input 0');
+      expect(fixture.updateInput).not.toHaveBeenCalled();
     });
 
     test('skips unrelated inputs before requiring UTXO metadata', async () => {
