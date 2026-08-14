@@ -138,7 +138,7 @@ async function signInputWithLegacyOutput({
       : {}),
     ...(legacyOutput !== undefined ? { legacyOutput } : {})
   })) as LedgerPolicy | undefined;
-  if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
+  if (!policy) throw new Error(`Error: the Ledger cannot sign this PSBT input`);
 
   let ledgerSignatures;
   if (policy.name && policy.policyHmac) {
