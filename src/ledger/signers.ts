@@ -6,7 +6,11 @@ import { type ScureTransactionLike, type PsbtLike } from '../bitcoinLib';
 import type { OutputConstructor } from '../descriptors';
 import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
-import { policyForPsbtInput, samePolicy } from '../hww/policies';
+import {
+  isStandardPolicy,
+  policyForPsbtInput,
+  samePolicy
+} from '../hww/policies';
 import {
   getMasterFingerprint,
   getXpub,
@@ -15,16 +19,11 @@ import {
 import { fromHex } from 'uint8array-tools';
 import type {
   LedgerManager,
+  LedgerDefaultDescriptorTemplate,
   LedgerPolicy,
   LedgerPartialSignature,
   LedgerSession
 } from './types';
-
-type DefaultDescriptorTemplate =
-  | 'pkh(@0/**)'
-  | 'sh(wpkh(@0/**))'
-  | 'wpkh(@0/**)'
-  | 'tr(@0/**)';
 
 type PartialSignature = LedgerPartialSignature;
 
@@ -156,16 +155,25 @@ async function signInputWithLegacyOutput({
       walletPolicy,
       walletHmac
     );
-  } else {
+  } else if (
+    isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
+  )
     ledgerSignatures = await client.signPsbt(
       psbt.toBase64(),
       new DefaultWalletPolicy(
-        policy.descriptorTemplate as DefaultDescriptorTemplate,
+        policy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
         policy.keyRoots[0]!
       ),
       null
     );
-  }
+  else
+    throw new Error(
+      `Stored Ledger policy registration is incomplete; call registerPolicy again`
+    );
 
   addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
 }
@@ -269,16 +277,25 @@ async function signWithLegacyOutput({
         walletPolicy,
         walletHmac
       );
-    } else {
+    } else if (
+      isStandardPolicy({
+        descriptorTemplate: uniquePolicy.descriptorTemplate,
+        keyRoots: uniquePolicy.keyRoots,
+        network: session.network
+      })
+    )
       ledgerSignatures = await client.signPsbt(
         psbt.toBase64(),
         new DefaultWalletPolicy(
-          uniquePolicy.descriptorTemplate as DefaultDescriptorTemplate,
+          uniquePolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
           uniquePolicy.keyRoots[0]!
         ),
         null
       );
-    }
+    else
+      throw new Error(
+        `Stored Ledger policy registration is incomplete; call registerPolicy again`
+      );
 
     const signedIndexes = [
       ...new Set(ledgerSignatures.map(([index]) => index))

@@ -496,6 +496,66 @@ describeIfNotScure(
       ).rejects.toThrow('Could not retrieve scriptPubKey for input 0');
     });
 
+    test('signs standard policy inputs without a registration HMAC', async () => {
+      const ledgerMaster = makeMaster(257);
+      const accountNode = ledgerMaster.derivePath("m/84'/1'/0'");
+      const keyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/0'
+      });
+      const output = new Output({
+        descriptor: `wpkh(${keyAtIndex})`,
+        network: NETWORK
+      });
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      session.store.xpubs = {
+        "/84'/1'/0'": accountNode.neutered().toBase58()
+      };
+      const signPsbt = jest.fn(async () => [
+        [
+          0,
+          {
+            pubkey: ledgerMaster.derivePath("m/84'/1'/0'/0/0").publicKey,
+            signature: new Uint8Array([1])
+          }
+        ]
+      ]);
+      Object.assign(session.client, { signPsbt });
+      const updateInput = jest.fn();
+      const psbt = {
+        data: {
+          inputs: [
+            {
+              witnessUtxo: {
+                script: output.getScriptPubKey(),
+                value: 50_000n
+              },
+              bip32Derivation: [
+                {
+                  masterFingerprint: ledgerMaster.fingerprint,
+                  path: "m/84'/1'/0'/0/0",
+                  pubkey: ledgerMaster.derivePath("m/84'/1'/0'/0/0").publicKey
+                }
+              ]
+            }
+          ]
+        },
+        txInputs: [],
+        toBase64: () => 'standard-psbt',
+        updateInput
+      } as unknown as Psbt;
+
+      await signers.signInput({ psbt, index: 0, session });
+
+      expect(signPsbt).toHaveBeenCalledWith(
+        'standard-psbt',
+        expect.any(Object),
+        null
+      );
+      expect(updateInput).toHaveBeenCalledWith(0, expect.any(Object));
+    });
+
     test('signs registered policy inputs using policyHmac without requiring policyId', async () => {
       const ledgerMaster = makeMaster(261);
       const otherMaster = makeMaster(262);
@@ -599,6 +659,26 @@ describeIfNotScure(
       await signers.sign({ psbt, session });
       expect(signPsbt).toHaveBeenCalledTimes(1);
       expect(updateInput).toHaveBeenCalledWith(0, expect.any(Object));
+
+      const storedPolicy = session.store.policies?.[0] as {
+        name?: string;
+        policyHmac?: string;
+      };
+      delete storedPolicy.policyHmac;
+      signPsbt.mockClear();
+      await expect(
+        signers.signInput({ psbt, index: 0, session })
+      ).rejects.toThrow(
+        'Stored Ledger policy registration is incomplete; call registerPolicy again'
+      );
+      expect(signPsbt).not.toHaveBeenCalled();
+
+      storedPolicy.policyHmac = policyHmac;
+      delete storedPolicy.name;
+      await expect(signers.sign({ psbt, session })).rejects.toThrow(
+        'Stored Ledger policy registration is incomplete; call registerPolicy again'
+      );
+      expect(signPsbt).not.toHaveBeenCalled();
     });
 
     test.each(['/**', '/<0;1>/*'])(
@@ -627,6 +707,64 @@ describeIfNotScure(
         expect(session.store.policies?.[0]).toMatchObject({
           name: 'Generalized policy',
           descriptorTemplate: 'wsh(and_v(v:pk(@0/**),older(5)))'
+        });
+      }
+    );
+
+    test.each<{
+      label: string;
+      fields: ('name' | 'policyId' | 'policyHmac')[];
+      shouldRegister: boolean;
+    }>([
+      {
+        label: 'missing policy id',
+        fields: ['policyId'],
+        shouldRegister: false
+      },
+      {
+        label: 'missing policy HMAC',
+        fields: ['policyHmac'],
+        shouldRegister: true
+      },
+      { label: 'missing name', fields: ['name'], shouldRegister: true },
+      {
+        label: 'missing name and HMAC',
+        fields: ['name', 'policyHmac'],
+        shouldRegister: true
+      }
+    ])(
+      'handles a stored Ledger policy with $label',
+      async ({ fields, shouldRegister }) => {
+        const ledgerMaster = makeMaster(283);
+        const session = mockLedgerSession(ledgerMaster.fingerprint);
+        const registerWallet = jest.fn(async () => [
+          fromHex('aabbccdd'),
+          fromHex('00112233445566778899aabbccddeeff')
+        ]);
+        Object.assign(session.client, { registerWallet });
+        const ledgerKey = keyExpressionBIP32({
+          masterNode: ledgerMaster,
+          originPath: "/48'/1'/0'",
+          keyPath: '/0/*'
+        });
+        const descriptor = `wsh(and_v(v:pk(${ledgerKey}),older(5)))`;
+
+        await registerPolicy({ descriptor, session, name: 'Stored policy' });
+        const storedPolicy = session.store.policies?.[0] as {
+          name?: string;
+          policyId?: string;
+          policyHmac?: string;
+        };
+        for (const field of fields) delete storedPolicy[field];
+        registerWallet.mockClear();
+
+        await registerPolicy({ descriptor, session, name: 'Stored policy' });
+
+        expect(registerWallet).toHaveBeenCalledTimes(shouldRegister ? 1 : 0);
+        expect(session.store.policies).toHaveLength(1);
+        expect(session.store.policies?.[0]).toMatchObject({
+          name: 'Stored policy',
+          policyHmac: '00112233445566778899aabbccddeeff'
         });
       }
     );

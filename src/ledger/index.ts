@@ -49,6 +49,7 @@ import type { OutputConstructor } from '../descriptors';
 import {
   derivePolicyFromOutput,
   knownPolicyFromOutput,
+  samePolicy,
   standardPolicyFromOutput
 } from '../hww/policies';
 import {
@@ -65,6 +66,7 @@ import {
 } from './keyExpressions';
 import type {
   LedgerClient,
+  LedgerDefaultDescriptorTemplate,
   LedgerManager,
   LedgerPolicy,
   LedgerSession,
@@ -81,12 +83,6 @@ export {
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './client';
-
-type DefaultDescriptorTemplate =
-  | 'pkh(@0/**)'
-  | 'sh(wpkh(@0/**))'
-  | 'wpkh(@0/**)'
-  | 'tr(@0/**)';
 
 type AddressDisplayParams = {
   descriptor: string;
@@ -182,20 +178,30 @@ async function registerPolicyWithLegacyOutput({
     knownPolicies: store.policies
   })) as LedgerPolicy | null;
   if (policy) {
-    if (policy.name !== name)
+    if (policy.name && policy.name !== name)
       throw new Error(
         `Error: policy was already registered with a different name: ${policy.name}`
       );
-  } else {
-    const walletPolicy = new WalletPolicy(name, descriptorTemplate, keyRoots);
-    const [policyId, policyHmac] = await client.registerWallet(walletPolicy);
-    store.policies.push({
-      name,
-      descriptorTemplate,
-      keyRoots,
-      policyId: toHex(policyId),
-      policyHmac: toHex(policyHmac)
-    });
+    if (policy.name === name && policy.policyHmac) return store;
+  }
+
+  const walletPolicy = new WalletPolicy(name, descriptorTemplate, keyRoots);
+  const [policyId, policyHmac] = await client.registerWallet(walletPolicy);
+  const registeredPolicy: LedgerPolicy = {
+    name,
+    descriptorTemplate,
+    keyRoots,
+    policyId: toHex(policyId),
+    policyHmac: toHex(policyHmac)
+  };
+  if (!policy) store.policies.push(registeredPolicy);
+  else {
+    const policyIndex = store.policies.findIndex(storedPolicy =>
+      samePolicy(storedPolicy, policy)
+    );
+    if (policyIndex === -1)
+      throw new Error(`Error: stored Ledger policy could not be replaced`);
+    store.policies[policyIndex] = registeredPolicy;
   }
   return store;
 }
@@ -277,7 +283,7 @@ export async function displayAddress({
   if (standardPolicy) {
     return ledgerClient.getWalletAddress(
       new DefaultWalletPolicy(
-        standardPolicy.descriptorTemplate as DefaultDescriptorTemplate,
+        standardPolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
         standardPolicy.keyRoots[0]!
       ),
       null,

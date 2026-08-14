@@ -41,7 +41,7 @@ export type HWWPolicy = {
   keyRoots: string[];
 };
 
-function isStandardPolicy({
+export function isStandardPolicy({
   descriptorTemplate,
   keyRoots,
   network

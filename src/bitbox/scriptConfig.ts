@@ -3,7 +3,7 @@
 
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { parseKeyRoot } from '../hww/helpers';
-import { parseP2wshSortedmultiPolicy } from '../hww/policies';
+import { isStandardPolicy, parseP2wshSortedmultiPolicy } from '../hww/policies';
 import type {
   BitBoxKeyOriginInfo,
   BitBoxMultisigScriptType,
@@ -169,11 +169,13 @@ export function scriptConfigFromPolicy({
     return scriptConfigFromNativeMultisigDetails(nativeMultisigDetails);
 
   // Now detect standard scripts since BitBox also requires special treatment.
+  // pkh is included even though BitBox does not support it. simpleType throws.
   if (
-    // pkh is included even though BitBox does not support it. simpleType throws.
-    ['pkh(@0/**)', 'sh(wpkh(@0/**))', 'wpkh(@0/**)', 'tr(@0/**)'].includes(
-      policy.descriptorTemplate
-    )
+    isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
   ) {
     return {
       simpleType: simpleType({
