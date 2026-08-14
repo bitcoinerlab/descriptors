@@ -426,7 +426,7 @@ describeIfNotScure(
       ]);
     });
 
-    test('signs registered policies using policyHmac without requiring policyId', async () => {
+    test('signs registered policy inputs using policyHmac without requiring policyId', async () => {
       const ledgerMaster = makeMaster(261);
       const otherMaster = makeMaster(262);
       const ledgerKeyAtIndex = keyExpressionBIP32({
@@ -487,7 +487,7 @@ describeIfNotScure(
         updateInput
       } as unknown as Psbt;
 
-      await signers.sign({ psbt, session });
+      await signers.signInput({ psbt, index: 0, session });
 
       expect(session.client.signPsbt).toHaveBeenCalledWith(
         'psbt-base64',

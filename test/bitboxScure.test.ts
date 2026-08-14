@@ -63,7 +63,7 @@ test('merges BitBox signatures into scure transactions', async () => {
   });
   output.updatePsbtAsOutput({ psbt, value: 19_000n });
 
-  await signers.sign({ psbt, session });
+  await signers.signInput({ psbt, index: 0, session });
 
   expect(psbt.getInput(0).partialSig).toHaveLength(1);
   finalize({ psbt });

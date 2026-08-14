@@ -871,6 +871,55 @@ describe('BitBox helpers', () => {
     expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
   });
 
+  test('signs single inputs through the whole-PSBT BitBox API', async () => {
+    const bitboxMaster = makeMaster(23);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const descriptor = await scriptExpressions.wpkh({
+      session: bitboxSession,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+    const output = new Output({ descriptor, index: 0, network: NETWORK });
+    const fundingTx = new Transaction();
+    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
+    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 20_000n);
+    const psbt = new Psbt({ network: NETWORK });
+    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+    const combine = jest.spyOn(psbt, 'combine');
+    const psbtBase64 = psbt.toBase64();
+
+    await expect(
+      signers.signInput({ psbt, index: 0, session: bitboxSession })
+    ).resolves.toBe(psbtBase64);
+    expect(client.signed?.psbt).toBe(psbtBase64);
+    expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
+  });
+
+  test('rejects unsupported BitBox per-input signing requests', async () => {
+    const bitboxMaster = makeMaster(24);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const emptyPsbt = new Psbt({ network: NETWORK });
+
+    await expect(
+      signers.signInput({ psbt: emptyPsbt, index: 0, session: bitboxSession })
+    ).rejects.toThrow('input 0 not available');
+
+    const multiInputPsbt = new Psbt({ network: NETWORK });
+    multiInputPsbt.addInput({ hash: Buffer.alloc(32, 1), index: 0 });
+    multiInputPsbt.addInput({ hash: Buffer.alloc(32, 2), index: 0 });
+    await expect(
+      signers.signInput({
+        psbt: multiInputPsbt,
+        index: 0,
+        session: bitboxSession
+      })
+    ).rejects.toThrow('signInput is only supported for single-input PSBTs');
+    expect(client.signed).toBeUndefined();
+  });
+
   test('signs messages through bitbox-api btcSignMessage', async () => {
     const bitboxMaster = makeMaster(6);
     const client = fakeClientFor(bitboxMaster);
