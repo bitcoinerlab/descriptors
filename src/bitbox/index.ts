@@ -111,19 +111,21 @@ export async function registerPolicy({
     getMasterFingerprint: readMasterFingerprint,
     knownPolicies: store.policies
   });
+  let policy: BitBoxPolicy;
   if (existingPolicy) {
     if (existingPolicy.name !== name)
       throw new Error(
         `Error: policy was already registered with a different name: ${existingPolicy.name}`
       );
-    return store;
+    policy = existingPolicy;
+  } else {
+    policy = {
+      name,
+      descriptorTemplate: result.descriptorTemplate,
+      keyRoots: result.keyRoots
+    };
   }
 
-  const policy: BitBoxPolicy = {
-    name,
-    descriptorTemplate: result.descriptorTemplate,
-    keyRoots: result.keyRoots
-  };
   const { scriptConfig, accountKeypath } = scriptConfigForRegistration({
     policy,
     session
@@ -161,7 +163,7 @@ export async function registerPolicy({
       if (!registeredAfterDuplicate) throw error;
     }
   }
-  store.policies.push(policy);
+  if (!existingPolicy) store.policies.push(policy);
   return store;
 }
 

@@ -147,7 +147,7 @@ function fakeClientFor(master: BIP32InterfaceLike) {
         .neutered()
         .toBase58();
     },
-    btcIsScriptConfigRegistered: async () => false,
+    btcIsScriptConfigRegistered: async (): Promise<boolean> => false,
     btcRegisterScriptConfig: async (
       apiNetwork: string,
       scriptConfig: BitBoxScriptConfig,
@@ -441,6 +441,62 @@ describe('BitBox helpers', () => {
       xpubType: 'xpub',
       display: false
     });
+  });
+
+  test('rechecks cached policies and restores missing device registration', async () => {
+    const bitboxMaster = makeMaster(21);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const bitboxKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+    const descriptor = `wsh(and_v(v:pk(${bitboxKey}),older(5)))`;
+    const isRegistered = jest.spyOn(client, 'btcIsScriptConfigRegistered');
+    const register = jest.spyOn(client, 'btcRegisterScriptConfig');
+
+    await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Cached policy'
+    });
+    expect(bitboxSession.store.policies).toHaveLength(1);
+
+    isRegistered.mockResolvedValue(true);
+    isRegistered.mockClear();
+    register.mockClear();
+    await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Cached policy'
+    });
+    expect(isRegistered).toHaveBeenCalledTimes(1);
+    expect(register).not.toHaveBeenCalled();
+    expect(bitboxSession.store.policies).toHaveLength(1);
+
+    isRegistered.mockResolvedValue(false);
+    isRegistered.mockClear();
+    await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Cached policy'
+    });
+    expect(isRegistered).toHaveBeenCalledTimes(1);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(bitboxSession.store.policies).toHaveLength(1);
+
+    isRegistered.mockClear();
+    await expect(
+      registerPolicy({
+        descriptor,
+        session: bitboxSession,
+        name: 'Renamed policy'
+      })
+    ).rejects.toThrow(
+      'policy was already registered with a different name: Cached policy'
+    );
+    expect(isRegistered).not.toHaveBeenCalled();
   });
 
   test('displays standard single-sig addresses', async () => {
