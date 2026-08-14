@@ -103,6 +103,26 @@ function mockLedgerTransport() {
   return { send: jest.fn(), close: jest.fn() };
 }
 
+function ledgerAppTransport({
+  name = 'Bitcoin',
+  version
+}: {
+  name?: string;
+  version: string;
+}) {
+  const nameBytes = fromUtf8(name);
+  const versionBytes = fromUtf8(version);
+  const response = Uint8Array.from([
+    1,
+    nameBytes.length,
+    ...nameBytes,
+    versionBytes.length,
+    ...versionBytes,
+    0
+  ]);
+  return { send: jest.fn(async () => response) };
+}
+
 function keyRootWithOrigin(masterNode: BIP32InterfaceLike): string {
   return `[${toHex(masterNode.fingerprint)}/48'/1'/0']${keyRootNoOrigin(
     masterNode
@@ -779,24 +799,85 @@ describeIfNotScure(
     });
 
     test('reads Ledger app metadata from a Uint8Array transport response', async () => {
-      const name = fromUtf8('Bitcoin');
-      const version = fromUtf8('2.4.0');
-      const response = Uint8Array.from([
-        1,
-        name.length,
-        ...name,
-        version.length,
-        ...version,
-        0
-      ]);
-
       await expect(
         assertLedgerApp({
-          transport: { send: jest.fn(async () => response) },
+          transport: ledgerAppTransport({ version: '2.4.0' }),
           name: 'Bitcoin',
           minVersion: '2.1.0'
         })
       ).resolves.toBeUndefined();
+    });
+
+    test('compares validated Ledger app versions', async () => {
+      await expect(
+        assertLedgerApp({
+          transport: ledgerAppTransport({ version: '2.1.0' }),
+          name: 'Bitcoin',
+          minVersion: '2.1.0'
+        })
+      ).resolves.toBeUndefined();
+      await expect(
+        assertLedgerApp({
+          transport: ledgerAppTransport({ version: '2.0.9' }),
+          name: 'Bitcoin',
+          minVersion: '2.1.0'
+        })
+      ).rejects.toThrow('please upgrade Bitcoin to version 2.1.0');
+    });
+
+    test.each([
+      '2',
+      '2.1',
+      '2.1.0.1',
+      '2..0',
+      'foo.bar.baz',
+      '01.2.3',
+      '-1.2.3',
+      '1e2.0.0',
+      '9007199254740992.0.0'
+    ])('rejects malformed minimum Ledger app version %s', async minVersion => {
+      await expect(
+        assertLedgerApp({
+          transport: ledgerAppTransport({ version: '2.4.0' }),
+          name: 'Bitcoin',
+          minVersion
+        })
+      ).rejects.toThrow(
+        'Pass a minVersion using semver notation: major.minor.patch'
+      );
+    });
+
+    test.each([
+      '2',
+      '2.1',
+      '2.1.0.1',
+      '2..0',
+      'foo.bar.baz',
+      '01.2.3',
+      '-1.2.3',
+      '1e2.0.0',
+      '9007199254740992.0.0'
+    ])('rejects malformed Ledger app version %s', async version => {
+      await expect(
+        assertLedgerApp({
+          transport: ledgerAppTransport({ version }),
+          name: 'Bitcoin',
+          minVersion: '2.1.0'
+        })
+      ).rejects.toThrow(`Ledger returned an invalid app version: ${version}`);
+    });
+
+    test('checks the open Ledger app before validating versions', async () => {
+      await expect(
+        assertLedgerApp({
+          transport: ledgerAppTransport({
+            name: 'Ethereum',
+            version: 'invalid'
+          }),
+          name: 'Bitcoin',
+          minVersion: 'invalid'
+        })
+      ).rejects.toThrow('Open the Bitcoin app and try again');
     });
 
     test('rejects unsupported Ledger message-signing descriptors before calling the device', async () => {

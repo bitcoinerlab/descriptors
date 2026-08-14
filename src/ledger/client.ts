@@ -93,6 +93,17 @@ async function ledgerAppInfo(transport: any) {
   return { name, version, flags, format };
 }
 
+function parseVersionTriplet(version: string): [number, number, number] | null {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
+  if (!match) return null;
+  const triplet: [number, number, number] = [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3])
+  ];
+  return triplet.every(Number.isSafeInteger) ? triplet : null;
+}
+
 /**
  * Verifies if the Ledger device is connected, if the required Bitcoin App is opened,
  * and if the version of the app meets the minimum requirements.
@@ -125,27 +136,23 @@ export async function assertLedgerApp({
   const { name: openName, version } = await ledgerAppInfo(transport);
   if (openName !== name) {
     throw new Error(`Open the ${name} app and try again`);
-  } else {
-    const [mVmajor, mVminor, mVpatch] = minVersion.split('.').map(Number);
-    const [major, minor, patch] = version.split('.').map(Number);
-    if (
-      mVmajor === undefined ||
-      mVminor === undefined ||
-      mVpatch === undefined
-    ) {
-      throw new Error(
-        `Pass a minVersion using semver notation: major.minor.patch`
-      );
-    }
-    if (major === undefined || minor === undefined || patch === undefined)
-      throw new Error(`Ledger returned an invalid app version: ${version}`);
-    if (
-      major < mVmajor ||
-      (major === mVmajor && minor < mVminor) ||
-      (major === mVmajor && minor === mVminor && patch < mVpatch)
-    )
-      throw new Error(`Error: please upgrade ${name} to version ${minVersion}`);
   }
+  const minimum = parseVersionTriplet(minVersion);
+  if (!minimum)
+    throw new Error(
+      `Pass a minVersion using semver notation: major.minor.patch`
+    );
+  const current = parseVersionTriplet(version);
+  if (!current)
+    throw new Error(`Ledger returned an invalid app version: ${version}`);
+  const [mVmajor, mVminor, mVpatch] = minimum;
+  const [major, minor, patch] = current;
+  if (
+    major < mVmajor ||
+    (major === mVmajor && minor < mVminor) ||
+    (major === mVmajor && minor === mVminor && patch < mVpatch)
+  )
+    throw new Error(`Error: please upgrade ${name} to version ${minVersion}`);
 }
 
 export async function getMasterFingerprint({
