@@ -211,6 +211,24 @@ function fakeClientFor(master: BIP32InterfaceLike) {
   return client;
 }
 
+function addDescriptorInput({
+  psbt,
+  descriptor,
+  index,
+  seed
+}: {
+  psbt: Psbt;
+  descriptor: string;
+  index: number;
+  seed: number;
+}) {
+  const output = new Output({ descriptor, index, network: NETWORK });
+  const fundingTx = new Transaction();
+  fundingTx.addInput(Buffer.alloc(32, seed), 0xffffffff);
+  fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 20_000n);
+  output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+}
+
 describe('BitBox helpers', () => {
   test('connects through an injected single-mode driver', async () => {
     const bitboxMaster = makeMaster(15);
@@ -899,6 +917,136 @@ describe('BitBox helpers', () => {
       formatUnit: 'default'
     });
     expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
+  });
+
+  test('uses one forced config for standard and repeated policy inputs', async () => {
+    const bitboxMaster = makeMaster(26);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const standardDescriptor = await scriptExpressions.wpkh({
+      session: bitboxSession,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+    const policyKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+    const policyDescriptor = `wsh(and_v(v:pk(${policyKey}),older(5)))`;
+    await registerPolicy({
+      descriptor: policyDescriptor,
+      session: bitboxSession,
+      name: 'Repeated policy'
+    });
+    const psbt = new Psbt({ network: NETWORK });
+    addDescriptorInput({
+      psbt,
+      descriptor: standardDescriptor,
+      index: 0,
+      seed: 1
+    });
+    addDescriptorInput({
+      psbt,
+      descriptor: policyDescriptor,
+      index: 0,
+      seed: 2
+    });
+    addDescriptorInput({
+      psbt,
+      descriptor: policyDescriptor,
+      index: 1,
+      seed: 3
+    });
+
+    await signers.sign({ psbt, session: bitboxSession });
+
+    expect(client.signed?.forceScriptConfig).toMatchObject({
+      scriptConfig: {
+        policy: { policy: 'wsh(and_v(v:pk(@0/**),older(5)))' }
+      },
+      keypath: "m/48'/1'/0'/2'"
+    });
+  });
+
+  test('rejects two different generic BitBox policies before signing', async () => {
+    const bitboxMaster = makeMaster(27);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const policyKey = await keyExpression({
+      session: bitboxSession,
+      originPath: "/48'/1'/0'/2'",
+      keyPath: '/0/*'
+    });
+    const policyA = `wsh(and_v(v:pk(${policyKey}),older(5)))`;
+    const policyB = `wsh(and_v(v:pk(${policyKey}),older(6)))`;
+    await registerPolicy({
+      descriptor: policyA,
+      session: bitboxSession,
+      name: 'Policy A'
+    });
+    await registerPolicy({
+      descriptor: policyB,
+      session: bitboxSession,
+      name: 'Policy B'
+    });
+    const psbt = new Psbt({ network: NETWORK });
+    addDescriptorInput({ psbt, descriptor: policyA, index: 0, seed: 4 });
+    addDescriptorInput({ psbt, descriptor: policyB, index: 0, seed: 5 });
+
+    await expect(
+      signers.sign({ psbt, session: bitboxSession })
+    ).rejects.toThrow('accepts only one forced script config per PSBT');
+    expect(client.signed).toBeUndefined();
+  });
+
+  test('rejects native multisig mixed with a generic BitBox policy', async () => {
+    const bitboxMaster = makeMaster(28);
+    const otherMaster = makeMaster(29);
+    const client = fakeClientFor(bitboxMaster);
+    const bitboxSession = sessionFor(bitboxMaster, client);
+    const originPath = "/48'/1'/0'/2'";
+    const bitboxKey = await keyExpression({
+      session: bitboxSession,
+      originPath,
+      keyPath: '/0/*'
+    });
+    const otherKey = keyExpressionBIP32({
+      masterNode: otherMaster,
+      originPath,
+      keyPath: '/0/*'
+    });
+    const multisigDescriptor = `wsh(sortedmulti(1,${bitboxKey},${otherKey}))`;
+    const policyDescriptor = `wsh(and_v(v:pk(${bitboxKey}),older(5)))`;
+    await registerPolicy({
+      descriptor: multisigDescriptor,
+      session: bitboxSession,
+      name: 'Native multisig'
+    });
+    await registerPolicy({
+      descriptor: policyDescriptor,
+      session: bitboxSession,
+      name: 'Generic policy'
+    });
+    const psbt = new Psbt({ network: NETWORK });
+    addDescriptorInput({
+      psbt,
+      descriptor: multisigDescriptor,
+      index: 0,
+      seed: 6
+    });
+    addDescriptorInput({
+      psbt,
+      descriptor: policyDescriptor,
+      index: 0,
+      seed: 7
+    });
+
+    await expect(
+      signers.sign({ psbt, session: bitboxSession })
+    ).rejects.toThrow('accepts only one forced script config per PSBT');
+    expect(client.signed).toBeUndefined();
   });
 
   test('signs single inputs through the whole-PSBT BitBox API', async () => {
