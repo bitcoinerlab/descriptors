@@ -22,6 +22,15 @@ jest.mock(
   () => jest.requireActual('../dist/ledger'),
   { virtual: true }
 );
+jest.mock('@ledgerhq/ledger-bitcoin', () => ({
+  WalletPolicy: class {
+    constructor(
+      readonly name: string,
+      readonly descriptorTemplate: string,
+      readonly keys: readonly string[]
+    ) {}
+  }
+}));
 
 const { BIP32, DescriptorsFactory, ledger, networks } = jest.requireActual<
   typeof import('../packages/descriptors/dist')
