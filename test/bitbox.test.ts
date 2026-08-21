@@ -544,35 +544,52 @@ describe('BitBox helpers', () => {
     const isRegistered = jest.spyOn(client, 'btcIsScriptConfigRegistered');
     const register = jest.spyOn(client, 'btcRegisterScriptConfig');
 
-    await registerPolicy({
+    const initialRegistration = await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Cached policy'
     });
+    expect(initialRegistration).toBe(false);
     expect(bitboxSession.store.policies).toHaveLength(1);
 
     isRegistered.mockResolvedValue(true);
     isRegistered.mockClear();
     register.mockClear();
-    await registerPolicy({
+    const cachedRegistration = await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Cached policy'
     });
+    expect(cachedRegistration).toBe(true);
     expect(isRegistered).toHaveBeenCalledTimes(1);
     expect(register).not.toHaveBeenCalled();
     expect(bitboxSession.store.policies).toHaveLength(1);
 
     isRegistered.mockResolvedValue(false);
     isRegistered.mockClear();
-    await registerPolicy({
+    const restoredRegistration = await registerPolicy({
       descriptor,
       session: bitboxSession,
       name: 'Cached policy'
     });
+    expect(restoredRegistration).toBe(false);
     expect(isRegistered).toHaveBeenCalledTimes(1);
     expect(register).toHaveBeenCalledTimes(1);
     expect(bitboxSession.store.policies).toHaveLength(1);
+
+    isRegistered.mockReset();
+    isRegistered.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    register.mockClear();
+    register.mockRejectedValueOnce({ code: 'bitbox-duplicate' });
+    const racedRegistration = await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Cached policy'
+    });
+    expect(racedRegistration).toBe(false);
+    expect(isRegistered).toHaveBeenCalledTimes(2);
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(bitboxSession.store).not.toHaveProperty('wasPolicyStoredOnDevice');
 
     isRegistered.mockClear();
     await expect(
@@ -597,6 +614,17 @@ describe('BitBox helpers', () => {
       change: 0,
       index: '*'
     });
+    const isRegistered = jest.spyOn(client, 'btcIsScriptConfigRegistered');
+    const register = jest.spyOn(client, 'btcRegisterScriptConfig');
+
+    const registration = await registerPolicy({
+      descriptor,
+      session: bitboxSession,
+      name: 'Standard policy'
+    });
+    expect(registration).toBeUndefined();
+    expect(isRegistered).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
 
     await expect(
       displayAddress({ descriptor, session: bitboxSession, index: 7 })

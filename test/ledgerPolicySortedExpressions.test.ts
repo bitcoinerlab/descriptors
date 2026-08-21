@@ -888,6 +888,57 @@ describeIfNotScure(
       }
     );
 
+    test('returns undefined device storage metadata for a standard policy', async () => {
+      const ledgerMaster = makeMaster(287);
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      const registerWallet = jest.fn();
+      Object.assign(session.client, { registerWallet });
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/*'
+      });
+
+      const registration = await registerPolicy({
+        descriptor: `wpkh(${ledgerKey})`,
+        session,
+        name: 'Standard policy'
+      });
+
+      expect(registration).toBeUndefined();
+      expect(registerWallet).not.toHaveBeenCalled();
+    });
+
+    test('returns undefined device storage metadata for new and cached policies', async () => {
+      const ledgerMaster = makeMaster(288);
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      const registerWallet = jest.fn(async () => [
+        fromHex('aabbccdd'),
+        fromHex('00112233445566778899aabbccddeeff')
+      ]);
+      Object.assign(session.client, { registerWallet });
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const params = {
+        descriptor: `wsh(and_v(v:pk(${ledgerKey}),older(5)))`,
+        session,
+        name: 'Stored policy'
+      };
+
+      const newRegistration = await registerPolicy(params);
+      expect(newRegistration).toBeUndefined();
+      expect(registerWallet).toHaveBeenCalledTimes(1);
+
+      registerWallet.mockClear();
+      const cachedRegistration = await registerPolicy(params);
+      expect(cachedRegistration).toBeUndefined();
+      expect(registerWallet).not.toHaveBeenCalled();
+      expect(session.store).not.toHaveProperty('wasPolicyStoredOnDevice');
+    });
+
     test.each<{
       label: string;
       fields: ('name' | 'policyId' | 'policyHmac')[];
@@ -972,11 +1023,13 @@ describeIfNotScure(
         keyPath: '/0/*'
       });
 
-      await registerLedgerWallet({
-        descriptor: `wsh(and_v(v:pk(${ledgerKey}),older(5)))`,
-        ledgerManager,
-        policyName: 'Legacy output policy'
-      });
+      await expect(
+        registerLedgerWallet({
+          descriptor: `wsh(and_v(v:pk(${ledgerKey}),older(5)))`,
+          ledgerManager,
+          policyName: 'Legacy output policy'
+        })
+      ).resolves.toBeUndefined();
 
       expect(outputConstructions).toBe(1);
       expect(registerWallet).toHaveBeenCalledTimes(1);

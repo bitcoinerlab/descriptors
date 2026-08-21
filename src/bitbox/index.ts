@@ -67,6 +67,10 @@ type MessageSigningParams = AddressDisplayParams & {
  * index `0`. It also uses branch `0` when the branch is the receive/change range
  * `/**`. A fixed branch stays unchanged. The sample is used to parse and
  * validate the descriptor; it is not the policy sent to the device.
+ *
+ * Returns whether BitBox reported the policy as already stored before this call
+ * attempted registration. Standard policies return `undefined` because they do
+ * not require registration.
  */
 export async function registerPolicy({
   descriptor,
@@ -77,7 +81,7 @@ export async function registerPolicy({
   session: BitBoxSession;
   /** Name shown by the device for this policy. */
   name: string;
-}): Promise<BitBoxStore> {
+}): Promise<boolean | undefined> {
   const { client, store, network } = session;
   // Parse the policy through one deterministic output. The policy derived
   // below is generalized back to /** and is not limited to that sample.
@@ -96,7 +100,7 @@ export async function registerPolicy({
       descriptorTemplate: standardPolicy.descriptorTemplate,
       session
     });
-    return store;
+    return undefined;
   }
 
   const result = await derivePolicyFromOutput({
@@ -133,12 +137,12 @@ export async function registerPolicy({
   // BitBox can check whether a multisig/policy config is already approved, but
   // it cannot enumerate configs back to the app. The local policy list below is
   // still needed even when this returns true.
-  const registered = await client.btcIsScriptConfigRegistered(
+  const wasPolicyStoredOnDevice = await client.btcIsScriptConfigRegistered(
     apiNetwork(session),
     scriptConfig,
     accountKeypath
   );
-  if (!registered) {
+  if (!wasPolicyStoredOnDevice) {
     try {
       await client.btcRegisterScriptConfig(
         apiNetwork(session),
@@ -164,7 +168,7 @@ export async function registerPolicy({
     }
   }
   if (!existingPolicy) store.policies.push(policy);
-  return store;
+  return wasPolicyStoredOnDevice;
 }
 
 async function displayStandardAddress({

@@ -91,7 +91,7 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `getXpub({ session, originPath })` | Read and cache an account xpub. |
 | `keyExpression(...)` | Build a descriptor key expression from device keys. |
 | `scriptExpressions.*(...)` | Build standard account descriptors. |
-| `registerPolicy(...)` | Register or locally remember non-standard policies. |
+| `registerPolicy(...)` | Register or locally remember a policy and report whether BitBox already stored it. |
 | `displayAddress(...)` | Ask the device to display an address for verification. |
 | `signers.sign(...)` | Ask the device to sign a PSBT. |
 | `signers.signInput(...)` | Convenience wrapper for single-input signing flows. |
@@ -538,7 +538,7 @@ const key = await keyExpression({
 
 const descriptor = `wsh(and_v(v:pk(${key}),older(10)))`;
 
-await registerPolicy({
+const wasPolicyStoredOnDevice = await registerPolicy({
   session,
   descriptor,
   name: 'CSV Savings'
@@ -548,10 +548,17 @@ await registerPolicy({
 Use `keyExpression(...)` when the standard helpers are not enough. It returns a
 descriptor key expression with origin information and an xpub from the device.
 
-Many hardware wallets need to register non-standard policies before they
-can display addresses or sign. `registerPolicy(...)` stores what the device
-returns in the session store. If registration is not needed, or the policy is
-already known, the helper skips the extra device step when possible.
+Many hardware wallets need to register non-standard policies before they can
+display addresses or sign. `registerPolicy(...)` mutates `session.store` as
+usual and returns only transient operation metadata; it does not add that
+metadata to the store.
+
+For a non-standard BitBox policy, `wasPolicyStoredOnDevice` is `true` when the
+device reported that the policy was already stored, or `false` when it reported
+that registration was needed and this call completed it. Standard policies
+return `undefined`. Ledger always returns `undefined` because its reusable
+policy ID/HMAC is an app-owned receipt, not a query of persistent device state;
+a locally cached Ledger receipt is not reported as `true`.
 
 ## Sign And Finalize
 
@@ -633,7 +640,9 @@ script config for future address display and signing.
 This means `registerPolicy(...)` is safe to call again after reconnecting. If the
 BitBox already knows the script config, the helper repopulates app-side store
 without asking for a duplicate on-device registration. If the BitBox does not
-know it, the user approves it on the device.
+know it, the user approves it on the device. The returned
+`wasPolicyStoredOnDevice` value reports that initial query as `true` or `false`,
+including when a duplicate-registration race requires a successful recheck.
 
 BitBox has three Bitcoin script-config paths:
 

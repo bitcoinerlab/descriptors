@@ -115,6 +115,9 @@ type MessageSigningParams = AddressDisplayParams & {
  * `/**`. A fixed branch stays unchanged. The sample is used to parse and
  * validate the descriptor; it is not the policy sent to the device.
  *
+ * Returns `undefined` because Ledger provides an app-owned registration
+ * receipt, not a query for persistent policy storage on the device.
+ *
  */
 export async function registerPolicy({
   descriptor,
@@ -125,7 +128,7 @@ export async function registerPolicy({
   session: LedgerSession;
   /** Name shown by the device for this policy. */
   name: string;
-}): Promise<LedgerStore> {
+}): Promise<boolean | undefined> {
   return registerPolicyWithLegacyOutput({ descriptor, session, name });
 }
 
@@ -147,7 +150,7 @@ async function registerPolicyWithLegacyOutput({
   name: string;
   /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
   legacyOutput?: OutputConstructor;
-}): Promise<LedgerStore> {
+}): Promise<boolean | undefined> {
   const { client, store, network } = session;
   const { WalletPolicy } = session.bitcoinApi;
   // Parse the policy through one deterministic output. The policy derived
@@ -164,7 +167,7 @@ async function registerPolicyWithLegacyOutput({
       getMasterFingerprint: readMasterFingerprint
     })
   )
-    return store;
+    return undefined;
   const result = await derivePolicyFromOutput({
     output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
@@ -182,7 +185,7 @@ async function registerPolicyWithLegacyOutput({
       throw new Error(
         `Error: policy was already registered with a different name: ${policy.name}`
       );
-    if (policy.name === name && policy.policyHmac) return store;
+    if (policy.name === name && policy.policyHmac) return undefined;
   }
 
   const walletPolicy = new WalletPolicy(name, descriptorTemplate, keyRoots);
@@ -203,7 +206,7 @@ async function registerPolicyWithLegacyOutput({
       throw new Error(`Error: stored Ledger policy could not be replaced`);
     store.policies[policyIndex] = registeredPolicy;
   }
-  return store;
+  return undefined;
 }
 
 /**
