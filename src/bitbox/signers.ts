@@ -57,7 +57,10 @@ async function forcedScriptConfigForPsbt({
         ? { knownPolicies: session.store.policies }
         : {})
     });
-    if (!policy) continue;
+    if (!policy)
+      throw new Error(
+        `BitBox cannot sign input ${index}: every PSBT input must include a key owned by the connected BitBox`
+      );
 
     assertPolicyCanDerive(policy);
     const scriptConfig = scriptConfigFromPolicy({ policy, session });

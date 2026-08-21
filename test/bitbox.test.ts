@@ -869,7 +869,7 @@ describe('BitBox helpers', () => {
     expect(client.registered).toBeUndefined();
   });
 
-  test('signs PSBTs containing unrelated inputs', async () => {
+  test('rejects PSBTs containing inputs unrelated to the BitBox', async () => {
     const bitboxMaster = makeMaster(4);
     const otherMaster = makeMaster(25);
     const client = fakeClientFor(bitboxMaster);
@@ -880,43 +880,31 @@ describe('BitBox helpers', () => {
       change: 0,
       index: '*'
     });
-    const output = new Output({ descriptor, index: 0, network: NETWORK });
-    const fundingTx = new Transaction();
-    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
-    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 50_000n);
+    const otherKey = keyExpressionBIP32({
+      masterNode: otherMaster,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/*'
+    });
     const psbt = new Psbt({ network: NETWORK });
-    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
-    psbt.addInput({
-      hash: Buffer.alloc(32, 2),
+    addDescriptorInput({
+      psbt,
+      descriptor,
       index: 0,
-      witnessUtxo: { script: Buffer.from([0x51]), value: 40_000n }
+      seed: 1
     });
-    psbt.addInput({
-      hash: Buffer.alloc(32, 3),
+    addDescriptorInput({
+      psbt,
+      descriptor: `wpkh(${otherKey})`,
       index: 0,
-      witnessUtxo: { script: Buffer.from([0x51]), value: 30_000n },
-      bip32Derivation: [
-        {
-          masterFingerprint: otherMaster.fingerprint,
-          path: "m/84'/1'/0'/0/0",
-          pubkey: otherMaster.derivePath("m/84'/1'/0'/0/0").publicKey
-        }
-      ]
+      seed: 2
     });
-    psbt.addInput({ hash: Buffer.alloc(32, 4), index: 0 });
-    const combine = jest.spyOn(psbt, 'combine');
-    const psbtBase64 = psbt.toBase64();
 
-    await expect(signers.sign({ psbt, session: bitboxSession })).resolves.toBe(
-      psbtBase64
+    await expect(
+      signers.sign({ psbt, session: bitboxSession })
+    ).rejects.toThrow(
+      'BitBox cannot sign input 1: every PSBT input must include a key owned by the connected BitBox'
     );
-    expect(client.signed).toEqual({
-      apiNetwork: 'tbtc',
-      psbt: psbtBase64,
-      forceScriptConfig: undefined,
-      formatUnit: 'default'
-    });
-    expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
+    expect(client.signed).toBeUndefined();
   });
 
   test('uses one forced config for standard and repeated policy inputs', async () => {
