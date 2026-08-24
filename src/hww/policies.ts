@@ -21,6 +21,7 @@ import { coinTypeFromNetwork } from '../networkUtils';
 import { reOriginPath } from '../re';
 import type { ExpansionMap, KeyInfo } from '../types';
 import type { TapTreeInfoNode } from '../tapTree';
+import { parseKeyRoot } from './helpers';
 
 /**
  * Descriptor policy used by shared hardware-wallet helpers.
@@ -42,7 +43,9 @@ export type HWWPolicy = {
 };
 
 export type DerivedHWWPolicy = HWWPolicy & {
+  /** Concrete receive or change branch. */
   change: number;
+  /** Concrete address index. */
   index: number;
 };
 
@@ -149,9 +152,11 @@ export async function policyForPsbtInput({
 
   for (const keyDerivation of keyDerivations) {
     if (compare(keyDerivation.masterFingerprint, masterFingerprint) === 0) {
-      const match = keyDerivation.path.match(/m((\/\d+['hH])*)(\/\d+\/\d+)?/);
-      const originPath = match ? match[1] : undefined;
-      const keyPath = match ? match[3] : undefined;
+      const match = keyDerivation.path.match(
+        /^m((?:\/\d+(?:['hH])?)+)(\/\d+\/\d+)$/
+      );
+      const originPath = match?.[1]?.replace(/[hH]/g, "'");
+      const keyPath = match ? match[2] : undefined;
 
       if (originPath && keyPath) {
         const [, strChange, strIndex] = keyPath.split('/');
@@ -179,6 +184,16 @@ export async function policyForPsbtInput({
         if (standardPolicy) policies.push(standardPolicy);
 
         for (const policy of policies) {
+          const hasMatchingDeviceOrigin = policy.keyRoots.some(keyRoot => {
+            const key = parseKeyRoot(keyRoot);
+            return (
+              key.masterFingerprint !== undefined &&
+              compare(key.masterFingerprint, masterFingerprint) === 0 &&
+              key.originPath?.replace(/[hH]/g, "'") === originPath
+            );
+          });
+          if (!hasMatchingDeviceOrigin) continue;
+
           let descriptor: string | undefined = policy.descriptorTemplate;
           descriptor = descriptor.replace(/\/\*\*/g, `/<0;1>/*`);
           let tupleMismatch = false;
@@ -369,7 +384,6 @@ export async function derivePolicyFromOutput({
   return { descriptorTemplate, keyRoots, change, index };
 }
 
-/** Returns a standard single-key policy for an output, or `null`. */
 function compareKeyRoots(arr1: string[], arr2: string[]) {
   if (arr1.length !== arr2.length) {
     return false;

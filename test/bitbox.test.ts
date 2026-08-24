@@ -522,6 +522,24 @@ describe('BitBox helpers', () => {
     });
   });
 
+  test('refreshes an empty cached BitBox xpub', async () => {
+    const master = makeMaster(30);
+    const client = fakeClientFor(master);
+    const session = sessionFor(master, client);
+    session.store.xpubs = { "/84'/1'/0':tpub": '' };
+
+    const xpub = await getXpub({ session, originPath: "/84'/1'/0'" });
+
+    expect(client.xpubRequests).toHaveLength(1);
+    expect(session.store.xpubs["/84'/1'/0':tpub"]).toBe(xpub);
+
+    session.store.xpubs["/84'/1'/0':tpub"] = '';
+    jest.spyOn(client, 'btcXpub').mockResolvedValueOnce('');
+    await expect(
+      getXpub({ session, originPath: "/84'/1'/0'" })
+    ).rejects.toThrow('BitBox returned an invalid xpub');
+  });
+
   test('rechecks cached policies and restores missing device registration', async () => {
     const bitboxMaster = makeMaster(21);
     const client = fakeClientFor(bitboxMaster);
@@ -966,8 +984,9 @@ describe('BitBox helpers', () => {
       index: 1,
       seed: 3
     });
-
-    await signers.sign({ psbt, session: bitboxSession });
+    await expect(
+      signers.sign({ psbt, session: bitboxSession })
+    ).resolves.toBeUndefined();
 
     expect(client.signed?.forceScriptConfig).toMatchObject({
       scriptConfig: {
@@ -975,6 +994,36 @@ describe('BitBox helpers', () => {
       },
       keypath: "m/48'/1'/0'/2'"
     });
+  });
+
+  test('merges bitcoinjs BitBox signatures into the supplied PSBT', async () => {
+    const master = makeMaster(31);
+    const client = fakeClientFor(master);
+    const session = sessionFor(master, client);
+    const descriptor = await scriptExpressions.wpkh({
+      session,
+      account: 0,
+      change: 0,
+      index: '*'
+    });
+    const output = new Output({ descriptor, index: 0, network: NETWORK });
+    const fundingTx = new Transaction();
+    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
+    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 20_000n);
+    const psbt = new Psbt({ network: NETWORK });
+    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
+    output.updatePsbtAsOutput({ psbt, value: 19_000n });
+    jest
+      .spyOn(client, 'btcSignPSBT')
+      .mockImplementation(async (_network, raw) => {
+        const signed = Psbt.fromBase64(raw, { network: NETWORK });
+        signed.signInput(0, master.derivePath("m/84'/1'/0'/0/0"));
+        return signed.toBase64();
+      });
+
+    await expect(signers.sign({ psbt, session })).resolves.toBeUndefined();
+
+    expect(psbt.data.inputs[0]?.partialSig).toHaveLength(1);
   });
 
   test('rejects two different generic BitBox policies before signing', async () => {
@@ -1104,6 +1153,7 @@ describe('BitBox helpers', () => {
 
   test('rejects unsupported BitBox message-signing descriptors before calling the device', async () => {
     const bitboxMaster = makeMaster(12);
+    const otherMaster = makeMaster(13);
     const client = fakeClientFor(bitboxMaster);
     const bitboxSession = sessionFor(bitboxMaster, client);
     const pkhKey = await keyExpression({
@@ -1116,6 +1166,11 @@ describe('BitBox helpers', () => {
       account: 0,
       change: 0,
       index: '*'
+    });
+    const otherKey = keyExpressionBIP32({
+      masterNode: otherMaster,
+      originPath: "/84'/1'/0'",
+      keyPath: '/0/*'
     });
 
     await expect(
@@ -1134,6 +1189,14 @@ describe('BitBox helpers', () => {
         index: 0
       })
     ).rejects.toThrow('Taproot message signing');
+    await expect(
+      signMessage({
+        session: bitboxSession,
+        message: 'hello',
+        descriptor: `wpkh(${otherKey})`,
+        index: 0
+      })
+    ).rejects.toThrow('output does not have a BitBox02 input');
     expect(client.messageSigned).toBeUndefined();
   });
 

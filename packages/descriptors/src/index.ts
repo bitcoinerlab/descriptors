@@ -162,7 +162,9 @@ export function DescriptorsFactory(eccOrBitcoinLib: Ecc | BitcoinLib = ecc) {
  */
 function getLedgerModule() {
   // Keep this require lazy so the deprecated root Ledger namespace stays out
-  // of the module graph until an application uses it.
+  // of the module graph until an application uses it. A local require is used
+  // because Metro can eagerly analyze conditional dynamic imports.
+  // https://github.com/react-native-community/discussions-and-proposals/issues/120
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('./ledger') as LedgerModule;
 }

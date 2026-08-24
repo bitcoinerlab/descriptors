@@ -515,11 +515,11 @@ let globalBitcoinLib: BitcoinLib | undefined;
 
 export function setBitcoinLib(bitcoinLib: BitcoinLib): BitcoinLib {
   if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind) {
-    // HWW helpers use this process-wide backend to parse and merge PSBTs. If we
-    // switched it, an existing operation could use the wrong Bitcoin library.
-    // Rejecting the switch is safer and clearer than changing behavior at run time.
+    // Some 3.x helpers read the active backend after a factory has been created.
+    // Switching backend types could make an existing Output or PSBT use the
+    // wrong adapter. Same-type setup remains allowed for custom bitcoinjs ECC.
     throw new Error(
-      `Cannot switch descriptors-core from the ${globalBitcoinLib.kind} backend to the ${bitcoinLib.kind} backend in the same process. Use only one preset package: @bitcoinerlab/descriptors or @bitcoinerlab/descriptors-scure.`
+      `Cannot use the ${bitcoinLib.kind} backend because this copy of descriptors-core already uses ${globalBitcoinLib.kind}. Loading both backends together is not supported. Use one preset, or isolate each backend in a separate process or worker.`
     );
   }
   globalBitcoinLib = bitcoinLib;

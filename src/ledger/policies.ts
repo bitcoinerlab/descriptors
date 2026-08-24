@@ -9,9 +9,10 @@ export function assertLedgerPolicySupported(policy: HWWPolicy): void {
   const originPaths = policy.keyRoots
     .map(originPathFromKeyRoot)
     .filter((originPath): originPath is string => originPath !== undefined);
-  if (new Set(originPaths).size > 1) {
+  const uniqueOriginPaths = [...new Set(originPaths)];
+  if (uniqueOriginPaths.length > 1) {
     throw new Error(
-      `Ledger policies require every key with origin information to use the same origin path`
+      `Ledger policies require every key with origin information to use the same origin path: ${uniqueOriginPaths.join(' !== ')}`
     );
   }
 }

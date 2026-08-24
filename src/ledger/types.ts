@@ -105,6 +105,9 @@ export type LedgerStore = {
 /**
  * @deprecated Use `Store` from the Ledger entrypoint. Remove in v4 with the
  * deprecated `LedgerManager` helpers.
+ *
+ * This is the released 3.x byte-based state shape. Compatibility helpers keep
+ * this shape unchanged. New integrations should use the JSON-safe `Store`.
  */
 export type LedgerState = {
   masterFingerprint?: Uint8Array;

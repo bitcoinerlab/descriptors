@@ -11,7 +11,7 @@
 // Distributed under the MIT software license
 
 import {
-  assertPolicyCanDerive,
+  assertPolicySupported,
   addressKeypathFromPolicy,
   scriptConfigForRegistration,
   scriptConfigFromPolicy
@@ -128,7 +128,7 @@ export async function registerPolicy({
       keyRoots: derivedPolicy.keyRoots
     };
   }
-  assertPolicyCanDerive(policy);
+  assertPolicySupported(policy);
 
   const { scriptConfig, accountKeypath } = scriptConfigForRegistration({
     policy,
@@ -219,7 +219,7 @@ export async function displayAddress({
   });
   if (!policy)
     throw new Error(`BitBox policy not registered; call registerPolicy first`);
-  assertPolicyCanDerive(policy);
+  assertPolicySupported(policy);
   return session.client.btcAddress(
     apiNetwork(session),
     addressKeypathFromPolicy({
@@ -259,8 +259,8 @@ export async function signMessage({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
+  if (!policy) throw new Error(`Error: output does not have a BitBox02 input`);
   if (
-    !policy ||
     !isStandardPolicy({
       descriptorTemplate: policy.descriptorTemplate,
       keyRoots: policy.keyRoots,

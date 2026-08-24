@@ -163,6 +163,11 @@ Scure/noble backend:
 npm install @bitcoinerlab/descriptors-scure
 ```
 
+Choose one backend for an application. Loading both preset packages together is
+not supported because existing Outputs and PSBTs must keep using the backend
+that created them. If you need both, isolate them in separate processes or
+workers.
+
 If you plan to compile policy strings into Miniscript in your app, also install:
 
 ```bash

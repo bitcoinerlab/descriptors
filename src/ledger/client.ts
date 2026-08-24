@@ -45,27 +45,59 @@ function copyStoreToLedgerState(
 ): void {
   if (store.masterFingerprint !== undefined)
     state.masterFingerprint = fromHex(store.masterFingerprint);
-  else delete state.masterFingerprint;
 
   if (store.policies !== undefined) {
-    const policies = store.policies.map(policy => ({
-      ...(policy.name !== undefined ? { policyName: policy.name } : {}),
-      ledgerTemplate: policy.descriptorTemplate,
-      keyRoots: policy.keyRoots,
-      ...(policy.policyId !== undefined
-        ? { policyId: fromHex(policy.policyId) }
-        : {}),
-      ...(policy.policyHmac !== undefined
-        ? { policyHmac: fromHex(policy.policyHmac) }
-        : {})
-    }));
-    if (state.policies)
-      state.policies.splice(0, state.policies.length, ...policies);
-    else state.policies = policies;
-  } else delete state.policies;
+    if (!state.policies) state.policies = [];
+    // Another deprecated helper may have updated this state while this call ran.
+    for (const policy of store.policies) {
+      const legacyPolicy = {
+        ...(policy.name !== undefined ? { policyName: policy.name } : {}),
+        ledgerTemplate: policy.descriptorTemplate,
+        keyRoots: policy.keyRoots,
+        ...(policy.policyId !== undefined
+          ? { policyId: fromHex(policy.policyId) }
+          : {}),
+        ...(policy.policyHmac !== undefined
+          ? { policyHmac: fromHex(policy.policyHmac) }
+          : {})
+      };
+      const policyIndex = state.policies.findIndex(
+        storedPolicy =>
+          storedPolicy.ledgerTemplate === policy.descriptorTemplate &&
+          storedPolicy.keyRoots.length === policy.keyRoots.length &&
+          storedPolicy.keyRoots.every(
+            (keyRoot, index) => keyRoot === policy.keyRoots[index]
+          )
+      );
+      if (policyIndex === -1) state.policies.push(legacyPolicy);
+      else Object.assign(state.policies[policyIndex]!, legacyPolicy);
+    }
+  }
 
-  if (store.xpubs !== undefined) state.xpubs = store.xpubs;
-  else delete state.xpubs;
+  if (store.xpubs !== undefined) {
+    if (!state.xpubs) state.xpubs = {};
+    Object.assign(state.xpubs, store.xpubs);
+  }
+}
+
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function assertLedgerClient(
+  client: unknown
+): asserts client is LedgerSession['client'] {
+  if (typeof client !== 'object' || client === null)
+    throw new Error('Invalid Ledger client');
+  const methods = [
+    'getAppAndVersion',
+    'getMasterFingerprint',
+    'getExtendedPubkey',
+    'registerWallet',
+    'getWalletAddress',
+    'signPsbt'
+  ] as const;
+  for (const method of methods) {
+    if (typeof (client as Record<string, unknown>)[method] !== 'function')
+      throw new Error(`Invalid Ledger client: missing ${method}()`);
+  }
 }
 
 /**
@@ -76,8 +108,9 @@ function copyStoreToLedgerState(
  */
 function sessionFromLedgerManager(ledgerManager: LedgerManager): LedgerSession {
   let bitcoinApi: LedgerBitcoinApi | undefined;
+  assertLedgerClient(ledgerManager.ledgerClient);
   return {
-    client: ledgerManager.ledgerClient as LedgerSession['client'],
+    client: ledgerManager.ledgerClient,
     // Load the policy API only when it is first needed, then reuse it.
     get bitcoinApi() {
       bitcoinApi ??= importLedgerBitcoinModule();
@@ -255,7 +288,7 @@ export async function getXpub({
       void err;
       xpub = await client.getExtendedPubkey(`m${originPath}`, true);
     }
-    if (typeof xpub !== 'string')
+    if (typeof xpub !== 'string' || xpub.length === 0)
       throw new Error(`Error: Ledger client did not return a valid xpub`);
     store.xpubs[originPath] = xpub;
   }

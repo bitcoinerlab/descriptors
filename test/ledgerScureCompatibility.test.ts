@@ -40,7 +40,18 @@ test('uses a Scure-bound LedgerManager Output for policy registration', async ()
       [Uint8Array.from([1, 2, 3, 4]), Uint8Array.from([5, 6, 7, 8])] as const
   );
   const ledgerManager: LedgerManager = {
-    ledgerClient: { registerWallet } as unknown as Session['client'],
+    ledgerClient: {
+      getAppAndVersion: async () => ({
+        name: 'Bitcoin Test',
+        version: '2.1.0',
+        flags: 0
+      }),
+      getMasterFingerprint: async () => 'aabbccdd',
+      getExtendedPubkey: async () => 'test-xpub',
+      registerWallet,
+      getWalletAddress: async () => 'bcrt1test',
+      signPsbt: async () => []
+    } as unknown as Session['client'],
     ledgerState: { masterFingerprint },
     network: networks.regtest,
     Output: LegacyScureOutput

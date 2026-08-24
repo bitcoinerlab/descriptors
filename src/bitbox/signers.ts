@@ -10,7 +10,7 @@ import { toPsbt } from '../psbt';
 import { policyForPsbtInput } from '../hww/policies';
 import { apiNetwork, getMasterFingerprint, getXpub } from './client';
 import {
-  assertPolicyCanDerive,
+  assertPolicySupported,
   signingKeypathFromPolicy,
   scriptConfigFromPolicy
 } from './scriptConfig';
@@ -57,7 +57,7 @@ async function forcedScriptConfigForPsbt({
         `BitBox cannot sign input ${index}: every PSBT input must include a key owned by the connected BitBox`
       );
 
-    assertPolicyCanDerive(policy);
+    assertPolicySupported(policy);
     const scriptConfig = scriptConfigFromPolicy({ policy, session });
     if (!('multisig' in scriptConfig) && !('policy' in scriptConfig)) continue;
 

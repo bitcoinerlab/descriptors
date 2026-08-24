@@ -16,6 +16,7 @@ import {
   connect,
   displayAddress,
   getLedgerMasterFingerPrint,
+  getLedgerXpub,
   getVersion,
   registerLedgerWallet,
   registerPolicy,
@@ -29,6 +30,7 @@ import {
   derivePolicyFromOutput,
   policyForPsbtInput
 } from '../dist/hww/policies';
+import { withLedgerManagerSession } from '../dist/ledger/client';
 import { keyExpressionBIP32 } from '../dist/keyExpressions';
 import { fromHex, fromUtf8, toBase64, toHex } from 'uint8array-tools';
 
@@ -89,6 +91,24 @@ function mockLedgerSession(masterFingerprint: Uint8Array): Session {
     store: { masterFingerprint: toHex(masterFingerprint) },
     network: NETWORK,
     close: async () => undefined
+  };
+}
+
+function mockLegacyLedgerClient(
+  overrides: Partial<Session['client']> = {}
+): Session['client'] {
+  return {
+    getAppAndVersion: async () => ({
+      name: 'Bitcoin Test',
+      version: '2.1.0',
+      flags: 0
+    }),
+    getMasterFingerprint: async () => 'aabbccdd',
+    getExtendedPubkey: async () => 'test-xpub',
+    registerWallet: async () => [new Uint8Array(4), new Uint8Array(32)],
+    getWalletAddress: async () => 'bcrt1test',
+    signPsbt: async () => [],
+    ...overrides
   };
 }
 
@@ -388,7 +408,7 @@ describeIfNotScure(
         scriptPubKey: output.getScriptPubKey(),
         bip32Derivation: {
           masterFingerprint: ledgerMaster.fingerprint,
-          path: "m/48'/1'/0'/0/7",
+          path: 'm/48h/1h/0h/0/7',
           pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
         }
       });
@@ -421,6 +441,50 @@ describeIfNotScure(
         keyRootWithOrigin(ledgerMaster),
         keyRootNoOrigin(otherMaster)
       ]);
+    });
+
+    test('policyForPsbtInput rejects the wrong device origin', async () => {
+      const ledgerMaster = makeMaster(243);
+      const otherMaster = makeMaster(244);
+      const ledgerKeyAtIndex = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/7'
+      });
+      const otherKeyAtIndex = keyExpressionNoOrigin(otherMaster, '/0/7');
+      const output = new Output({
+        descriptor: `wsh(sortedmulti(1,${ledgerKeyAtIndex},${otherKeyAtIndex}))`,
+        network: NETWORK
+      });
+      const psbt = buildWitnessPsbt({
+        scriptPubKey: output.getScriptPubKey(),
+        bip32Derivation: {
+          masterFingerprint: ledgerMaster.fingerprint,
+          path: "m/48'/1'/9'/0/7",
+          pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey
+        }
+      });
+
+      await expect(
+        policyForPsbtInput({
+          getMasterFingerprint: mockGetMasterFingerprint(
+            ledgerMaster.fingerprint
+          ),
+          getAccountXpub: unexpectedGetAccountXpub,
+          knownPolicies: [
+            {
+              descriptorTemplate: 'wsh(sortedmulti(1,@0/**,@1/**))',
+              keyRoots: [
+                keyRootWithOrigin(ledgerMaster),
+                keyRootNoOrigin(otherMaster)
+              ]
+            }
+          ],
+          network: NETWORK,
+          psbt,
+          index: 0
+        })
+      ).resolves.toBeUndefined();
     });
 
     test('policyForPsbtInput matches repeated tuples for sortedmulti_a', async () => {
@@ -912,7 +976,7 @@ describeIfNotScure(
           name: 'Different origins'
         })
       ).rejects.toThrow(
-        'Ledger policies require every key with origin information to use the same origin path'
+        "Ledger policies require every key with origin information to use the same origin path: /48'/1'/0' !== /48'/1'/7'"
       );
       expect(registerWallet).not.toHaveBeenCalled();
     });
@@ -941,10 +1005,13 @@ describeIfNotScure(
     test('returns undefined device storage metadata for new and cached policies', async () => {
       const ledgerMaster = makeMaster(288);
       const session = mockLedgerSession(ledgerMaster.fingerprint);
-      const registerWallet = jest.fn(async () => [
-        fromHex('aabbccdd'),
-        fromHex('00112233445566778899aabbccddeeff')
-      ]);
+      const registerWallet = jest.fn(
+        async () =>
+          [
+            fromHex('aabbccdd'),
+            fromHex('00112233445566778899aabbccddeeff')
+          ] as const
+      );
       Object.assign(session.client, { registerWallet });
       const ledgerKey = keyExpressionBIP32({
         masterNode: ledgerMaster,
@@ -1036,12 +1103,15 @@ describeIfNotScure(
           outputConstructions += 1;
         }
       }
-      const registerWallet = jest.fn(async () => [
-        fromHex('aabbccdd'),
-        fromHex('00112233445566778899aabbccddeeff')
-      ]);
+      const registerWallet = jest.fn(
+        async () =>
+          [
+            fromHex('aabbccdd'),
+            fromHex('00112233445566778899aabbccddeeff')
+          ] as const
+      );
       const ledgerManager: LedgerManager = {
-        ledgerClient: { registerWallet } as unknown as Session['client'],
+        ledgerClient: mockLegacyLedgerClient({ registerWallet }),
         ledgerState: { masterFingerprint: ledgerMaster.fingerprint },
         network: NETWORK,
         Output: LegacyOutput
@@ -1097,7 +1167,7 @@ describeIfNotScure(
         ],
         xpubs: { "/48'/1'/0'": 'cached-xpub' }
       };
-      const ledgerClient = {
+      const ledgerClient = mockLegacyLedgerClient({
         getMasterFingerprint: jest.fn(async () => 'unexpected'),
         signPsbt: jest.fn(async () => [
           [
@@ -1106,9 +1176,9 @@ describeIfNotScure(
               pubkey: ledgerMaster.derivePath("m/48'/1'/0'/0/7").publicKey,
               signature: new Uint8Array([1])
             }
-          ]
+          ] as [number, { pubkey: Uint8Array; signature: Uint8Array }]
         ])
-      } as unknown as Session['client'];
+      });
       let outputConstructions = 0;
       class LegacyOutput extends Output {
         constructor(options: ConstructorParameters<typeof Output>[0]) {
@@ -1183,6 +1253,71 @@ describeIfNotScure(
           }
         ]
       });
+    });
+
+    test('keeps concurrent deprecated Ledger xpub updates', async () => {
+      const ledgerMaster = makeMaster(265);
+      const getExtendedPubkey = jest.fn(async (path: string) => `${path}-xpub`);
+      const ledgerState: LedgerState = {
+        masterFingerprint: ledgerMaster.fingerprint
+      };
+      const ledgerManager: LedgerManager = {
+        ledgerClient: mockLegacyLedgerClient({ getExtendedPubkey }),
+        ledgerState,
+        network: NETWORK,
+        Output
+      };
+
+      await Promise.all([
+        getLedgerXpub({ originPath: "/84'/1'/0'", ledgerManager }),
+        getLedgerXpub({ originPath: "/84'/1'/1'", ledgerManager })
+      ]);
+
+      expect(ledgerState.xpubs).toEqual({
+        "/84'/1'/0'": "m/84'/1'/0'-xpub",
+        "/84'/1'/1'": "m/84'/1'/1'-xpub"
+      });
+    });
+
+    test('keeps concurrent deprecated Ledger policy updates', async () => {
+      const ledgerMaster = makeMaster(266);
+      const ledgerManager: LedgerManager = {
+        ledgerClient: mockLegacyLedgerClient(),
+        ledgerState: { masterFingerprint: ledgerMaster.fingerprint },
+        network: NETWORK,
+        Output
+      };
+      const addPolicy = (name: string) =>
+        withLedgerManagerSession(ledgerManager, async session => {
+          await Promise.resolve();
+          session.store.policies = [
+            {
+              name,
+              descriptorTemplate: `wsh(pk(${name}))`,
+              keyRoots: [name]
+            }
+          ];
+        });
+
+      await Promise.all([addPolicy('policy-a'), addPolicy('policy-b')]);
+
+      expect(ledgerManager.ledgerState.policies).toHaveLength(2);
+      expect(
+        ledgerManager.ledgerState.policies?.map(policy => policy.policyName)
+      ).toEqual(['policy-a', 'policy-b']);
+    });
+
+    test('rejects invalid deprecated Ledger clients clearly', async () => {
+      const ledgerManager: LedgerManager = {
+        ledgerClient: {},
+        ledgerState: {},
+        network: NETWORK,
+        Output
+      };
+
+      await expect(
+        getLedgerMasterFingerPrint({ ledgerManager })
+      ).rejects.toThrow('Invalid Ledger client: missing getAppAndVersion()');
     });
 
     test('displays standard addresses through Ledger getWalletAddress', async () => {
@@ -1376,12 +1511,18 @@ describeIfNotScure(
 
     test('rejects unsupported Ledger message-signing descriptors before calling the device', async () => {
       const ledgerMaster = makeMaster(273);
+      const otherMaster = makeMaster(274);
       const ledgerKey = keyExpressionBIP32({
         masterNode: ledgerMaster,
         originPath: "/86'/1'/0'",
         keyPath: '/0/*'
       });
       const session = mockLedgerSession(ledgerMaster.fingerprint);
+      const otherKey = keyExpressionBIP32({
+        masterNode: otherMaster,
+        originPath: "/84'/1'/0'",
+        keyPath: '/0/*'
+      });
       Object.assign(session.client, {
         signMessage: jest.fn(async () => toBase64(new Uint8Array(65)))
       });
@@ -1396,6 +1537,14 @@ describeIfNotScure(
       ).rejects.toThrow(
         'standard single-key pkh, sh(wpkh), and wpkh descriptors'
       );
+      await expect(
+        signMessage({
+          session,
+          message: 'hello',
+          descriptor: `wpkh(${otherKey})`,
+          index: 0
+        })
+      ).rejects.toThrow('output does not have a ledger input');
       expect(session.client.signMessage).not.toHaveBeenCalled();
     });
 

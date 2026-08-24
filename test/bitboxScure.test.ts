@@ -6,6 +6,7 @@ import { HDKey } from '@scure/bip32';
 import * as btc from '@scure/btc-signer';
 import { Transaction as BitcoinjsTransaction } from 'bitcoinjs-lib';
 import { DescriptorsFactory, networks } from '../dist';
+import { mergePsbt, wrapScureTransaction } from '../dist/adapters/scure/psbt';
 import { createScureLib } from '../dist/scure';
 import { scriptExpressions, signers, type Session } from '../dist/bitbox';
 
@@ -68,4 +69,29 @@ test('merges BitBox signatures into scure transactions', async () => {
   expect(psbt.getInput(0).partialSig).toHaveLength(1);
   finalize({ psbt });
   expect(psbt.getInput(0).finalScriptWitness).toBeDefined();
+});
+
+test('rejects a changed unsigned scure transaction', () => {
+  const script = new Uint8Array([0x00, 0x14, ...new Uint8Array(20)]);
+  const transaction = new btc.Transaction({
+    disableScriptCheck: true,
+    PSBTVersion: 2
+  });
+  transaction.addInput({
+    txid: new Uint8Array(32).fill(1),
+    index: 0,
+    witnessUtxo: { script, amount: 20_000n }
+  });
+  transaction.addOutput({ script, amount: 19_000n });
+
+  const changed = btc.Transaction.fromPSBT(transaction.toPSBT());
+  changed.updateOutput(0, { amount: 18_000n }, true);
+
+  expect(() =>
+    mergePsbt(
+      wrapScureTransaction(transaction),
+      base64.encode(changed.toPSBT())
+    )
+  ).toThrow('Cannot merge PSBTs with different unsigned transactions');
+  expect(transaction.getOutput(0).amount).toBe(19_000n);
 });

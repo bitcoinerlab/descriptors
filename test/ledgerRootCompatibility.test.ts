@@ -54,8 +54,16 @@ test('uses root ledgerManager.ecc only for deprecated policy helpers', async () 
       [Uint8Array.from([1, 2, 3, 4]), Uint8Array.from([5, 6, 7, 8])] as const
   );
   const ledgerClient = {
+    getAppAndVersion: jest.fn(async () => ({
+      name: 'Bitcoin Test',
+      version: '2.1.0',
+      flags: 0
+    })),
     getMasterFingerprint: jest.fn(async () => fingerprint),
-    registerWallet
+    getExtendedPubkey: jest.fn(async () => accountXpub),
+    registerWallet,
+    getWalletAddress: jest.fn(async () => 'bcrt1test'),
+    signPsbt: jest.fn(async () => [])
   } as unknown as LedgerManager['ledgerClient'];
   const ledgerManager = {
     ledgerClient,

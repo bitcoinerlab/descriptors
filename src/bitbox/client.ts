@@ -76,13 +76,15 @@ export async function getXpub({
   if (!store.xpubs) store.xpubs = {};
   const cacheKey = `${originPath}:${xpubType(session)}`;
   let xpub = display ? undefined : store.xpubs[cacheKey];
-  if (xpub === undefined) {
+  if (!xpub) {
     xpub = await client.btcXpub(
       apiNetwork(session),
       `m${originPath}`,
       xpubType(session),
       display
     );
+    if (typeof xpub !== 'string' || xpub.length === 0)
+      throw new Error(`BitBox returned an invalid xpub`);
     store.xpubs[cacheKey] = xpub;
   }
   return xpub;

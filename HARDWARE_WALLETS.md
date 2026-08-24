@@ -70,9 +70,10 @@ import * as bitbox from '@bitcoinerlab/descriptors/bitbox';
 Hardware-wallet code lives behind device-specific entrypoints. This keeps the
 main package usable without installing Ledger or BitBox transport libraries.
 
-Use either the bitcoinjs preset or the Scure preset in one process. Do not load
-both. The core rejects backend switching because hardware-wallet operations must
-use the same Bitcoin library that created their descriptors and PSBTs.
+Use either the bitcoinjs preset or the Scure preset in one application. Do not
+load both together. The core rejects backend switching because existing Outputs
+and PSBTs must keep using the backend that created them. If an application needs
+both, isolate them in separate processes or workers.
 
 Use these entrypoints:
 
@@ -104,6 +105,9 @@ Ledger and BitBox entrypoints expose the same common API shape:
 `signMessage({ session, message, descriptor, change?, index? })`. It returns a
 65-byte `Uint8Array` legacy/Electrum Bitcoin message signature. It does not
 produce BIP322 signatures.
+
+`signers.sign(...)` mutates the supplied PSBT or Scure transaction and resolves
+without a return value.
 
 Ledger also exposes `signers.signInput(...)` for selecting one input. BitBox
 does not expose it because the BitBox API signs a complete PSBT and cannot sign

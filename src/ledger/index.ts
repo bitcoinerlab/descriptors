@@ -326,8 +326,8 @@ export async function signMessage({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
+  if (!policy) throw new Error(`Error: output does not have a ledger input`);
   if (
-    !policy ||
     !isStandardPolicy({
       descriptorTemplate: policy.descriptorTemplate,
       keyRoots: policy.keyRoots,
