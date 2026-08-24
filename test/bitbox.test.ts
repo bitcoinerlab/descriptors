@@ -12,6 +12,7 @@ import { createPsbt } from './helpers/psbt';
 import {
   connect,
   displayAddress,
+  getXpub,
   keyExpression,
   registerPolicy,
   scriptExpressions,
@@ -239,6 +240,7 @@ describe('BitBox helpers', () => {
     const session = await connect({
       driver: {
         module: Promise.resolve({ connectBitBoxNovaBle }),
+        mode: 'ble',
         device: { deviceId: 'ble-device' },
         timeoutMs: 60_000,
         formatUnit: 'sat'
@@ -261,7 +263,7 @@ describe('BitBox helpers', () => {
     expect(client.close).toHaveBeenCalledTimes(1);
   });
 
-  test('requires a mode when a BitBox driver exposes several', async () => {
+  test('rejects a BitBox mode not exposed by the driver', async () => {
     const bitboxMaster = makeMaster(16);
     const client = fakeClientFor(bitboxMaster);
 
@@ -269,16 +271,14 @@ describe('BitBox helpers', () => {
       connect({
         driver: {
           module: {
-            connectBitBoxNovaBle: async () => client,
-            connectBitBoxUsb: async () => client
-          }
+            connectBitBoxNovaBle: async () => client
+          },
+          mode: 'usb'
         },
         network: NETWORK,
         store: {}
       })
-    ).rejects.toThrow(
-      'BitBox driver supports multiple modes: "ble", "usb". Pass driver.mode.'
-    );
+    ).rejects.toThrow('BitBox driver does not support mode "usb"');
   });
 
   test('closes a BitBox when its fingerprint does not match the store', async () => {
@@ -291,7 +291,8 @@ describe('BitBox helpers', () => {
         driver: {
           module: {
             connectBitBoxUsb: async () => client
-          }
+          },
+          mode: 'usb'
         },
         network: NETWORK,
         store: { masterFingerprint: 'deadbeef' }
@@ -308,7 +309,10 @@ describe('BitBox helpers', () => {
     const client = fakeClientFor(bitboxMaster);
     client.close.mockRejectedValue(new Error('BitBox close failed'));
     const session = await connect({
-      driver: { module: { connectBitBoxUsb: async () => client } },
+      driver: {
+        module: { connectBitBoxUsb: async () => client },
+        mode: 'usb'
+      },
       network: NETWORK,
       store: {}
     });
@@ -319,35 +323,9 @@ describe('BitBox helpers', () => {
     expect(client.close).toHaveBeenCalledTimes(1);
   });
 
-  test('preserves unlock errors when freeing a BitBox connection fails', async () => {
-    const free = jest.fn(() => {
-      throw new Error('BitBox connection cleanup failed');
-    });
-
-    await expect(
-      connect({
-        driver: {
-          module: {
-            bitbox02ConnectBridge: async () => ({
-              free,
-              unlockAndPair: async () => {
-                throw new Error('BitBox unlock failed');
-              }
-            })
-          },
-          onPairingCode: jest.fn()
-        },
-        network: NETWORK,
-        store: {}
-      })
-    ).rejects.toThrow('BitBox unlock failed');
-    expect(free).toHaveBeenCalledTimes(1);
-  });
-
-  test('preserves confirmation errors when freeing BitBox pairing fails', async () => {
-    const free = jest.fn(() => {
-      throw new Error('BitBox pairing cleanup failed');
-    });
+  test('frees BitBox pairing when showing the code fails', async () => {
+    const free = jest.fn();
+    const waitConfirm = jest.fn();
 
     await expect(
       connect({
@@ -356,20 +334,22 @@ describe('BitBox helpers', () => {
             bitbox02ConnectBridge: async () => ({
               unlockAndPair: async () => ({
                 free,
-                getPairingCode: () => undefined,
-                waitConfirm: async () => {
-                  throw new Error('BitBox confirmation failed');
-                }
+                getPairingCode: () => '123 456',
+                waitConfirm
               })
             })
           },
-          onPairingCode: jest.fn()
+          mode: 'bridge',
+          onPairingCode: async () => {
+            throw new Error('Could not show pairing code');
+          }
         },
         network: NETWORK,
         store: {}
       })
-    ).rejects.toThrow('BitBox confirmation failed');
+    ).rejects.toThrow('Could not show pairing code');
     expect(free).toHaveBeenCalledTimes(1);
+    expect(waitConfirm).not.toHaveBeenCalled();
   });
 
   test('shows bitbox-api pairing codes before confirmation', async () => {
@@ -388,6 +368,7 @@ describe('BitBox helpers', () => {
             })
           })
         },
+        mode: 'bridge',
         onPairingCode
       },
       network: NETWORK,
@@ -413,7 +394,7 @@ describe('BitBox helpers', () => {
     });
     const otherKey = keyExpressionBIP32({
       masterNode: otherMaster,
-      originPath,
+      originPath: "/48'/1'/7'/2'",
       keyPath: '/0/*'
     });
     const descriptor = `wsh(sortedmulti(1,${bitboxKey},${otherKey}))`;
@@ -488,13 +469,23 @@ describe('BitBox helpers', () => {
       display: false
     });
 
+    await getXpub({
+      session: testnetSession,
+      originPath: "/84'/1'/0'",
+      display: true
+    });
+    expect(testnetClient.xpubRequests[1]).toMatchObject({
+      keypath: "m/84'/1'/0'",
+      display: true
+    });
+
     const testnetKey = await keyExpression({
       session: testnetSession,
       originPath: "/48'/1'/0'/2'",
       keyPath: '/0/*'
     });
 
-    expect(testnetClient.xpubRequests[1]).toMatchObject({
+    expect(testnetClient.xpubRequests[2]).toMatchObject({
       apiNetwork: 'tbtc',
       keypath: "m/48'/1'/0'/2'",
       xpubType: 'tpub',
@@ -1065,55 +1056,6 @@ describe('BitBox helpers', () => {
     expect(client.signed).toBeUndefined();
   });
 
-  test('signs single inputs through the whole-PSBT BitBox API', async () => {
-    const bitboxMaster = makeMaster(23);
-    const client = fakeClientFor(bitboxMaster);
-    const bitboxSession = sessionFor(bitboxMaster, client);
-    const descriptor = await scriptExpressions.wpkh({
-      session: bitboxSession,
-      account: 0,
-      change: 0,
-      index: '*'
-    });
-    const output = new Output({ descriptor, index: 0, network: NETWORK });
-    const fundingTx = new Transaction();
-    fundingTx.addInput(Buffer.alloc(32, 1), 0xffffffff);
-    fundingTx.addOutput(Buffer.from(output.getScriptPubKey()), 20_000n);
-    const psbt = new Psbt({ network: NETWORK });
-    output.updatePsbtAsInput({ psbt, txHex: fundingTx.toHex(), vout: 0 });
-    const combine = jest.spyOn(psbt, 'combine');
-    const psbtBase64 = psbt.toBase64();
-
-    await expect(
-      signers.signInput({ psbt, index: 0, session: bitboxSession })
-    ).resolves.toBe(psbtBase64);
-    expect(client.signed?.psbt).toBe(psbtBase64);
-    expect(combine).toHaveBeenCalledWith(expect.any(Psbt));
-  });
-
-  test('rejects unsupported BitBox per-input signing requests', async () => {
-    const bitboxMaster = makeMaster(24);
-    const client = fakeClientFor(bitboxMaster);
-    const bitboxSession = sessionFor(bitboxMaster, client);
-    const emptyPsbt = new Psbt({ network: NETWORK });
-
-    await expect(
-      signers.signInput({ psbt: emptyPsbt, index: 0, session: bitboxSession })
-    ).rejects.toThrow('input 0 not available');
-
-    const multiInputPsbt = new Psbt({ network: NETWORK });
-    multiInputPsbt.addInput({ hash: Buffer.alloc(32, 1), index: 0 });
-    multiInputPsbt.addInput({ hash: Buffer.alloc(32, 2), index: 0 });
-    await expect(
-      signers.signInput({
-        psbt: multiInputPsbt,
-        index: 0,
-        session: bitboxSession
-      })
-    ).rejects.toThrow('signInput is only supported for single-input PSBTs');
-    expect(client.signed).toBeUndefined();
-  });
-
   test('signs messages through bitbox-api btcSignMessage', async () => {
     const bitboxMaster = makeMaster(6);
     const client = fakeClientFor(bitboxMaster);
@@ -1217,11 +1159,21 @@ describe('BitBox helpers', () => {
       ],
       network: NETWORK
     });
-    await registerPolicy({
-      descriptor,
-      session: bitboxSession,
-      name: 'Test sha256'
-    });
+    await expect(
+      registerPolicy({
+        descriptor,
+        session: bitboxSession,
+        name: 'Test sha256'
+      })
+    ).rejects.toThrow('sha256/hash256/hash160/ripemd160');
+    expect(client.registered).toBeUndefined();
+    bitboxSession.store.policies = [
+      {
+        name: 'Test sha256',
+        descriptorTemplate: `wsh(and_v(v:pk(@0/**),sha256(${SHA256_DIGEST})))`,
+        keyRoots: [bitboxKey.replace(/\/0\/\*$/, '')]
+      }
+    ];
     await expect(
       displayAddress({ descriptor, session: bitboxSession, index: 0 })
     ).rejects.toThrow('sha256/hash256/hash160/ripemd160');

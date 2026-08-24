@@ -20,7 +20,6 @@ type BitBoxPairing = {
 };
 
 type BitBoxConnection = {
-  free?(): void;
   unlockAndPair(): Promise<BitBoxPairing>;
 };
 
@@ -29,51 +28,27 @@ type ConnectBitBox = (params?: {
   deviceId?: string;
 }) => Promise<ConnectedBitBoxClient>;
 
-type BitBoxReactNativeModule =
-  | {
-      connectBitBoxNovaBle: ConnectBitBox;
-      connectBitBoxUsb?: ConnectBitBox;
-    }
-  | {
-      connectBitBoxNovaBle?: ConnectBitBox;
-      connectBitBoxUsb: ConnectBitBox;
-    };
+type BitBoxReactNativeModule = {
+  connectBitBoxNovaBle?: ConnectBitBox;
+  connectBitBoxUsb?: ConnectBitBox;
+};
 
 type BitBoxApiConnect = (
   onClose: (() => void) | undefined
 ) => Promise<BitBoxConnection>;
 
-function freePairingResource(resource: { free?(): void }): void {
-  try {
-    resource.free?.();
-  } catch {
-    // Keep the pairing error that caused cleanup.
-  }
-}
-
-type BitBoxApiModule =
-  | {
-      bitbox02ConnectAuto: BitBoxApiConnect;
-      bitbox02ConnectBridge?: BitBoxApiConnect;
-      bitbox02ConnectWebHID?: BitBoxApiConnect;
-    }
-  | {
-      bitbox02ConnectAuto?: BitBoxApiConnect;
-      bitbox02ConnectBridge: BitBoxApiConnect;
-      bitbox02ConnectWebHID?: BitBoxApiConnect;
-    }
-  | {
-      bitbox02ConnectAuto?: BitBoxApiConnect;
-      bitbox02ConnectBridge?: BitBoxApiConnect;
-      bitbox02ConnectWebHID: BitBoxApiConnect;
-    };
+type BitBoxApiModule = {
+  bitbox02ConnectAuto?: BitBoxApiConnect;
+  bitbox02ConnectBridge?: BitBoxApiConnect;
+  bitbox02ConnectWebHID?: BitBoxApiConnect;
+};
 
 type BitBoxDriver =
   | {
       /** Imported BitBox React Native module, or its import promise. */
       module: BitBoxReactNativeModule | Promise<BitBoxReactNativeModule>;
-      /** Select BLE or USB when both are available. */
-      mode?: 'ble' | 'usb';
+      /** Select BLE or USB. */
+      mode: 'ble' | 'usb';
       /** Device returned by provider discovery, or a saved device id. */
       device?: string | { deviceId: string };
       /** Timeout passed to the native BitBox provider. */
@@ -85,7 +60,7 @@ type BitBoxDriver =
       /** Imported `bitbox-api` module, or its import promise. */
       module: BitBoxApiModule | Promise<BitBoxApiModule>;
       /** Select the browser or bridge connection mechanism. */
-      mode?: 'webhid' | 'bridge' | 'webhid-or-bridge';
+      mode: 'webhid' | 'bridge' | 'webhid-or-bridge';
       /** Shows the code that the user must compare with the BitBox. */
       onPairingCode(code: string): void | Promise<void>;
       /** Called when `bitbox-api` reports a closed connection. */
@@ -98,8 +73,7 @@ type BitBoxDriver =
  * Opens a BitBox driver supplied by the application and builds a session.
  *
  * Pass a literal module import in `driver.module`, for example
- * `import('@bitcoinerlab/bitbox-react-native')`. One available mode is selected
- * automatically. If the module supports several modes, pass `driver.mode`.
+ * `import('@bitcoinerlab/bitbox-react-native')`, and select `driver.mode`.
  *
  * The returned session owns the client. Call `session.close()` when the
  * connection is no longer needed.
@@ -117,46 +91,7 @@ export async function connect({
   store: BitBoxStore;
 }): Promise<BitBoxSession> {
   const driverModule = await driver.module;
-  const modes: string[] = [];
-  if (
-    'connectBitBoxNovaBle' in driverModule &&
-    typeof driverModule.connectBitBoxNovaBle === 'function'
-  )
-    modes.push('ble');
-  if (
-    'connectBitBoxUsb' in driverModule &&
-    typeof driverModule.connectBitBoxUsb === 'function'
-  )
-    modes.push('usb');
-  if (
-    'bitbox02ConnectWebHID' in driverModule &&
-    typeof driverModule.bitbox02ConnectWebHID === 'function'
-  )
-    modes.push('webhid');
-  if (
-    'bitbox02ConnectBridge' in driverModule &&
-    typeof driverModule.bitbox02ConnectBridge === 'function'
-  )
-    modes.push('bridge');
-  if (
-    'bitbox02ConnectAuto' in driverModule &&
-    typeof driverModule.bitbox02ConnectAuto === 'function'
-  )
-    modes.push('webhid-or-bridge');
-  if (modes.length === 0)
-    throw new Error(
-      `BitBox driver does not expose a supported connection mode`
-    );
-
-  const mode = driver.mode ?? (modes.length === 1 ? modes[0] : undefined);
-  if (!mode)
-    throw new Error(
-      `BitBox driver supports multiple modes: ${modes.map(value => `"${value}"`).join(', ')}. Pass driver.mode.`
-    );
-  if (!modes.includes(mode))
-    throw new Error(
-      `BitBox driver does not support mode "${mode}". Available modes: ${modes.map(value => `"${value}"`).join(', ')}.`
-    );
+  const { mode } = driver;
 
   let client: ConnectedBitBoxClient;
   if (mode === 'ble' || mode === 'usb') {
@@ -200,21 +135,19 @@ export async function connect({
     if (typeof connect !== 'function')
       throw new Error(`BitBox driver does not support mode "${mode}"`);
     const unpaired = await connect(driver.onClose);
-    let pairing: BitBoxPairing;
-    try {
-      pairing = await unpaired.unlockAndPair();
-    } catch (error) {
-      freePairingResource(unpaired);
-      throw error;
-    }
+    const pairing = await unpaired.unlockAndPair();
     try {
       const pairingCode = pairing.getPairingCode();
       if (pairingCode !== undefined) await driver.onPairingCode(pairingCode);
-      client = await pairing.waitConfirm();
     } catch (error) {
-      freePairingResource(pairing);
+      try {
+        pairing.free?.();
+      } catch {
+        // Keep the error from the pairing-code callback.
+      }
       throw error;
     }
+    client = await pairing.waitConfirm();
   }
 
   try {

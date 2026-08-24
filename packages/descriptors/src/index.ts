@@ -161,41 +161,10 @@ export function DescriptorsFactory(eccOrBitcoinLib: Ecc | BitcoinLib = ecc) {
  * @internal
  */
 function getLedgerModule() {
-  try {
-    // This deprecated root package still exposes Ledger helpers for backwards
-    // compatibility, but we do not want a static top-level import here.
-    //
-    // If we imported `./ledger` normally, every consumer of
-    // `@bitcoinerlab/descriptors` would pull the Ledger entrypoint into the
-    // module graph, which would in turn require the optional
-    // `@ledgerhq/ledger-bitcoin` peer even when Ledger is never used.
-    //
-    // We also avoid switching this to `await import('./ledger')` inside the
-    // `try/catch`: in React Native / Metro, conditional dynamic imports inside
-    // `try/catch` have historically been analyzed too eagerly once transpiled.
-    // See:
-    // https://github.com/react-native-community/discussions-and-proposals/issues/120
-    //
-    // So the compat root uses a local `require()` here, while the modern
-    // `@bitcoinerlab/descriptors/ledger` entrypoint uses normal static imports.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('./ledger') as LedgerModule;
-  } catch (error) {
-    const errorCode =
-      error instanceof Error && 'code' in error
-        ? (error as Error & { code?: string }).code
-        : undefined;
-    if (
-      error instanceof Error &&
-      (errorCode === 'MODULE_NOT_FOUND' ||
-        error.message.includes('@ledgerhq/ledger-bitcoin'))
-    ) {
-      throw new Error(
-        'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using Ledger helpers from @bitcoinerlab/descriptors. Please run "npm install @ledgerhq/ledger-bitcoin" or import only non-Ledger APIs.'
-      );
-    }
-    throw error;
-  }
+  // Keep this require lazy so the deprecated root Ledger namespace stays out
+  // of the module graph until an application uses it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('./ledger') as LedgerModule;
 }
 
 /**

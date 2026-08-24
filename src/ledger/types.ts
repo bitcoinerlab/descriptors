@@ -103,30 +103,18 @@ export type LedgerStore = {
 };
 
 /**
- * Persisted 3.x policy shape.
- *
- * @deprecated Remove with LedgerState migration in v4.
- * @internal
- */
-type LegacyLedgerPolicy = {
-  policyName?: string;
-  ledgerTemplate: string;
-  keyRoots: string[];
-  policyId?: Uint8Array;
-  policyHmac?: Uint8Array;
-};
-
-/**
- * @deprecated Use `Store` from the Ledger entrypoint for new integrations.
- * Remove in v4 with the deprecated `LedgerManager` helpers and legacy state
- * migration.
- *
- * Existing 3.x state is still accepted by deprecated `LedgerManager` helpers
- * and is migrated to the JSON-safe `LedgerStore` format in place.
+ * @deprecated Use `Store` from the Ledger entrypoint. Remove in v4 with the
+ * deprecated `LedgerManager` helpers.
  */
 export type LedgerState = {
-  masterFingerprint?: string | Uint8Array;
-  policies?: (LedgerPolicy | LegacyLedgerPolicy)[];
+  masterFingerprint?: Uint8Array;
+  policies?: {
+    policyName?: string;
+    ledgerTemplate: string;
+    keyRoots: string[];
+    policyId?: Uint8Array;
+    policyHmac?: Uint8Array;
+  }[];
   xpubs?: { [key: string]: string };
 };
 
@@ -150,14 +138,14 @@ export type LedgerSession = {
  */
 export type LedgerManager = {
   /** Ledger Bitcoin app client instance. */
-  ledgerClient: LedgerClient;
+  ledgerClient: unknown;
   /** App-owned store for cached keys and registered Ledger policy receipts. */
   ledgerState: LedgerState;
   /**
    * @deprecated 3.x compatibility only. Deprecated policy helpers use this
    * backend-bound constructor. Remove this field and its type import in v4.
    */
-  Output?: OutputConstructor;
+  Output: OutputConstructor;
   /** Bitcoin network used for descriptor and policy interpretation. */
   network: Network;
 };

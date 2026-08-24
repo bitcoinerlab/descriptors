@@ -39,18 +39,18 @@
  * 4) Since all originPaths must be the same and originPaths for the Ledger are
  * necessary, a Ledger device can only sign at most 1 key per policy and input.
  *
- * All the conditions above are checked when deriving the common HWW policy.
+ * Ledger checks these device-specific rules after deriving the shared policy.
  */
 
-import { getMasterFingerprint, sessionFromLedgerManager } from './client';
+import { getMasterFingerprint, withLedgerManagerSession } from './client';
 import { fromBase64, fromHex, toHex } from 'uint8array-tools';
 // Used only to forward deprecated LedgerManager.Output. Remove in v4.
 import type { OutputConstructor } from '../descriptors';
 import {
   derivePolicyFromOutput,
-  knownPolicyFromOutput,
-  samePolicy,
-  standardPolicyFromOutput
+  findKnownPolicy,
+  isStandardPolicy,
+  samePolicy
 } from '../hww/policies';
 import {
   assertDescriptorParams,
@@ -60,10 +60,6 @@ import {
   outputFromDescriptor,
   sampleOutputFromPolicyDescriptor
 } from '../hww/helpers';
-import {
-  keyExpression as keyExpressionFromSession,
-  keyExpressionLedger
-} from './keyExpressions';
 import type {
   LedgerClient,
   LedgerDefaultDescriptorTemplate,
@@ -72,6 +68,7 @@ import type {
   LedgerSession,
   LedgerStore
 } from './types';
+import { assertLedgerPolicySupported } from './policies';
 
 export type { LedgerManager, LedgerState } from './types';
 
@@ -83,6 +80,7 @@ export {
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './client';
+export { keyExpression, keyExpressionLedger } from './keyExpressions';
 
 type AddressDisplayParams = {
   descriptor: string;
@@ -161,25 +159,21 @@ async function registerPolicyWithLegacyOutput({
     ...(legacyOutput !== undefined ? { legacyOutput } : {})
   });
   const readMasterFingerprint = () => getMasterFingerprint({ session });
-  if (
-    await standardPolicyFromOutput({
-      output: sampleOutput,
-      getMasterFingerprint: readMasterFingerprint
-    })
-  )
-    return undefined;
-  const result = await derivePolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
   });
-  if (!result) throw new Error(`Error: output does not have a ledger input`);
-  const { descriptorTemplate, keyRoots } = result;
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
+  assertLedgerPolicySupported(derivedPolicy);
+  const { descriptorTemplate, keyRoots } = derivedPolicy;
+  if (isStandardPolicy({ descriptorTemplate, keyRoots, network }))
+    return undefined;
   if (!store.policies) store.policies = [];
-  const policy = (await knownPolicyFromOutput({
-    output: sampleOutput,
-    getMasterFingerprint: readMasterFingerprint,
+  const policy = findKnownPolicy({
+    derivedPolicy,
     knownPolicies: store.policies
-  })) as LedgerPolicy | null;
+  }) as LedgerPolicy | null;
   if (policy) {
     if (policy.name && policy.name !== name)
       throw new Error(
@@ -223,40 +217,18 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  await registerPolicyWithLegacyOutput({
-    descriptor,
-    session: sessionFromLedgerManager(ledgerManager),
-    name: policyName,
-    ...(ledgerManager.Output !== undefined
-      ? { legacyOutput: ledgerManager.Output }
-      : {})
-  });
+  await withLedgerManagerSession(ledgerManager, session =>
+    registerPolicyWithLegacyOutput({
+      descriptor,
+      session,
+      name: policyName,
+      legacyOutput: ledgerManager.Output
+    })
+  );
 }
 
 export type Session = LedgerSession;
 export type Store = LedgerStore;
-
-export async function keyExpression({
-  session,
-  originPath,
-  keyPath,
-  change,
-  index
-}: {
-  session: LedgerSession;
-  originPath: string;
-  change?: number;
-  index?: number | '*';
-  keyPath?: string;
-}): Promise<string> {
-  return keyExpressionFromSession({
-    session,
-    originPath,
-    ...(keyPath !== undefined ? { keyPath } : {}),
-    ...(change !== undefined ? { change } : {}),
-    ...(index !== undefined ? { index } : {})
-  });
-}
 
 export async function displayAddress({
   descriptor,
@@ -279,30 +251,38 @@ export async function displayAddress({
     ...descriptorParams,
     network: session.network
   });
-  const standardPolicy = await standardPolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (standardPolicy) {
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
+  assertLedgerPolicySupported(derivedPolicy);
+  if (
+    isStandardPolicy({
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
+      network: session.network
+    })
+  ) {
     return ledgerClient.getWalletAddress(
       new DefaultWalletPolicy(
-        standardPolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
-        standardPolicy.keyRoots[0]!
+        derivedPolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
+        derivedPolicy.keyRoots[0]!
       ),
       null,
-      standardPolicy.change,
-      standardPolicy.index,
+      derivedPolicy.change,
+      derivedPolicy.index,
       true
     );
   }
 
-  const policy = (await knownPolicyFromOutput({
-    output,
-    getMasterFingerprint: () => getMasterFingerprint({ session }),
+  const policy = findKnownPolicy({
+    derivedPolicy,
     ...(session.store.policies !== undefined
       ? { knownPolicies: session.store.policies }
       : {})
-  })) as (LedgerPolicy & { change: number; index: number }) | null;
+  }) as (LedgerPolicy & { change: number; index: number }) | null;
   if (!policy)
     throw new Error(`Ledger policy not registered; call registerPolicy first`);
   if (!policy.name || !policy.policyHmac)
@@ -342,11 +322,18 @@ export async function signMessage({
     ...descriptorParams,
     network: session.network
   });
-  const policy = await standardPolicyFromOutput({
+  const policy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (!policy)
+  if (
+    !policy ||
+    !isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
+  )
     throw new Error(
       `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
     );
@@ -370,6 +357,5 @@ export async function signMessage({
 }
 
 export * as signers from './signers';
-export { keyExpressionLedger };
 export * as scriptExpressions from './scriptExpressions';
 export { connect } from './connectors';

@@ -4,7 +4,6 @@
 import { coinTypeFromNetwork } from '../networkUtils';
 import { fromHex } from 'uint8array-tools';
 import type {
-  BitBoxFormatUnit,
   BitBoxSession,
   BitBoxApiNetwork,
   BitBoxSimpleType
@@ -22,17 +21,7 @@ function xpubType(session: Pick<BitBoxSession, 'network'>): ApiXpubType {
   return coinType === 0 ? 'xpub' : 'tpub';
 }
 
-export function formatUnit(session: BitBoxSession): BitBoxFormatUnit {
-  return session.formatUnit ?? 'default';
-}
-
-export function simpleType({
-  descriptorTemplate,
-  session
-}: {
-  descriptorTemplate: string;
-  session: BitBoxSession;
-}): BitBoxSimpleType {
+export function simpleType(descriptorTemplate: string): BitBoxSimpleType {
   if (descriptorTemplate === 'pkh(@0/**)') {
     throw new Error(
       `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
@@ -50,7 +39,6 @@ export function simpleType({
     throw new Error(
       `Descriptor template is not a BitBox02 supported simple type`
     );
-  void session;
   return name;
 }
 
@@ -87,8 +75,8 @@ export async function getXpub({
   const { client, store } = session;
   if (!store.xpubs) store.xpubs = {};
   const cacheKey = `${originPath}:${xpubType(session)}`;
-  let xpub = store.xpubs[cacheKey];
-  if (!xpub) {
+  let xpub = display ? undefined : store.xpubs[cacheKey];
+  if (xpub === undefined) {
     xpub = await client.btcXpub(
       apiNetwork(session),
       `m${originPath}`,

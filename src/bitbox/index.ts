@@ -18,8 +18,8 @@ import {
 } from './scriptConfig';
 import {
   derivePolicyFromOutput,
-  knownPolicyFromOutput,
-  standardPolicyFromOutput
+  findKnownPolicy,
+  isStandardPolicy
 } from '../hww/policies';
 import {
   assertDescriptorParams,
@@ -91,28 +91,27 @@ export async function registerPolicy({
   });
   const readMasterFingerprint = () => getMasterFingerprint({ session });
 
-  const standardPolicy = await standardPolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output: sampleOutput,
     getMasterFingerprint: readMasterFingerprint
   });
-  if (standardPolicy) {
-    simpleType({
-      descriptorTemplate: standardPolicy.descriptorTemplate,
-      session
-    });
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a BitBox02 input`);
+  if (
+    isStandardPolicy({
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
+      network
+    })
+  ) {
+    simpleType(derivedPolicy.descriptorTemplate);
     return undefined;
   }
 
-  const result = await derivePolicyFromOutput({
-    output: sampleOutput,
-    getMasterFingerprint: readMasterFingerprint
-  });
-  if (!result) throw new Error(`Error: output does not have a BitBox02 input`);
   if (!store.policies) store.policies = [];
 
-  const existingPolicy = await knownPolicyFromOutput({
-    output: sampleOutput,
-    getMasterFingerprint: readMasterFingerprint,
+  const existingPolicy = findKnownPolicy({
+    derivedPolicy,
     knownPolicies: store.policies
   });
   let policy: BitBoxPolicy;
@@ -125,10 +124,11 @@ export async function registerPolicy({
   } else {
     policy = {
       name,
-      descriptorTemplate: result.descriptorTemplate,
-      keyRoots: result.keyRoots
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots
     };
   }
+  assertPolicyCanDerive(policy);
 
   const { scriptConfig, accountKeypath } = scriptConfigForRegistration({
     policy,
@@ -171,53 +171,6 @@ export async function registerPolicy({
   return wasPolicyStoredOnDevice;
 }
 
-async function displayStandardAddress({
-  policy,
-  session,
-  change,
-  index
-}: {
-  policy: BitBoxPolicy;
-  session: BitBoxSession;
-  change: number;
-  index: number;
-}) {
-  const { client } = session;
-  const originPath = originPathFromKeyRoot(policy.keyRoots[0] ?? '');
-  if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
-  return client.btcAddress(
-    apiNetwork(session),
-    `m${originPath}/${change}/${index}`,
-    {
-      simpleType: simpleType({
-        descriptorTemplate: policy.descriptorTemplate,
-        session
-      })
-    },
-    true
-  );
-}
-
-async function displayPolicyAddress({
-  policy,
-  session,
-  change,
-  index
-}: {
-  policy: BitBoxPolicy;
-  session: BitBoxSession;
-  change: number;
-  index: number;
-}) {
-  assertPolicyCanDerive(policy);
-  return session.client.btcAddress(
-    apiNetwork(session),
-    addressKeypathFromPolicy({ policy, session, change, index }),
-    scriptConfigFromPolicy({ policy, session }),
-    true
-  );
-}
-
 export async function displayAddress({
   descriptor,
   session,
@@ -235,33 +188,49 @@ export async function displayAddress({
     ...descriptorParams,
     network: session.network
   });
-  const standardPolicy = await standardPolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (standardPolicy)
-    return displayStandardAddress({
-      policy: standardPolicy,
-      session,
-      change: standardPolicy.change,
-      index: standardPolicy.index
-    });
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a BitBox02 input`);
+  if (
+    isStandardPolicy({
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
+      network: session.network
+    })
+  ) {
+    const originPath = originPathFromKeyRoot(derivedPolicy.keyRoots[0] ?? '');
+    if (!originPath) throw new Error(`BitBox02 key root missing origin path`);
+    return session.client.btcAddress(
+      apiNetwork(session),
+      `m${originPath}/${derivedPolicy.change}/${derivedPolicy.index}`,
+      { simpleType: simpleType(derivedPolicy.descriptorTemplate) },
+      true
+    );
+  }
 
-  const policy = await knownPolicyFromOutput({
-    output,
-    getMasterFingerprint: () => getMasterFingerprint({ session }),
+  const policy = findKnownPolicy({
+    derivedPolicy,
     ...(session.store.policies !== undefined
       ? { knownPolicies: session.store.policies }
       : {})
   });
   if (!policy)
     throw new Error(`BitBox policy not registered; call registerPolicy first`);
-  return displayPolicyAddress({
-    policy,
-    session,
-    change: policy.change,
-    index: policy.index
-  });
+  assertPolicyCanDerive(policy);
+  return session.client.btcAddress(
+    apiNetwork(session),
+    addressKeypathFromPolicy({
+      policy,
+      session,
+      change: policy.change,
+      index: policy.index
+    }),
+    scriptConfigFromPolicy({ policy, session }),
+    true
+  );
 }
 
 export async function signMessage({
@@ -286,11 +255,18 @@ export async function signMessage({
     ...descriptorParams,
     network: session.network
   });
-  const policy = await standardPolicyFromOutput({
+  const policy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (!policy)
+  if (
+    !policy ||
+    !isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
+  )
     throw new Error(
       `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`
     );
@@ -301,14 +277,6 @@ export async function signMessage({
   }
   if (policy.descriptorTemplate === 'tr(@0/**)')
     throw new Error(`BitBox02 does not support Taproot message signing`);
-  if (
-    policy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
-    policy.descriptorTemplate !== 'wpkh(@0/**)'
-  ) {
-    throw new Error(
-      `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`
-    );
-  }
 
   const result = await client.btcSignMessage(
     apiNetwork(session),

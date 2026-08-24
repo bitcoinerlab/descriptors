@@ -8,12 +8,7 @@ import {
 } from '../bitcoinLib';
 import { toPsbt } from '../psbt';
 import { policyForPsbtInput } from '../hww/policies';
-import {
-  formatUnit,
-  apiNetwork,
-  getMasterFingerprint,
-  getXpub
-} from './client';
+import { apiNetwork, getMasterFingerprint, getXpub } from './client';
 import {
   assertPolicyCanDerive,
   signingKeypathFromPolicy,
@@ -78,40 +73,27 @@ async function forcedScriptConfigForPsbt({
   return [...configs.values()][0];
 }
 
+/**
+ * Signs a complete PSBT and merges the signatures into the supplied object.
+ *
+ * BitBox does not expose per-input signing. Its API signs the complete PSBT, so
+ * this module intentionally does not provide `signInput(...)`. Every input in
+ * the PSBT must include a key owned by the connected BitBox.
+ */
 export async function sign({
   psbt,
   session
 }: {
   psbt: PsbtLike | ScureTransactionLike;
   session: BitBoxSession;
-}): Promise<string> {
+}): Promise<void> {
   psbt = toPsbt(psbt);
   const forcedScriptConfig = await forcedScriptConfigForPsbt({ psbt, session });
   const signedPsbt = await session.client.btcSignPSBT(
     apiNetwork(session),
     psbt.toBase64(),
     forcedScriptConfig,
-    formatUnit(session)
+    session.formatUnit ?? 'default'
   );
   getBitcoinLibOrThrow().mergePsbt(psbt, signedPsbt);
-  return signedPsbt;
-}
-
-export async function signInput({
-  psbt,
-  index,
-  session
-}: {
-  psbt: PsbtLike | ScureTransactionLike;
-  index: number;
-  session: BitBoxSession;
-}): Promise<string> {
-  psbt = toPsbt(psbt);
-  if (!psbt.data.inputs[index])
-    throw new Error(`Error: input ${index} not available`);
-  if (psbt.data.inputs.length !== 1 || index !== 0)
-    throw new Error(
-      `BitBox btcSignPSBT signs a whole PSBT; signInput is only supported for single-input PSBTs`
-    );
-  return sign({ psbt, session });
 }

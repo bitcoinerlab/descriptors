@@ -51,6 +51,10 @@ import {
 } from '../../dist/bitbox';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const loadBitBoxApi = require('./loadBitBoxApi.cjs') as () => Promise<
+  typeof import('bitbox-api')
+>;
 import {
   createPsbt,
   psbtAddOutput,
@@ -122,7 +126,7 @@ let closeSession = async () => {};
   await ready;
   const session = await connect({
     driver: {
-      module: import('bitbox-api'),
+      module: loadBitBoxApi(),
       mode: 'bridge',
       onClose: () => {
         console.log('BitBox02 connection closed');

@@ -3,7 +3,7 @@
 
 import { compare, fromHex, toHex } from 'uint8array-tools';
 import { parseKeyRoot } from '../hww/helpers';
-import { isStandardPolicy, parseP2wshSortedmultiPolicy } from '../hww/policies';
+import { isStandardPolicy } from '../hww/policies';
 import type {
   BitBoxKeyOriginInfo,
   BitBoxMultisigScriptType,
@@ -13,6 +13,28 @@ import type {
 } from './types';
 import { coinTypeFromNetwork } from '../networkUtils';
 import { simpleType } from './client';
+
+function parseP2wshSortedmultiPolicy(policy: BitBoxPolicy): {
+  threshold: number;
+  keyIndexes: number[];
+} | null {
+  const match = policy.descriptorTemplate.match(
+    /^wsh\(sortedmulti\((\d+),(.+)\)\)$/
+  );
+  if (!match) return null;
+
+  const threshold = Number(match[1]);
+  if (!Number.isInteger(threshold) || threshold < 1) return null;
+
+  const keyIndexes: number[] = [];
+  for (const token of match[2]!.split(',')) {
+    const keyMatch = token.trim().match(/^@(\d+)\/\*\*$/);
+    if (!keyMatch) return null;
+    keyIndexes.push(Number(keyMatch[1]));
+  }
+  if (threshold > keyIndexes.length) return null;
+  return { threshold, keyIndexes };
+}
 
 function keyOriginInfoFromKeyRoot(keyRoot: string): BitBoxKeyOriginInfo {
   const parsed = parseKeyRoot(keyRoot);
@@ -178,10 +200,7 @@ export function scriptConfigFromPolicy({
     })
   ) {
     return {
-      simpleType: simpleType({
-        descriptorTemplate: policy.descriptorTemplate,
-        session
-      })
+      simpleType: simpleType(policy.descriptorTemplate)
     };
   }
 

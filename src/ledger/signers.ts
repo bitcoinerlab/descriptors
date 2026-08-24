@@ -14,7 +14,7 @@ import {
 import {
   getMasterFingerprint,
   getXpub,
-  sessionFromLedgerManager
+  withLedgerManagerSession
 } from './client';
 import { fromHex } from 'uint8array-tools';
 import type {
@@ -24,6 +24,7 @@ import type {
   LedgerPartialSignature,
   LedgerSession
 } from './types';
+import { assertLedgerPolicySupported } from './policies';
 
 type PartialSignature = LedgerPartialSignature;
 
@@ -91,6 +92,47 @@ function addLedgerSignaturesToInput({
   }
 }
 
+async function signPsbtWithPolicy({
+  psbt,
+  policy,
+  session
+}: {
+  psbt: PsbtLike;
+  policy: LedgerPolicy;
+  session: LedgerSession;
+}) {
+  assertLedgerPolicySupported(policy);
+  const { client } = session;
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
+
+  if (policy.name && policy.policyHmac) {
+    return client.signPsbt(
+      psbt.toBase64(),
+      new WalletPolicy(policy.name, policy.descriptorTemplate, policy.keyRoots),
+      fromHex(policy.policyHmac)
+    );
+  }
+  if (
+    isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
+  ) {
+    return client.signPsbt(
+      psbt.toBase64(),
+      new DefaultWalletPolicy(
+        policy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
+        policy.keyRoots[0]!
+      ),
+      null
+    );
+  }
+  throw new Error(
+    `Stored Ledger policy registration is incomplete; call registerPolicy again`
+  );
+}
+
 export async function signInput({
   psbt,
   index,
@@ -123,8 +165,6 @@ async function signInputWithLegacyOutput({
   legacyOutput?: OutputConstructor;
 }): Promise<void> {
   psbt = toPsbt(psbt);
-  const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
 
   const policy = (await policyForPsbtInput({
     psbt,
@@ -139,41 +179,7 @@ async function signInputWithLegacyOutput({
   })) as LedgerPolicy | undefined;
   if (!policy) throw new Error(`Error: the Ledger cannot sign this PSBT input`);
 
-  let ledgerSignatures;
-  if (policy.name && policy.policyHmac) {
-    const walletPolicy = new WalletPolicy(
-      policy.name,
-      policy.descriptorTemplate,
-      policy.keyRoots
-    );
-
-    const walletHmac = fromHex(policy.policyHmac) as unknown as Parameters<
-      typeof client.signPsbt
-    >[2];
-    ledgerSignatures = await client.signPsbt(
-      psbt.toBase64(),
-      walletPolicy,
-      walletHmac
-    );
-  } else if (
-    isStandardPolicy({
-      descriptorTemplate: policy.descriptorTemplate,
-      keyRoots: policy.keyRoots,
-      network: session.network
-    })
-  )
-    ledgerSignatures = await client.signPsbt(
-      psbt.toBase64(),
-      new DefaultWalletPolicy(
-        policy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
-        policy.keyRoots[0]!
-      ),
-      null
-    );
-  else
-    throw new Error(
-      `Stored Ledger policy registration is incomplete; call registerPolicy again`
-    );
+  const ledgerSignatures = await signPsbtWithPolicy({ psbt, policy, session });
 
   addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
 }
@@ -191,14 +197,14 @@ export async function signInputLedger({
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
-  return signInputWithLegacyOutput({
-    psbt,
-    index,
-    session: sessionFromLedgerManager(ledgerManager),
-    ...(ledgerManager.Output !== undefined
-      ? { legacyOutput: ledgerManager.Output }
-      : {})
-  });
+  return withLedgerManagerSession(ledgerManager, session =>
+    signInputWithLegacyOutput({
+      psbt,
+      index,
+      session,
+      legacyOutput: ledgerManager.Output
+    })
+  );
 }
 
 export async function sign({
@@ -229,8 +235,6 @@ async function signWithLegacyOutput({
   legacyOutput?: OutputConstructor;
 }): Promise<void> {
   psbt = toPsbt(psbt);
-  const { client } = session;
-  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
 
   const ledgerPolicies = [];
   for (let index = 0; index < psbt.data.inputs.length; index++) {
@@ -261,41 +265,11 @@ async function signWithLegacyOutput({
   }
 
   for (const uniquePolicy of uniquePolicies) {
-    let ledgerSignatures;
-    if (uniquePolicy.name && uniquePolicy.policyHmac) {
-      const walletPolicy = new WalletPolicy(
-        uniquePolicy.name,
-        uniquePolicy.descriptorTemplate,
-        uniquePolicy.keyRoots
-      );
-
-      const walletHmac = fromHex(
-        uniquePolicy.policyHmac
-      ) as unknown as Parameters<typeof client.signPsbt>[2];
-      ledgerSignatures = await client.signPsbt(
-        psbt.toBase64(),
-        walletPolicy,
-        walletHmac
-      );
-    } else if (
-      isStandardPolicy({
-        descriptorTemplate: uniquePolicy.descriptorTemplate,
-        keyRoots: uniquePolicy.keyRoots,
-        network: session.network
-      })
-    )
-      ledgerSignatures = await client.signPsbt(
-        psbt.toBase64(),
-        new DefaultWalletPolicy(
-          uniquePolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
-          uniquePolicy.keyRoots[0]!
-        ),
-        null
-      );
-    else
-      throw new Error(
-        `Stored Ledger policy registration is incomplete; call registerPolicy again`
-      );
+    const ledgerSignatures = await signPsbtWithPolicy({
+      psbt,
+      policy: uniquePolicy,
+      session
+    });
 
     const signedIndexes = [
       ...new Set(ledgerSignatures.map(([index]) => index))
@@ -317,11 +291,11 @@ export async function signLedger({
   psbt: PsbtLike | ScureTransactionLike;
   ledgerManager: LedgerManager;
 }): Promise<void> {
-  return signWithLegacyOutput({
-    psbt,
-    session: sessionFromLedgerManager(ledgerManager),
-    ...(ledgerManager.Output !== undefined
-      ? { legacyOutput: ledgerManager.Output }
-      : {})
-  });
+  return withLedgerManagerSession(ledgerManager, session =>
+    signWithLegacyOutput({
+      psbt,
+      session,
+      legacyOutput: ledgerManager.Output
+    })
+  );
 }

@@ -4,7 +4,7 @@
 import { assertStandardKeyPath } from '../scriptExpressions';
 import { coinTypeFromNetwork } from '../networkUtils';
 import { keyExpression } from './keyExpressions';
-import { sessionFromLedgerManager } from './client';
+import { withLedgerManagerSession } from './client';
 import type { LedgerManager, LedgerSession } from './types';
 
 type StandardScriptExpressionParams = {
@@ -66,10 +66,9 @@ function makeStandardExpressionLedger(purpose: number, scriptTemplate: string) {
     ledgerManager,
     ...params
   }: DeprecatedLedgerStandardScriptExpressionParams) {
-    return standardScriptExpression({
-      ...params,
-      session: sessionFromLedgerManager(ledgerManager)
-    });
+    return withLedgerManagerSession(ledgerManager, session =>
+      standardScriptExpression({ ...params, session })
+    );
   };
 }
 

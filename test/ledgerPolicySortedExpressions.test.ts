@@ -888,6 +888,35 @@ describeIfNotScure(
       }
     );
 
+    test('rejects different key origins required by Ledger policy rules', async () => {
+      const ledgerMaster = makeMaster(289);
+      const otherMaster = makeMaster(290);
+      const session = mockLedgerSession(ledgerMaster.fingerprint);
+      const registerWallet = jest.fn();
+      Object.assign(session.client, { registerWallet });
+      const ledgerKey = keyExpressionBIP32({
+        masterNode: ledgerMaster,
+        originPath: "/48'/1'/0'",
+        keyPath: '/0/*'
+      });
+      const otherKey = keyExpressionBIP32({
+        masterNode: otherMaster,
+        originPath: "/48'/1'/7'",
+        keyPath: '/0/*'
+      });
+
+      await expect(
+        registerPolicy({
+          descriptor: `wsh(sortedmulti(1,${ledgerKey},${otherKey}))`,
+          session,
+          name: 'Different origins'
+        })
+      ).rejects.toThrow(
+        'Ledger policies require every key with origin information to use the same origin path'
+      );
+      expect(registerWallet).not.toHaveBeenCalled();
+    });
+
     test('returns undefined device storage metadata for a standard policy', async () => {
       const ledgerMaster = makeMaster(287);
       const session = mockLedgerSession(ledgerMaster.fingerprint);
@@ -1035,8 +1064,8 @@ describeIfNotScure(
       expect(registerWallet).toHaveBeenCalledTimes(1);
     });
 
-    // Remove with LedgerManager and legacy state migration in v4.
-    test('migrates populated 3.x Ledger state before deprecated helpers use it', async () => {
+    // Remove with LedgerManager compatibility in v4.
+    test('keeps populated 3.x Ledger state in its released shape', async () => {
       const ledgerMaster = makeMaster(263);
       const otherMaster = makeMaster(264);
       const ledgerKeyAtIndex = keyExpressionBIP32({
@@ -1120,7 +1149,7 @@ describeIfNotScure(
       await expect(
         getLedgerMasterFingerPrint({ ledgerManager })
       ).resolves.toEqual(ledgerMaster.fingerprint);
-      const normalizedPolicies = ledgerState.policies;
+      const legacyPolicies = ledgerState.policies;
       await signers.signLedger({ psbt, ledgerManager });
       await signers.signInputLedger({ psbt, index: 0, ledgerManager });
 
@@ -1128,19 +1157,19 @@ describeIfNotScure(
       expect(outputConstructions).toBe(2);
       expect(ledgerClient.signPsbt).toHaveBeenCalledTimes(2);
       expect(ledgerState).toEqual({
-        masterFingerprint: toHex(ledgerMaster.fingerprint),
+        masterFingerprint: ledgerMaster.fingerprint,
         policies: [
           {
-            name: 'Legacy policy',
-            descriptorTemplate,
+            policyName: 'Legacy policy',
+            ledgerTemplate: descriptorTemplate,
             keyRoots,
-            policyId: toHex(policyId),
-            policyHmac: toHex(policyHmac)
+            policyId,
+            policyHmac
           }
         ],
         xpubs: { "/48'/1'/0'": 'cached-xpub' }
       });
-      expect(ledgerState.policies).toBe(normalizedPolicies);
+      expect(ledgerState.policies).toBe(legacyPolicies);
       expect(ledgerClient.signPsbt).toHaveBeenCalledWith(
         'psbt-base64',
         expect.objectContaining({ name: 'Legacy policy' }),

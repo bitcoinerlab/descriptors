@@ -70,6 +70,10 @@ import * as bitbox from '@bitcoinerlab/descriptors/bitbox';
 Hardware-wallet code lives behind device-specific entrypoints. This keeps the
 main package usable without installing Ledger or BitBox transport libraries.
 
+Use either the bitcoinjs preset or the Scure preset in one process. Do not load
+both. The core rejects backend switching because hardware-wallet operations must
+use the same Bitcoin library that created their descriptors and PSBTs.
+
 Use these entrypoints:
 
 - `@bitcoinerlab/descriptors/ledger`
@@ -94,13 +98,16 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `registerPolicy(...)` | Register or locally remember a policy and report whether BitBox already stored it. |
 | `displayAddress(...)` | Ask the device to display an address for verification. |
 | `signers.sign(...)` | Ask the device to sign a PSBT. |
-| `signers.signInput(...)` | Convenience wrapper for single-input signing flows. |
 | `signMessage(...)` | Ask the device to sign a legacy/Electrum Bitcoin message for a descriptor address. |
 
 `signMessage(...)` has the same public shape for Ledger and BitBox:
 `signMessage({ session, message, descriptor, change?, index? })`. It returns a
 65-byte `Uint8Array` legacy/Electrum Bitcoin message signature. It does not
 produce BIP322 signatures.
+
+Ledger also exposes `signers.signInput(...)` for selecting one input. BitBox
+does not expose it because the BitBox API signs a complete PSBT and cannot sign
+one selected input from a multi-input PSBT.
 
 ## Address Position Params
 
@@ -370,8 +377,11 @@ Available BitBox modes are:
 
 `webhid-or-bridge` is the `bitbox-api` fallback flow: it tries WebHID when
 available and otherwise attempts BitBoxBridge. Since `bitbox-api` exposes more
-than one connection mechanism, `driver.mode` is required. A driver exposing one
-supported mechanism does not need a mode.
+than one connection mechanism, `driver.mode` is required. The mode is always
+required so the selected transport is clear in application code.
+
+`bitbox-api` is an ESM/WASM package. Node and bundler builds must preserve a real
+dynamic import instead of changing it to `require('bitbox-api')`.
 
 For React Native BitBox apps, pass `@bitcoinerlab/bitbox-react-native` as the
 driver. That package supports BLE and Android USB.
@@ -420,8 +430,7 @@ try {
 }
 ```
 
-Use `mode: 'usb'` for Android USB. If a BitBox driver exposes both BLE and USB
-and `driver.mode` is omitted, descriptors throws an error listing both choices.
+Use `mode: 'usb'` for Android USB.
 When no device is supplied, the native provider uses its normal first-match
 behavior. Apps that support several BitBoxes can use the provider's listing API
 and pass the selected record in `driver.device`:
@@ -473,9 +482,9 @@ load it with `JSON.parse(...)` before creating the next session.
 
 The details are slightly different by device:
 
-- Ledger store stores the registration receipt returned by the Ledger app
-  (`policyId` and `policyHmac`). Keep it with your wallet record. Without it,
-  the app cannot reuse that registered Ledger policy without registering again.
+- Ledger store records the policy ID and HMAC returned by the Ledger app. The
+  HMAC is required to reuse a non-standard policy. The policy ID is useful
+  metadata but can be rebuilt from the policy itself.
 - BitBox store stores the app-side policy mapping. BitBox registration returns
   no id or HMAC. The device can tell whether one exact script config is already
   registered, but it does not give this library a list of wallet policies to
@@ -586,6 +595,11 @@ Hardware-wallet signing uses the same PSBT that normal descriptor spending uses.
 Prepare inputs with `Output.updatePsbtAsInput(...)`, add outputs, ask the device
 to sign, then finalize with the function returned by `updatePsbtAsInput(...)`.
 
+Ledger can skip unrelated inputs and sign only the inputs it owns. The current
+BitBox API requires every PSBT input to include a key owned by that BitBox. A
+BitBox can sign multisig inputs, but it cannot sign a PSBT that also contains an
+input owned only by another wallet.
+
 Prefer passing the full previous transaction as `txHex`. This gives the device
 more information to verify what is being spent. It is especially important for
 Segwit inputs.
@@ -619,7 +633,7 @@ non-standard policies are also not supported by this helper.
 
 BitBox adds these device-specific extensions on top of the common API:
 
-- `driver.mode` selects one mechanism when the imported module exposes several.
+- `driver.mode` selects the connection mechanism and is required.
 - `driver.onPairingCode` is required for `bitbox-api` drivers.
 - `driver.formatUnit` chooses how amounts are shown while signing.
 
@@ -662,8 +676,8 @@ This throws. BitBox02 does not support top-level legacy P2PKH descriptors,
 For message signing, BitBox also rejects top-level `pkh(KEY)` and `tr(KEY)`
 descriptors before calling the device.
 
-BitBox also rejects Miniscript hash preimage fragments before address display or
-signing:
+BitBox also rejects Miniscript hash preimage fragments before registration,
+address display or signing:
 
 ```text
 wsh(and_v(v:pk(KEY),sha256(HASH)))
@@ -697,7 +711,7 @@ const session = await bitbox.connect({
 
 `driver.formatUnit` only affects how amounts are shown on the BitBox screen. It
 does not change the descriptor, PSBT, policy or signatures. If omitted, the
-connector passes `default`.
+signer uses `default`.
 
 ## Ledger Details
 

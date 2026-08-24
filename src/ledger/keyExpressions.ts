@@ -5,7 +5,7 @@ import { keyExpressionHWW } from '../hww/helpers';
 import {
   getMasterFingerprint,
   getXpub,
-  sessionFromLedgerManager
+  withLedgerManagerSession
 } from './client';
 import type { LedgerManager, LedgerSession } from './types';
 
@@ -49,11 +49,13 @@ export async function keyExpressionLedger({
   index?: number | '*';
   keyPath?: string;
 }): Promise<string> {
-  return keyExpression({
-    session: sessionFromLedgerManager(ledgerManager),
-    originPath,
-    ...(keyPath !== undefined ? { keyPath } : {}),
-    ...(change !== undefined ? { change } : {}),
-    ...(index !== undefined ? { index } : {})
-  });
+  return withLedgerManagerSession(ledgerManager, session =>
+    keyExpression({
+      session,
+      originPath,
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {})
+    })
+  );
 }

@@ -5,54 +5,108 @@ import { fromHex, toHex } from 'uint8array-tools';
 import type {
   LedgerBitcoinApi,
   LedgerManager,
-  LedgerPolicy,
   LedgerSession,
   LedgerStore
 } from './types';
 
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function storeFromLedgerState(
+  state: LedgerManager['ledgerState']
+): LedgerStore {
+  return {
+    ...(state.masterFingerprint !== undefined
+      ? { masterFingerprint: toHex(state.masterFingerprint) }
+      : {}),
+    ...(state.policies !== undefined
+      ? {
+          policies: state.policies.map(policy => ({
+            ...(policy.policyName !== undefined
+              ? { name: policy.policyName }
+              : {}),
+            descriptorTemplate: policy.ledgerTemplate,
+            keyRoots: policy.keyRoots,
+            ...(policy.policyId !== undefined
+              ? { policyId: toHex(policy.policyId) }
+              : {}),
+            ...(policy.policyHmac !== undefined
+              ? { policyHmac: toHex(policy.policyHmac) }
+              : {})
+          }))
+        }
+      : {}),
+    ...(state.xpubs !== undefined ? { xpubs: state.xpubs } : {})
+  };
+}
+
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function copyStoreToLedgerState(
+  store: LedgerStore,
+  state: LedgerManager['ledgerState']
+): void {
+  if (store.masterFingerprint !== undefined)
+    state.masterFingerprint = fromHex(store.masterFingerprint);
+  else delete state.masterFingerprint;
+
+  if (store.policies !== undefined) {
+    const policies = store.policies.map(policy => ({
+      ...(policy.name !== undefined ? { policyName: policy.name } : {}),
+      ledgerTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      ...(policy.policyId !== undefined
+        ? { policyId: fromHex(policy.policyId) }
+        : {}),
+      ...(policy.policyHmac !== undefined
+        ? { policyHmac: fromHex(policy.policyHmac) }
+        : {})
+    }));
+    if (state.policies)
+      state.policies.splice(0, state.policies.length, ...policies);
+    else state.policies = policies;
+  } else delete state.policies;
+
+  if (store.xpubs !== undefined) state.xpubs = store.xpubs;
+  else delete state.xpubs;
+}
+
 /**
- * Builds an internal session and migrates state for deprecated 3.x helpers.
- * The optional peer is loaded only if a policy helper uses `bitcoinApi`.
+ * Builds the modern session used by deprecated 3.x LedgerManager helpers.
  *
- * @deprecated Remove with `LedgerManager` compatibility in v4.
+ * @deprecated 3.x LedgerManager compatibility only. Remove in v4.
  * @internal
  */
-export function sessionFromLedgerManager(
-  ledgerManager: LedgerManager
-): LedgerSession {
-  const state = ledgerManager.ledgerState;
+function sessionFromLedgerManager(ledgerManager: LedgerManager): LedgerSession {
   let bitcoinApi: LedgerBitcoinApi | undefined;
-  if (state.masterFingerprint instanceof Uint8Array)
-    state.masterFingerprint = toHex(state.masterFingerprint);
-  if (state.policies?.some(policy => 'ledgerTemplate' in policy)) {
-    state.policies = state.policies.map(policy => {
-      if (!('ledgerTemplate' in policy)) return policy;
-      const normalized: LedgerPolicy = {
-        ...(policy.policyName !== undefined ? { name: policy.policyName } : {}),
-        descriptorTemplate: policy.ledgerTemplate,
-        keyRoots: policy.keyRoots,
-        ...(policy.policyId !== undefined
-          ? { policyId: toHex(policy.policyId) }
-          : {}),
-        ...(policy.policyHmac !== undefined
-          ? { policyHmac: toHex(policy.policyHmac) }
-          : {})
-      };
-      return normalized;
-    });
-  }
   return {
-    client: ledgerManager.ledgerClient,
+    client: ledgerManager.ledgerClient as LedgerSession['client'],
     // Load the policy API only when it is first needed, then reuse it.
     get bitcoinApi() {
       bitcoinApi ??= importLedgerBitcoinModule();
       return bitcoinApi;
     },
-    store: state as LedgerStore,
+    store: storeFromLedgerState(ledgerManager.ledgerState),
     network: ledgerManager.network,
     // The deprecated manager keeps ownership of its existing transport.
     close: async () => undefined
   };
+}
+
+/**
+ * Runs one modern Ledger operation without changing the released 3.x state
+ * shape.
+ *
+ * @deprecated 3.x LedgerManager compatibility only. Remove in v4.
+ * @internal
+ */
+export async function withLedgerManagerSession<T>(
+  ledgerManager: LedgerManager,
+  operation: (session: LedgerSession) => Promise<T>
+): Promise<T> {
+  const session = sessionFromLedgerManager(ledgerManager);
+  try {
+    return await operation(session);
+  } finally {
+    copyStoreToLedgerState(session.store, ledgerManager.ledgerState);
+  }
 }
 
 /**
@@ -71,10 +125,15 @@ export function importLedgerBitcoinModule(): LedgerBitcoinApi {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('@ledgerhq/ledger-bitcoin') as LedgerBitcoinApi;
   } catch (error) {
-    void error;
-    throw new Error(
-      'Could not import "@ledgerhq/ledger-bitcoin". This peer dependency is required when using deprecated LedgerManager helpers. Please run "npm install @ledgerhq/ledger-bitcoin" or migrate to connect({ driver: { bitcoinApi } }).'
-    );
+    if (
+      error instanceof Error &&
+      error.message.includes('@ledgerhq/ledger-bitcoin')
+    ) {
+      throw new Error(
+        'Could not import "@ledgerhq/ledger-bitcoin". Install it to use deprecated LedgerManager helpers, or migrate to connect({ driver: { bitcoinApi } }).'
+      );
+    }
+    throw error;
   }
   return ledgerBitcoinModule;
 }
@@ -214,9 +273,9 @@ export async function getLedgerMasterFingerPrint({
 }: {
   ledgerManager: LedgerManager;
 }): Promise<Uint8Array> {
-  return getMasterFingerprint({
-    session: sessionFromLedgerManager(ledgerManager)
-  });
+  return withLedgerManagerSession(ledgerManager, session =>
+    getMasterFingerprint({ session })
+  );
 }
 
 /**
@@ -232,8 +291,7 @@ export async function getLedgerXpub({
   originPath: string;
   ledgerManager: LedgerManager;
 }): Promise<string> {
-  return getXpub({
-    originPath,
-    session: sessionFromLedgerManager(ledgerManager)
-  });
+  return withLedgerManagerSession(ledgerManager, session =>
+    getXpub({ originPath, session })
+  );
 }

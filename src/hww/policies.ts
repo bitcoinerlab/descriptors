@@ -41,6 +41,30 @@ export type HWWPolicy = {
   keyRoots: string[];
 };
 
+export type DerivedHWWPolicy = HWWPolicy & {
+  change: number;
+  index: number;
+};
+
+function standardTemplateForOriginPath({
+  originPath,
+  network
+}: {
+  originPath: string;
+  network: Network;
+}): string | undefined {
+  const coinType = coinTypeFromNetwork(network);
+  if (originPath.match(new RegExp(`^/44'/${coinType}'/(\\d+)'$`)))
+    return 'pkh(@0/**)';
+  if (originPath.match(new RegExp(`^/49'/${coinType}'/(\\d+)'$`)))
+    return 'sh(wpkh(@0/**))';
+  if (originPath.match(new RegExp(`^/84'/${coinType}'/(\\d+)'$`)))
+    return 'wpkh(@0/**)';
+  if (originPath.match(new RegExp(`^/86'/${coinType}'/(\\d+)'$`)))
+    return 'tr(@0/**)';
+  return undefined;
+}
+
 export function isStandardPolicy({
   descriptorTemplate,
   keyRoots,
@@ -53,52 +77,10 @@ export function isStandardPolicy({
   if (keyRoots.length !== 1) return false;
   const originPath = keyRoots[0]?.match(reOriginPath)?.[1];
   if (!originPath) return false;
-  const originCoinType = originPath.match(/^\/\d+'\/([01])'/)?.[1];
-  if (!originCoinType) return false;
-  if (originCoinType !== `${coinTypeFromNetwork(network)}`) return false;
-  if (
-    (descriptorTemplate === 'pkh(@0/**)' &&
-      originPath.match(/^\/44'\/[01]'\/(\d+)'$/)) ||
-    (descriptorTemplate === 'wpkh(@0/**)' &&
-      originPath.match(/^\/84'\/[01]'\/(\d+)'$/)) ||
-    (descriptorTemplate === 'sh(wpkh(@0/**))' &&
-      originPath.match(/^\/49'\/[01]'\/(\d+)'$/)) ||
-    (descriptorTemplate === 'tr(@0/**)' &&
-      originPath.match(/^\/86'\/[01]'\/(\d+)'$/))
-  )
-    return true;
-  return false;
-}
-
-/**
- * Reads a `wsh(sortedmulti(...))` descriptor policy.
- *
- * Returns `null` for every other policy shape, including ordered
- * `wsh(multi(...))` policies.
- */
-export function parseP2wshSortedmultiPolicy(policy: HWWPolicy): {
-  /** Number of signatures required by the sortedmulti policy. */
-  threshold: number;
-  /** Placeholder indexes used inside the sortedmulti expression. */
-  keyIndexes: number[];
-} | null {
-  const match = policy.descriptorTemplate.match(
-    /^wsh\(sortedmulti\((\d+),(.+)\)\)$/
+  return (
+    descriptorTemplate ===
+    standardTemplateForOriginPath({ originPath, network })
   );
-  if (!match) return null;
-
-  const threshold = Number(match[1]);
-  if (!Number.isInteger(threshold) || threshold < 1) return null;
-
-  const keyIndexes: number[] = [];
-  for (const token of match[2]!.split(',')) {
-    const keyMatch = token.trim().match(/^@(\d+)\/\*\*$/);
-    if (!keyMatch) return null;
-    keyIndexes.push(Number(keyMatch[1]));
-  }
-  if (threshold > keyIndexes.length) return null;
-
-  return { threshold, keyIndexes };
 }
 
 /** Finds the hardware-wallet policy that matches a PSBT input. */
@@ -178,21 +160,12 @@ export async function policyForPsbtInput({
         const change = parseInt(strChange, 10);
         const index = parseInt(strIndex, 10);
 
-        const coinType = coinTypeFromNetwork(network);
-
         let standardPolicy;
         if (change === 0 || change === 1) {
-          const standardTemplate = originPath.match(
-            new RegExp(`^/44'/${coinType}'/(\\d+)'$`)
-          )
-            ? 'pkh(@0/**)'
-            : originPath.match(new RegExp(`^/84'/${coinType}'/(\\d+)'$`))
-              ? 'wpkh(@0/**)'
-              : originPath.match(new RegExp(`^/49'/${coinType}'/(\\d+)'$`))
-                ? 'sh(wpkh(@0/**))'
-                : originPath.match(new RegExp(`^/86'/${coinType}'/(\\d+)'$`))
-                  ? 'tr(@0/**)'
-                  : undefined;
+          const standardTemplate = standardTemplateForOriginPath({
+            originPath,
+            network
+          });
           if (standardTemplate) {
             const xpub = await getAccountXpub(originPath);
             standardPolicy = {
@@ -225,24 +198,10 @@ export async function policyForPsbtInput({
               const keyRoot = policy.keyRoots[i];
               if (!keyRoot)
                 throw new Error(`keyRoot ${keyRoot} invalidly extracted.`);
-              const match = keyRoot.match(/\[([^]+)\]/);
-              const keyRootOrigin = match && match[1];
-              if (keyRootOrigin) {
-                const [, ...arrKeyRootOriginPath] = keyRootOrigin.split('/');
-                const keyRootOriginPath = '/' + arrKeyRootOriginPath.join('/');
-                if (descriptor && keyRootOriginPath === originPath)
-                  descriptor = descriptor.replace(
-                    new RegExp(`@${i}`, 'g'),
-                    keyRoot
-                  );
-                else descriptor = undefined;
-              } else {
-                if (descriptor)
-                  descriptor = descriptor.replace(
-                    new RegExp(`@${i}`, 'g'),
-                    keyRoot
-                  );
-              }
+              descriptor = descriptor.replace(
+                new RegExp(`@${i}`, 'g'),
+                keyRoot
+              );
             }
 
             if (descriptor) {
@@ -271,15 +230,7 @@ export async function derivePolicyFromOutput({
   output: OutputInstance;
   /** Reads the connected device master fingerprint. */
   getMasterFingerprint(): Promise<Uint8Array>;
-}): Promise<
-  | (HWWPolicy & {
-      /** Concrete branch extracted from the expanded descriptor key path. */
-      change: number;
-      /** Concrete address index extracted from the expanded descriptor key path. */
-      index: number;
-    })
-  | null
-> {
+}): Promise<DerivedHWWPolicy | null> {
   const expanded = output.expand();
   let expandedExpression = expanded.expandedExpression;
   const expansionMap = expanded.expansionMap
@@ -392,13 +343,6 @@ export async function derivePolicyFromOutput({
           `Error: hardware wallet policies only allow xpub-type key expressions`
         );
       }
-      if (otherKeyInfo.originPath) {
-        if (otherKeyInfo.originPath !== originPath) {
-          throw new Error(
-            `Error: all originPaths must be the same for this hardware wallet policy. On the other hand, you can leave the origin info empty for external keys: ${otherKeyInfo.originPath} !== ${originPath}`
-          );
-        }
-      }
       if (otherKeyInfo.keyPath !== keyPath) {
         throw new Error(
           `Error: all keyPaths must be the same for this hardware wallet policy: ${otherKeyInfo.keyPath} !== ${keyPath}`
@@ -426,32 +370,6 @@ export async function derivePolicyFromOutput({
 }
 
 /** Returns a standard single-key policy for an output, or `null`. */
-export async function standardPolicyFromOutput({
-  output,
-  getMasterFingerprint
-}: {
-  output: OutputInstance;
-  /** Reads the connected device master fingerprint. */
-  getMasterFingerprint(): Promise<Uint8Array>;
-}): Promise<(HWWPolicy & { change: number; index: number }) | null> {
-  const result = await derivePolicyFromOutput({
-    output,
-    getMasterFingerprint
-  });
-  if (!result)
-    throw new Error(`Error: descriptor does not have a hardware wallet input`);
-  const { descriptorTemplate, keyRoots } = result;
-  if (
-    isStandardPolicy({
-      descriptorTemplate,
-      keyRoots,
-      network: output.getNetwork()
-    })
-  )
-    return result;
-  return null;
-}
-
 function compareKeyRoots(arr1: string[], arr2: string[]) {
   if (arr1.length !== arr2.length) {
     return false;
@@ -472,32 +390,25 @@ export function samePolicy(policyA: HWWPolicy, policyB: HWWPolicy) {
   );
 }
 
-/** Finds a known policy matching an output. */
-export async function knownPolicyFromOutput({
-  output,
-  getMasterFingerprint,
+/** Finds a stored policy matching one derived policy. */
+export function findKnownPolicy({
+  derivedPolicy,
   knownPolicies
 }: {
-  output: OutputInstance;
-  /** Reads the connected device master fingerprint. */
-  getMasterFingerprint(): Promise<Uint8Array>;
+  derivedPolicy: DerivedHWWPolicy;
   /** Policies already known by the app or registered with the device. */
   knownPolicies?: HWWPolicy[];
-}): Promise<(HWWPolicy & { change: number; index: number }) | null> {
-  const result = await derivePolicyFromOutput({
-    output,
-    getMasterFingerprint
-  });
-  if (!result)
-    throw new Error(`Error: output does not have a hardware wallet input`);
-  const { descriptorTemplate, keyRoots } = result;
+}): DerivedHWWPolicy | null {
   const policies = (knownPolicies || []).filter(policy =>
-    samePolicy(policy, { descriptorTemplate, keyRoots })
+    samePolicy(policy, derivedPolicy)
   );
   if (policies.length > 1) throw new Error(`Error: duplicated policy`);
   if (policies.length === 1) {
-    return { ...policies[0]!, change: result.change, index: result.index };
-  } else {
-    return null;
+    return {
+      ...policies[0]!,
+      change: derivedPolicy.change,
+      index: derivedPolicy.index
+    };
   }
+  return null;
 }

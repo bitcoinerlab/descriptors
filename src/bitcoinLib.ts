@@ -512,26 +512,16 @@ export interface BitcoinLib {
 }
 
 let globalBitcoinLib: BitcoinLib | undefined;
-let globalBitcoinLibWarningShown = false;
-
-function warnAboutLockedBitcoinLib(
-  currentKind: 'bitcoinjs' | 'scure',
-  incomingKind: 'bitcoinjs' | 'scure'
-) {
-  if (globalBitcoinLibWarningShown) return;
-  globalBitcoinLibWarningShown = true;
-  console.warn(
-    `Warning: BitcoinLib backend mismatch.
-Replacing the already initialized ${currentKind} backend 
-with the new ${incomingKind} one.
-This should be fine but it's strange you're mixing backends.
-DescriptorsFactory/create*Lib now work as a process-wide singleton in descriptors-core.`
-  );
-}
 
 export function setBitcoinLib(bitcoinLib: BitcoinLib): BitcoinLib {
-  if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind)
-    warnAboutLockedBitcoinLib(globalBitcoinLib.kind, bitcoinLib.kind);
+  if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind) {
+    // HWW helpers use this process-wide backend to parse and merge PSBTs. If we
+    // switched it, an existing operation could use the wrong Bitcoin library.
+    // Rejecting the switch is safer and clearer than changing behavior at run time.
+    throw new Error(
+      `Cannot switch descriptors-core from the ${globalBitcoinLib.kind} backend to the ${bitcoinLib.kind} backend in the same process. Use only one preset package: @bitcoinerlab/descriptors or @bitcoinerlab/descriptors-scure.`
+    );
+  }
   globalBitcoinLib = bitcoinLib;
 
   return globalBitcoinLib;

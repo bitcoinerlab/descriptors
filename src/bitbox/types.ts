@@ -51,21 +51,11 @@ export type BitBoxClient = {
 };
 
 export type BitBoxFormatUnit = 'default' | 'sat';
-export type BitBoxXPubType =
-  | 'tpub'
-  | 'xpub'
-  | 'ypub'
-  | 'zpub'
-  | 'vpub'
-  | 'upub'
-  | 'Vpub'
-  | 'Zpub'
-  | 'Upub'
-  | 'Ypub';
-export type BitBoxRegisterXPubType = 'autoElectrum' | 'autoXpubTpub';
-export type BitBoxKeypath = string | number[];
+export type BitBoxXPubType = 'tpub' | 'xpub';
+export type BitBoxRegisterXPubType = 'autoXpubTpub';
+export type BitBoxKeypath = string;
 export type BitBoxSimpleType = 'p2wpkhP2sh' | 'p2wpkh' | 'p2tr';
-export type BitBoxMultisigScriptType = 'p2wsh' | 'p2wshP2sh';
+export type BitBoxMultisigScriptType = 'p2wsh';
 
 export type BitBoxKeyOriginInfo = {
   rootFingerprint?: string;
