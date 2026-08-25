@@ -29,9 +29,7 @@ type BitBoxReactNativeModule = {
   connectBitBoxUsb?: ConnectBitBox;
 };
 
-type BitBoxApiConnect = (
-  onClose: (() => void) | undefined
-) => Promise<{
+type BitBoxApiConnect = (onClose: (() => void) | undefined) => Promise<{
   unlockAndPair(): Promise<BitBoxPairing>;
 }>;
 
