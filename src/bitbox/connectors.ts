@@ -19,10 +19,6 @@ type BitBoxPairing = {
   waitConfirm(): Promise<ConnectedBitBoxClient>;
 };
 
-type BitBoxConnection = {
-  unlockAndPair(): Promise<BitBoxPairing>;
-};
-
 type ConnectBitBox = (params?: {
   timeoutMs?: number;
   deviceId?: string;
@@ -35,7 +31,9 @@ type BitBoxReactNativeModule = {
 
 type BitBoxApiConnect = (
   onClose: (() => void) | undefined
-) => Promise<BitBoxConnection>;
+) => Promise<{
+  unlockAndPair(): Promise<BitBoxPairing>;
+}>;
 
 type BitBoxApiModule = {
   bitbox02ConnectAuto?: BitBoxApiConnect;
