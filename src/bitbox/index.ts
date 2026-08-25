@@ -11,7 +11,7 @@
 // Distributed under the MIT software license
 
 import {
-  assertPolicySupported,
+  assertPolicyCanDerive,
   addressKeypathFromPolicy,
   scriptConfigForRegistration,
   scriptConfigFromPolicy
@@ -128,7 +128,7 @@ export async function registerPolicy({
       keyRoots: derivedPolicy.keyRoots
     };
   }
-  assertPolicySupported(policy);
+  assertPolicyCanDerive(policy);
 
   const { scriptConfig, accountKeypath } = scriptConfigForRegistration({
     policy,
@@ -219,7 +219,7 @@ export async function displayAddress({
   });
   if (!policy)
     throw new Error(`BitBox policy not registered; call registerPolicy first`);
-  assertPolicySupported(policy);
+  assertPolicyCanDerive(policy);
   return session.client.btcAddress(
     apiNetwork(session),
     addressKeypathFromPolicy({
