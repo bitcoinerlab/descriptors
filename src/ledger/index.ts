@@ -322,15 +322,16 @@ export async function signMessage({
     ...descriptorParams,
     network: session.network
   });
-  const policy = await derivePolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (!policy) throw new Error(`Error: output does not have a ledger input`);
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
   if (
     !isStandardPolicy({
-      descriptorTemplate: policy.descriptorTemplate,
-      keyRoots: policy.keyRoots,
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
       network: session.network
     })
   )
@@ -338,20 +339,20 @@ export async function signMessage({
       `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
     );
   if (
-    policy.descriptorTemplate !== 'pkh(@0/**)' &&
-    policy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
-    policy.descriptorTemplate !== 'wpkh(@0/**)'
+    derivedPolicy.descriptorTemplate !== 'pkh(@0/**)' &&
+    derivedPolicy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
+    derivedPolicy.descriptorTemplate !== 'wpkh(@0/**)'
   ) {
     throw new Error(
       `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
     );
   }
 
-  const originPath = originPathFromKeyRoot(policy.keyRoots[0] ?? '');
+  const originPath = originPathFromKeyRoot(derivedPolicy.keyRoots[0] ?? '');
   if (!originPath) throw new Error(`Ledger key root missing origin path`);
   const signature = await ledgerClient.signMessage(
     messageBytes(message),
-    `m${originPath}/${policy.change}/${policy.index}`
+    `m${originPath}/${derivedPolicy.change}/${derivedPolicy.index}`
   );
   return assertLegacyMessageSignature(fromBase64(signature), 'Ledger');
 }

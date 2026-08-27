@@ -255,38 +255,39 @@ export async function signMessage({
     ...descriptorParams,
     network: session.network
   });
-  const policy = await derivePolicyFromOutput({
+  const derivedPolicy = await derivePolicyFromOutput({
     output,
     getMasterFingerprint: () => getMasterFingerprint({ session })
   });
-  if (!policy) throw new Error(`Error: output does not have a BitBox02 input`);
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a BitBox02 input`);
   if (
     !isStandardPolicy({
-      descriptorTemplate: policy.descriptorTemplate,
-      keyRoots: policy.keyRoots,
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
       network: session.network
     })
   )
     throw new Error(
       `BitBox message signing supports only standard single-key sh(wpkh) and wpkh descriptors`
     );
-  if (policy.descriptorTemplate === 'pkh(@0/**)') {
+  if (derivedPolicy.descriptorTemplate === 'pkh(@0/**)') {
     throw new Error(
       `BitBox02 does not support top-level legacy p2pkh descriptors; use shWpkh, wpkh, or tr`
     );
   }
-  if (policy.descriptorTemplate === 'tr(@0/**)')
+  if (derivedPolicy.descriptorTemplate === 'tr(@0/**)')
     throw new Error(`BitBox02 does not support Taproot message signing`);
 
   const result = await client.btcSignMessage(
     apiNetwork(session),
     {
-      scriptConfig: scriptConfigFromPolicy({ policy, session }),
+      scriptConfig: scriptConfigFromPolicy({ policy: derivedPolicy, session }),
       keypath: addressKeypathFromPolicy({
-        policy,
+        policy: derivedPolicy,
         session,
-        change: policy.change,
-        index: policy.index
+        change: derivedPolicy.change,
+        index: derivedPolicy.index
       })
     },
     messageBytes(message)

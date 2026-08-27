@@ -152,6 +152,8 @@ export async function policyForPsbtInput({
 
   for (const keyDerivation of keyDerivations) {
     if (compare(keyDerivation.masterFingerprint, masterFingerprint) === 0) {
+      // Split m/48'/1'/0'/0/7 into its account origin (/48'/1'/0')
+      // and address position (/0/7).
       const match = keyDerivation.path.match(
         /^m((?:\/\d+(?:['hH])?)+)(\/\d+\/\d+)$/
       );
@@ -184,6 +186,8 @@ export async function policyForPsbtInput({
         if (standardPolicy) policies.push(standardPolicy);
 
         for (const policy of policies) {
+          // Cosigners may use different origins, but this device's stored origin
+          // must match the account origin declared by its PSBT derivation.
           const hasMatchingDeviceOrigin = policy.keyRoots.some(keyRoot => {
             const key = parseKeyRoot(keyRoot);
             return (
