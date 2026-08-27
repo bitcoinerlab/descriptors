@@ -643,8 +643,8 @@ npm run test
 Integration tests require Docker. Make sure the `docker` command is installed and available in your PATH. When integration tests run, they automatically start or reuse a local container with the regtest services needed by this repository.
 
 Hardware-wallet tests require real devices and are not part of the normal test
-pipeline. After building, run `npm run test:ledger` or `npm run test:bitbox` for
-manual device checks.
+pipeline. Run `npm run test:ledger` or `npm run test:bitbox` for manual device
+checks. Both commands build first and test the bitcoinjs and Scure backends.
 
 ### License
 

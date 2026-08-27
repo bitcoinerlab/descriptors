@@ -81,13 +81,14 @@
     "test:scure-adapter": "node test/scureAdapter.js",
     "test:integration:soft:scure": "cross-env BITCOIN_LIB=scure bash -c 'npm run test:integration:soft'",
     "test:integration:ledger:scure": "cross-env BITCOIN_LIB=scure bash -c 'npm run ensureTester && node test/integration/ledgerTaproot.js && echo \"\" && echo \"\" && node test/integration/ledger.js'",
+    "test:integration:bitbox:scure": "cross-env BITCOIN_LIB=scure bash -c 'npm run test:integration:bitbox'",
     "test:matrix": "npm run test:unit && npm run test:unit:scure && npm run test:scure-adapter && npm run test:integration:soft && npm run test:integration:soft:scure",
     "test": "npm run lint && npm run build && npm run test:matrix",
     "test:ledger": "npm run lint && npm run build && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger",
-    "test:bitbox": "npm run lint && npm run build && npm run test:integration:bitbox",
+    "test:bitbox": "npm run lint && npm run build && npm run test:integration:bitbox:scure && echo \"\n\n\" && npm run test:integration:bitbox",
     "publish:check": "npm whoami && node ./scripts/check-publish-versions.js",
     "publish:all": "npm run publish:check && npm publish --access public && (cd ./packages/descriptors && npm publish --access public) && (cd ./packages/descriptors-scure && npm publish --access public)",
-    "prepublishOnly": "rm -rf dist/ && npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger"
+    "prepublishOnly": "rm -rf dist/ && npm run test && echo \"\n\n\" && npm run test:integration:ledger:scure && echo \"\n\n\" && npm run test:integration:ledger && echo \"\n\n\" && npm run test:integration:bitbox:scure && echo \"\n\n\" && npm run test:integration:bitbox"
   },
   "files": [
     "dist",

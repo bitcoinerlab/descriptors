@@ -16,7 +16,7 @@ To run:
    running on 127.0.0.1:8080.
 4. Install and start BitBoxBridge.
 5. Connect and unlock a BitBox02.
-6. Run `npm run test:integration:bitbox`.
+6. Run `npm run test:bitbox` to test both Bitcoin backends.
 
 The test spends one standard wpkh output and one P2WSH Miniscript output
 co-signed with a software wallet. The Miniscript policy mirrors the Ledger
@@ -30,15 +30,12 @@ network-neutral, while hardware wallets usually expose stable testnet support
 rather than production regtest signing flows.
 */
 
-console.log(
-  'BitBox integration tests: 1 wpkh input + 1 miniscript input (co-signed with a software wallet) -> regtest spends'
-);
-
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
 import { RegtestUtils } from 'regtest-client';
 import { DescriptorsFactory, keyExpressionBIP32, networks } from '../../dist';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
+import { createScureLib } from '../../dist/scure';
 import { signBIP32 } from '../../dist/signers';
 import {
   connect,
@@ -105,7 +102,14 @@ if (globalWithBrowserBits['WebSocket'] === undefined) {
 }
 
 const regtestUtils = new RegtestUtils();
-const { Output } = DescriptorsFactory(createBitcoinjsLib(ecc));
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
+
+console.log(
+  `BitBox ${isScure ? 'Scure' : 'bitcoinjs'} integration tests: 1 wpkh input + 1 miniscript input (co-signed with a software wallet) -> regtest spends`
+);
 
 const NETWORK = networks.regtest;
 const UTXO_VALUE = 2e4;
@@ -145,7 +149,7 @@ let closeSession = async () => {};
   const xpub = await getXpub({ session, originPath: ORIGIN_PATH });
   console.log({ version, originPath: ORIGIN_PATH, xpub });
 
-  const standardPsbt = createPsbt(false, NETWORK);
+  const standardPsbt = createPsbt(isScure, NETWORK);
   const standardFinalAddress = regtestUtils.RANDOM_ADDRESS;
   const standardDescriptor = await scriptExpressions.wpkh({
     session,
@@ -204,7 +208,7 @@ let closeSession = async () => {};
     miniscript
   });
 
-  const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, false);
+  const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
   const softKeyExpression = keyExpressionBIP32({
     masterNode,
     originPath: POLICY_ORIGIN_PATH,
@@ -226,7 +230,7 @@ let closeSession = async () => {};
     network: NETWORK
   });
 
-  const policyPsbt = createPsbt(false, NETWORK);
+  const policyPsbt = createPsbt(isScure, NETWORK);
   const policyFinalAddress = regtestUtils.RANDOM_ADDRESS;
   ({ txId, vout } = await regtestUtils.faucet(
     miniscriptOutput.getAddress(),

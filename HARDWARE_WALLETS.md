@@ -753,14 +753,10 @@ owned by the connected Ledger for that signing operation.
 ## Real-Device Tests
 
 ```bash
-npm run build
 npm run test:ledger
 npm run test:bitbox
 ```
 
-Unit tests use fake clients and do not need hardware. The commands above are
-manual real-device checks.
-
-Run `npm run build` first after changing TypeScript source. The BitBox
-integration test imports built files from `dist`, so stale builds can give stale
-results.
+Unit tests use fake clients and do not need hardware. The commands above run
+lint and build first, then test the physical device with the bitcoinjs and Scure
+backends.
