@@ -604,9 +604,11 @@ BitBox API requires every PSBT input to include a key owned by that BitBox. A
 BitBox can sign multisig inputs, but it cannot sign a PSBT that also contains an
 input owned only by another wallet.
 
-Prefer passing the full previous transaction as `txHex`. This gives the device
-more information to verify what is being spent. It is especially important for
-Segwit inputs.
+Always pass the full previous transaction as `txHex`, including for Segwit
+inputs. The supported Ledger and BitBox signing flows rely on it to give the
+device the information it needs to verify what is being spent. See [Trezor's
+explanation of the security reason for providing the previous
+transaction](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
 
 ## Sign Messages
 

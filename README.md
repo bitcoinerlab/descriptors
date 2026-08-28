@@ -6,9 +6,7 @@ This library uses an underlying Bitcoin library for creating, signing & decoding
 
 - `@bitcoinerlab/descriptors` for the [bitcoinjs-lib](https://github.com/bitcoinjs/bitcoinjs-lib) and [bitcoinjs](https://github.com/bitcoinjs) family of libraries: battle-tested and broadly used.
 - `@bitcoinerlab/descriptors-scure` for [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer) and the [noble](https://github.com/paulmillr/noble-curves)/[scure](https://github.com/paulmillr/scure-btc-signer) family of libraries: audited, fast and minimal.
-- `@bitcoinerlab/descriptors-core` as the low-level package used under the preset packages, intended for internal use.
-
-In general, most users should pick one of the two preset packages and avoid using `@bitcoinerlab/descriptors-core` directly.
+- `@bitcoinerlab/descriptors-core` as the low-level package used under the preset packages. Most users should treat it as internal, but advanced users can use it directly when they need explicit control over backend setup.
 
 ## TL;DR (quick start)
 
@@ -102,6 +100,7 @@ console.log('Push this: ' + psbt.hex);
 - Supports Taproot descriptors with trees: `tr(KEY,TREE)` (tapscript).
 - Generates Partially Signed Bitcoin Transactions (PSBTs).
 - Provides PSBT finalizers and signers for single-signature, BIP32 and hardware-wallet flows.
+- Provides optional Ledger and BitBox integrations for both bitcoinjs and Scure.
 
 ### Version Compatibility
 
@@ -117,6 +116,8 @@ If you want Taproot trees (`tr(KEY,TREE)`), use `3.x+`.
 
 Starting in `3.1.x`, scure users can install
 `@bitcoinerlab/descriptors-scure`.
+
+Version `3.2.0` requires Node.js `>=20.19.0`.
 
 ## Concepts
 
@@ -357,7 +358,7 @@ const output = new Output({
   <summary>Click to see the scure variant</summary>
 
 ```javascript
-import { randomBytes } from '@noble/hashes/utils';
+import { randomBytes } from '@noble/hashes/utils.js';
 import { HDKey, Output, keyExpressionBIP32 } from '@bitcoinerlab/descriptors-scure';
 
 const masterNode = HDKey.fromMasterSeed(randomBytes(32));
@@ -475,9 +476,13 @@ When finalizing the `psbt`, the [`updatePsbtAsInput` method](https://bitcoinerla
 
 - The finalizer function returned from `updatePsbtAsInput` adds the necessary unlocking script (`scriptWitness` or `scriptSig`) that satisfies the `Output`'s spending conditions. Remember, both `scriptSig` and `scriptWitness` contain signatures. Ensure that all necessary signing operations are completed before finalizing.
 
-- When using `updatePsbtAsInput`, the `txHex` parameter is crucial. For Segwit inputs, you can choose to pass `txId` and `value` instead of `txHex`. However, ensure the accuracy of the `value` to avoid potential fee attacks. When unsure, use `txHex` and skip `txId` and `value`.
-
-- Hardware wallets require the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
+- `txHex` is required for non-Segwit inputs. For Segwit inputs, the API also
+  accepts `txId` and `value`, but using the full `txHex` is strongly recommended
+  for security because it lets the library verify more of the previous
+  transaction and helps protect against fee attacks. See [Trezor's explanation
+  of why hardware wallets need the previous transaction](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
+  For supported hardware-wallet signing, always pass the full `txHex`, including
+  for Segwit inputs.
 
 ### Key Expressions and Script Expressions
 
@@ -567,11 +572,24 @@ Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin
 
 ### Hardware Wallet Integration
 
-Hardware-wallet integrations use device-specific entrypoints such as
-`@bitcoinerlab/descriptors/ledger` and `@bitcoinerlab/descriptors/bitbox`. The
-separate [Hardware Wallets](./HARDWARE_WALLETS.md) guide covers connection,
-descriptor creation, policy registration, signing, device-specific limitations
-and manual real-device tests.
+Ledger and BitBox support is available through separate entrypoints:
+
+| Backend | Ledger | BitBox |
+| --- | --- | --- |
+| bitcoinjs | `@bitcoinerlab/descriptors/ledger` | `@bitcoinerlab/descriptors/bitbox` |
+| Scure | `@bitcoinerlab/descriptors-scure/ledger` | `@bitcoinerlab/descriptors-scure/bitbox` |
+
+Applications import only the device support they use, so unused hardware-wallet
+code and vendor packages are not loaded with the main package.
+
+`connect(...)` returns a `Session` that owns the device connection. Pass that
+session to hardware-wallet operations and close it when finished. Persist the
+JSON-safe `Store`, not the live session, so cached keys and policy information
+can be reused after reconnecting.
+
+See the [Hardware Wallets](./HARDWARE_WALLETS.md) guide for setup, policy
+registration, signing, React Native support, device limitations and real-device
+tests.
 
 <a name="documentation"></a>
 
@@ -582,7 +600,7 @@ For more information, refer to the following resources:
 - **[Guides](https://bitcoinerlab.com/guides)**: Comprehensive explanations and playgrounds to help you learn how to use the module.
 - **[API](https://bitcoinerlab.com/modules/descriptors/api)**: Dive into the details of the Classes, functions and types.
 - **[Stack Exchange answer](https://bitcoin.stackexchange.com/a/118036/89665)**: Focused explanation on the constructor, specifically the `signersPubKeys` parameter and the usage of `updatePsbtAsInput`, `getAddress` and `getScriptPubKey`.
-- **[Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration)**: Well-commented code examples showcasing the usage of all functions in the module.
+- **[Integration tests](https://github.com/bitcoinerlab/descriptors/tree/main/test/integration)**: End-to-end examples for representative software and hardware-wallet flows.
 - **Local Documentation**: Generate comprehensive API documentation from the source code:
 
   ```bash
@@ -644,7 +662,8 @@ Integration tests require Docker. Make sure the `docker` command is installed an
 
 Hardware-wallet tests require real devices and are not part of the normal test
 pipeline. Run `npm run test:ledger` or `npm run test:bitbox` for manual device
-checks. Both commands build first and test the bitcoinjs and Scure backends.
+checks. Both commands run lint and build first, then test the bitcoinjs and
+Scure backends.
 
 ### License
 

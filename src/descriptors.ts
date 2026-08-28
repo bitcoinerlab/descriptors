@@ -2047,7 +2047,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * potential fee attacks -
      * [See this issue](https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625).
      *
-     * Note: Hardware wallets need the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
+     * For supported hardware-wallet signing, always pass the full `txHex`,
+     * including for Segwit inputs. See
+     * [Trezor's explanation of why hardware wallets need the previous transaction](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
      *
      * When unsure, always use `txHex`, and skip `txId` and `value` for safety.
      *
