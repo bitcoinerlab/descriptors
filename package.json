@@ -58,7 +58,7 @@
       "^.+node_modules/(?:@noble|@scure|micro-packed)/.+\\.js$": "<rootDir>/jest-esm-transform.cjs"
     },
     "transformIgnorePatterns": [
-      "/node_modules/(?!(@noble|@scure|micro-packed)/)"
+      "/node_modules/(?!(@bitcoinerlab/secp256k1|@noble|@scure|micro-packed)/)"
     ]
   },
   "scripts": {
@@ -135,35 +135,35 @@
     }
   },
   "devDependencies": {
-    "@babel/core": "^7.29.0",
-    "@babel/preset-env": "^7.29.0",
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
     "@bitcoinerlab/configs": "^2.0.0",
-    "@bitcoinerlab/miniscript-policies": "^1.0.0",
-    "@bitcoinerlab/secp256k1": "^1.2.0",
+    "@bitcoinerlab/miniscript-policies": "^1.1.0",
+    "@bitcoinerlab/secp256k1": "^2.0.0",
     "@ledgerhq/hw-transport-node-hid": "^6.33.5",
     "@ledgerhq/hw-transport-webhid": "^6.36.0",
     "@ledgerhq/hw-transport-webusb": "^6.35.0",
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
-    "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1",
-    "@scure/base": "^2.0.0",
-    "@scure/bip32": "^2.0.1",
-    "@scure/bip39": "^2.0.1",
-    "@scure/btc-signer": "^2.0.1",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.3.0",
+    "@scure/bip32": "^2.3.0",
+    "@scure/bip39": "^2.3.0",
+    "@scure/btc-signer": "^2.3.0",
     "@types/lodash.memoize": "^4.1.9",
-    "babel-jest": "^30.3.0",
+    "babel-jest": "^30.5.0",
     "bip32": "^5.0.1",
-    "bip39": "^3.0.4",
+    "bip39": "^3.1.0",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
     "bitbox-api": "^0.13.0",
     "bitcoinjs-lib": "^7.0.1",
     "cross-env": "^10.1.0",
-    "ecpair": "^3.0.1",
-    "jest": "^30.3.0",
+    "ecpair": "^3.0.2",
+    "jest": "^30.5.0",
     "regtest-client": "^0.2.1",
-    "ws": "^8.21.0",
-    "yargs": "^17.7.2"
+    "ws": "^8.21.3",
+    "yargs": "^17.7.3"
   },
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",

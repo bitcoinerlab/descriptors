@@ -14,6 +14,10 @@ function assert(condition, message) {
   }
 }
 
+function getMajor(range) {
+  return Number(range.match(/\d+/)?.[0]);
+}
+
 const root = readJson(path.resolve(__dirname, '..', 'package.json'));
 const descriptors = readJson(
   path.resolve(__dirname, '..', 'packages', 'descriptors', 'package.json')
@@ -52,10 +56,21 @@ assert(
 
 for (const pkg of ['bitcoinjs-lib', 'bip32', 'ecpair']) {
   assert(
-    descriptors.dependencies[pkg] === root.peerDependencies[pkg],
-    `@bitcoinerlab/descriptors dependency ${pkg} must match core peer dependency ${root.peerDependencies[pkg]}`
+    descriptors.dependencies[pkg] === root.devDependencies[pkg],
+    `@bitcoinerlab/descriptors dependency ${pkg} must match the tested core development dependency ${root.devDependencies[pkg]}`
+  );
+  assert(
+    getMajor(descriptors.dependencies[pkg]) ===
+      getMajor(root.peerDependencies[pkg]),
+    `@bitcoinerlab/descriptors dependency ${pkg} must use the same major as the core peer dependency ${root.peerDependencies[pkg]}`
   );
 }
+
+assert(
+  descriptors.dependencies['@bitcoinerlab/secp256k1'] ===
+    root.devDependencies['@bitcoinerlab/secp256k1'],
+  `@bitcoinerlab/descriptors dependency @bitcoinerlab/secp256k1 must match the core development dependency ${root.devDependencies['@bitcoinerlab/secp256k1']}`
+);
 
 for (const pkg of [
   '@noble/hashes',
@@ -65,8 +80,12 @@ for (const pkg of [
   '@scure/btc-signer'
 ]) {
   assert(
-    scure.dependencies[pkg] === root.peerDependencies[pkg],
-    `@bitcoinerlab/descriptors-scure dependency ${pkg} must match core peer dependency ${root.peerDependencies[pkg]}`
+    scure.dependencies[pkg] === root.devDependencies[pkg],
+    `@bitcoinerlab/descriptors-scure dependency ${pkg} must match the tested core development dependency ${root.devDependencies[pkg]}`
+  );
+  assert(
+    getMajor(scure.dependencies[pkg]) === getMajor(root.peerDependencies[pkg]),
+    `@bitcoinerlab/descriptors-scure dependency ${pkg} must use the same major as the core peer dependency ${root.peerDependencies[pkg]}`
   );
 }
 
@@ -80,6 +99,7 @@ for (const pkg of [descriptors, scure]) {
 
 for (const pkg of [
   '@noble/curves',
+  '@noble/hashes',
   '@scure/base',
   '@scure/bip32',
   '@scure/btc-signer'
