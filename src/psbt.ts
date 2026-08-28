@@ -269,8 +269,9 @@ export function addPsbtInput({
       });
     if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
   }
-  if (isSegwit && txHex !== undefined) {
-    //There's no need to put both witnessUtxo and nonWitnessUtxo
+  // Ledger requires witnessUtxo, while BitBox may require the full previous
+  // transaction for Segwit v0. Keep both when txHex is available.
+  if (isSegwit) {
     input.witnessUtxo = { script: scriptPubKey, value: normalizedValue };
   }
   if (sequence !== undefined) input.sequence = sequence;
