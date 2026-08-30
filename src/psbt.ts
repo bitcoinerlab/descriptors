@@ -128,11 +128,11 @@ export function addPsbtInput({
   scriptPubKey: Uint8Array;
   isSegwit: boolean;
   /** for taproot **/
-  tapInternalKey?: Uint8Array | undefined;
+  tapInternalKey?: Uint8Array;
   /** for taproot script-path **/
-  tapLeafScript?: TapLeafScript[] | undefined;
+  tapLeafScript?: TapLeafScript[];
   /** for taproot **/
-  tapBip32Derivation?: TapBip32Derivation[] | undefined;
+  tapBip32Derivation?: TapBip32Derivation[];
   witnessScript: Uint8Array | undefined;
   redeemScript: Uint8Array | undefined;
   rbf: boolean;
@@ -269,8 +269,9 @@ export function addPsbtInput({
       });
     if (bip32Derivation.length) input.bip32Derivation = bip32Derivation;
   }
-  if (isSegwit && txHex !== undefined) {
-    //There's no need to put both witnessUtxo and nonWitnessUtxo
+  // Ledger requires witnessUtxo, while BitBox may require the full previous
+  // transaction for Segwit v0. Keep both when txHex is available.
+  if (isSegwit) {
     input.witnessUtxo = { script: scriptPubKey, value: normalizedValue };
   }
   if (sequence !== undefined) input.sequence = sequence;

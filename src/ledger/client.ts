@@ -1,16 +1,172 @@
 // Copyright (c) 2023 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import * as ledgerBitcoinModule from '@ledgerhq/ledger-bitcoin';
-import { fromHex } from 'uint8array-tools';
-import type { LedgerManager } from './index';
+import { fromHex, toHex } from 'uint8array-tools';
+import type {
+  LedgerBitcoinApi,
+  LedgerManager,
+  LedgerSession,
+  LedgerStore
+} from './types';
 
-export async function importAndValidateLedgerBitcoin(
-  ledgerClient?: unknown
-): Promise<unknown> {
-  const { AppClient } = ledgerBitcoinModule;
-  if (ledgerClient !== undefined && !(ledgerClient instanceof AppClient)) {
-    throw new Error('Error: invalid AppClient instance');
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function storeFromLedgerState(
+  state: LedgerManager['ledgerState']
+): LedgerStore {
+  return {
+    ...(state.masterFingerprint !== undefined
+      ? { masterFingerprint: toHex(state.masterFingerprint) }
+      : {}),
+    ...(state.policies !== undefined
+      ? {
+          policies: state.policies.map(policy => ({
+            ...(policy.policyName !== undefined
+              ? { name: policy.policyName }
+              : {}),
+            descriptorTemplate: policy.ledgerTemplate,
+            keyRoots: policy.keyRoots,
+            ...(policy.policyId !== undefined
+              ? { policyId: toHex(policy.policyId) }
+              : {}),
+            ...(policy.policyHmac !== undefined
+              ? { policyHmac: toHex(policy.policyHmac) }
+              : {})
+          }))
+        }
+      : {}),
+    ...(state.xpubs !== undefined ? { xpubs: state.xpubs } : {})
+  };
+}
+
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function copyStoreToLedgerState(
+  store: LedgerStore,
+  state: LedgerManager['ledgerState']
+): void {
+  if (store.masterFingerprint !== undefined)
+    state.masterFingerprint = fromHex(store.masterFingerprint);
+
+  if (store.policies !== undefined) {
+    if (!state.policies) state.policies = [];
+    // Another deprecated helper may have updated this state while this call ran.
+    for (const policy of store.policies) {
+      const legacyPolicy = {
+        ...(policy.name !== undefined ? { policyName: policy.name } : {}),
+        ledgerTemplate: policy.descriptorTemplate,
+        keyRoots: policy.keyRoots,
+        ...(policy.policyId !== undefined
+          ? { policyId: fromHex(policy.policyId) }
+          : {}),
+        ...(policy.policyHmac !== undefined
+          ? { policyHmac: fromHex(policy.policyHmac) }
+          : {})
+      };
+      const policyIndex = state.policies.findIndex(
+        storedPolicy =>
+          storedPolicy.ledgerTemplate === policy.descriptorTemplate &&
+          storedPolicy.keyRoots.length === policy.keyRoots.length &&
+          storedPolicy.keyRoots.every(
+            (keyRoot, index) => keyRoot === policy.keyRoots[index]
+          )
+      );
+      if (policyIndex === -1) state.policies.push(legacyPolicy);
+      else Object.assign(state.policies[policyIndex]!, legacyPolicy);
+    }
+  }
+
+  if (store.xpubs !== undefined) {
+    if (!state.xpubs) state.xpubs = {};
+    Object.assign(state.xpubs, store.xpubs);
+  }
+}
+
+/** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+function assertLedgerClient(
+  client: unknown
+): asserts client is LedgerSession['client'] {
+  if (typeof client !== 'object' || client === null)
+    throw new Error('Invalid Ledger client');
+  const methods = [
+    'getAppAndVersion',
+    'getMasterFingerprint',
+    'getExtendedPubkey',
+    'registerWallet',
+    'getWalletAddress',
+    'signPsbt'
+  ] as const;
+  for (const method of methods) {
+    if (typeof (client as Record<string, unknown>)[method] !== 'function')
+      throw new Error(`Invalid Ledger client: missing ${method}()`);
+  }
+}
+
+/**
+ * Builds the modern session used by deprecated 3.x LedgerManager helpers.
+ *
+ * @deprecated 3.x LedgerManager compatibility only. Remove in v4.
+ * @internal
+ */
+function sessionFromLedgerManager(ledgerManager: LedgerManager): LedgerSession {
+  let bitcoinApi: LedgerBitcoinApi | undefined;
+  assertLedgerClient(ledgerManager.ledgerClient);
+  return {
+    client: ledgerManager.ledgerClient,
+    // Load the policy API only when it is first needed, then reuse it.
+    get bitcoinApi() {
+      bitcoinApi ??= importLedgerBitcoinModule();
+      return bitcoinApi;
+    },
+    store: storeFromLedgerState(ledgerManager.ledgerState),
+    network: ledgerManager.network,
+    // The deprecated manager keeps ownership of its existing transport.
+    close: async () => undefined
+  };
+}
+
+/**
+ * Runs one modern Ledger operation without changing the released 3.x state
+ * shape.
+ *
+ * @deprecated 3.x LedgerManager compatibility only. Remove in v4.
+ * @internal
+ */
+export async function withLedgerManagerSession<T>(
+  ledgerManager: LedgerManager,
+  operation: (session: LedgerSession) => Promise<T>
+): Promise<T> {
+  const session = sessionFromLedgerManager(ledgerManager);
+  try {
+    return await operation(session);
+  } finally {
+    copyStoreToLedgerState(session.store, ledgerManager.ledgerState);
+  }
+}
+
+/**
+ * Loads the optional Ledger Bitcoin peer for deprecated policy helpers.
+ *
+ * Modern sessions receive this module explicitly in `driver.bitcoinApi`.
+ *
+ * @deprecated Remove with `LedgerManager` compatibility in v4.
+ * @internal
+ */
+export function importLedgerBitcoinModule(): LedgerBitcoinApi {
+  let ledgerBitcoinModule: LedgerBitcoinApi;
+  try {
+    // Keep the optional Ledger peer out of module initialization for non-Ledger users.
+    ledgerBitcoinModule =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@ledgerhq/ledger-bitcoin') as LedgerBitcoinApi;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes('@ledgerhq/ledger-bitcoin')
+    ) {
+      throw new Error(
+        'Could not import "@ledgerhq/ledger-bitcoin". Install it to use deprecated LedgerManager helpers, or migrate to connect({ driver: { bitcoinApi } }).'
+      );
+    }
+    throw error;
   }
   return ledgerBitcoinModule;
 }
@@ -21,12 +177,23 @@ async function ledgerAppInfo(transport: any) {
   let i = 0;
   const format = r[i++];
   const nameLength = r[i++];
-  const name = r.slice(i, (i += nameLength!)).toString('ascii');
+  const name = String.fromCharCode(...r.slice(i, (i += nameLength!)));
   const versionLength = r[i++];
-  const version = r.slice(i, (i += versionLength!)).toString('ascii');
+  const version = String.fromCharCode(...r.slice(i, (i += versionLength!)));
   const flagLength = r[i++];
   const flags = r.slice(i, (i += flagLength!));
   return { name, version, flags, format };
+}
+
+function parseVersionTriplet(version: string): [number, number, number] | null {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
+  if (!match) return null;
+  const triplet: [number, number, number] = [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3])
+  ];
+  return triplet.every(Number.isSafeInteger) ? triplet : null;
 }
 
 /**
@@ -61,51 +228,94 @@ export async function assertLedgerApp({
   const { name: openName, version } = await ledgerAppInfo(transport);
   if (openName !== name) {
     throw new Error(`Open the ${name} app and try again`);
-  } else {
-    const [mVmajor, mVminor, mVpatch] = minVersion.split('.').map(Number);
-    const [major, minor, patch] = version.split('.').map(Number);
-    if (
-      mVmajor === undefined ||
-      mVminor === undefined ||
-      mVpatch === undefined
-    ) {
-      throw new Error(
-        `Pass a minVersion using semver notation: major.minor.patch`
-      );
-    }
-    if (
-      major < mVmajor ||
-      (major === mVmajor && minor < mVminor) ||
-      (major === mVmajor && minor === mVminor && patch < mVpatch)
-    )
-      throw new Error(`Error: please upgrade ${name} to version ${minVersion}`);
   }
+  const minimum = parseVersionTriplet(minVersion);
+  if (!minimum)
+    throw new Error(
+      `Pass a minVersion using semver notation: major.minor.patch`
+    );
+  const current = parseVersionTriplet(version);
+  if (!current)
+    throw new Error(`Ledger returned an invalid app version: ${version}`);
+  const [mVmajor, mVminor, mVpatch] = minimum;
+  const [major, minor, patch] = current;
+  if (
+    major < mVmajor ||
+    (major === mVmajor && minor < mVminor) ||
+    (major === mVmajor && minor === mVminor && patch < mVpatch)
+  )
+    throw new Error(`Error: please upgrade ${name} to version ${minVersion}`);
+}
+
+export async function getMasterFingerprint({
+  session
+}: {
+  session: LedgerSession;
+}): Promise<Uint8Array> {
+  const { client, store } = session;
+  let masterFingerprint = store.masterFingerprint;
+  if (!masterFingerprint) {
+    masterFingerprint = await client.getMasterFingerprint();
+    store.masterFingerprint = masterFingerprint;
+  }
+  return fromHex(masterFingerprint);
+}
+
+export async function getVersion({
+  session
+}: {
+  session: LedgerSession;
+}): Promise<string> {
+  const { client } = session;
+  const { version } = await client.getAppAndVersion();
+  return version;
+}
+
+export async function getXpub({
+  originPath,
+  session
+}: {
+  originPath: string;
+  session: LedgerSession;
+}): Promise<string> {
+  const { client, store } = session;
+  if (!store.xpubs) store.xpubs = {};
+  let xpub = store.xpubs[originPath];
+  if (!xpub) {
+    try {
+      xpub = await client.getExtendedPubkey(`m${originPath}`, false);
+    } catch (err) {
+      void err;
+      xpub = await client.getExtendedPubkey(`m${originPath}`, true);
+    }
+    if (typeof xpub !== 'string' || xpub.length === 0)
+      throw new Error(`Error: Ledger client did not return a valid xpub`);
+    store.xpubs[originPath] = xpub;
+  }
+  return xpub;
 }
 
 /**
  * Retrieves the master fingerprint of a Ledger device.
+ *
+ * @deprecated Use `getMasterFingerprint(...)` from the Ledger entrypoint
+ * instead. Remove in v4 with `LedgerManager` compatibility.
  */
 export async function getLedgerMasterFingerPrint({
   ledgerManager
 }: {
   ledgerManager: LedgerManager;
 }): Promise<Uint8Array> {
-  const { ledgerClient, ledgerState } = ledgerManager;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  let masterFingerprint = ledgerState.masterFingerprint;
-  if (!masterFingerprint) {
-    masterFingerprint = fromHex(await ledgerClient.getMasterFingerprint());
-    ledgerState.masterFingerprint = masterFingerprint;
-  }
-  return masterFingerprint;
+  return withLedgerManagerSession(ledgerManager, session =>
+    getMasterFingerprint({ session })
+  );
 }
 
 /**
  * Retrieves the xpub for a given origin path from a Ledger device.
+ *
+ * @deprecated Use `getXpub(...)` from the Ledger entrypoint instead. Remove in
+ * v4 with `LedgerManager` compatibility.
  */
 export async function getLedgerXpub({
   originPath,
@@ -114,24 +324,7 @@ export async function getLedgerXpub({
   originPath: string;
   ledgerManager: LedgerManager;
 }): Promise<string> {
-  const { ledgerClient, ledgerState } = ledgerManager;
-  const { AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  if (!ledgerState.xpubs) ledgerState.xpubs = {};
-  let xpub = ledgerState.xpubs[originPath];
-  if (!xpub) {
-    try {
-      xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, false);
-    } catch (err) {
-      void err;
-      xpub = await ledgerClient.getExtendedPubkey(`m${originPath}`, true);
-    }
-    if (typeof xpub !== 'string')
-      throw new Error(`Error: ledgerClient did not return a valid xpub`);
-    ledgerState.xpubs[originPath] = xpub;
-  }
-  return xpub;
+  return withLedgerManagerSession(ledgerManager, session =>
+    getXpub({ originPath, session })
+  );
 }

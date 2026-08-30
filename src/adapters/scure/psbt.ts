@@ -16,7 +16,7 @@ import type {
   PsbtTxInput
 } from '../../bitcoinLib';
 import type { PsbtInput } from '../../bip174';
-import { concat } from 'uint8array-tools';
+import { compare, concat } from 'uint8array-tools';
 import { uint32FromBytesBE, uint32ToBytesBE } from './common';
 
 interface SignerWithPrivateKey {
@@ -448,4 +448,20 @@ class ScurePsbtAdapter implements PsbtLike {
 /** Wrap a raw @scure/btc-signer Transaction into a PsbtLike adapter. */
 export function wrapScureTransaction(transaction: btc.Transaction) {
   return new ScurePsbtAdapter(transaction);
+}
+
+/** Merges a base64 signed PSBT into the original scure transaction. */
+export function mergePsbt(psbt: PsbtLike, signedPsbt: string) {
+  if (!(psbt instanceof ScurePsbtAdapter))
+    throw new Error('Expected a scure PSBT adapter');
+  const transaction = psbt.raw;
+  const signedTransaction = btc.Transaction.fromPSBT(base64.decode(signedPsbt));
+  if (compare(transaction.unsignedTx, signedTransaction.unsignedTx) !== 0)
+    throw new Error('Cannot merge PSBTs with different unsigned transactions');
+  const combined = transaction.clone();
+  combined.combine(signedTransaction);
+  for (let i = 0; i < combined.inputsLength; i++)
+    transaction.updateInput(i, combined.getInput(i), true);
+  for (let i = 0; i < combined.outputsLength; i++)
+    transaction.updateOutput(i, combined.getOutput(i), true);
 }

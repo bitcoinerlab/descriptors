@@ -43,7 +43,6 @@ To run this test, follow these steps:
 console.log(
   'Ledger integration tests: 2 pkh inputs (one internal & external addresses) + 1 miniscript input (co-signed with a software wallet) -> 1 output'
 );
-import Transport from '@ledgerhq/hw-transport-node-hid';
 import { networks } from '../../dist';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { encode: olderEncode } = require('bip68');
@@ -85,10 +84,6 @@ import { signBIP32 } from '../../dist/signers';
 import * as ledger from '../../dist/ledger/index';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
 import { createScureLib } from '../../dist/scure';
-const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
-const { signLedger } = ledger.signers;
-const { pkhLedger } = ledger.scriptExpressions;
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
 const { Output } = DescriptorsFactory(
   isScure ? createScureLib() : createBitcoinjsLib(ecc)
 );
@@ -104,29 +99,19 @@ let vout: number;
 //In this array, we will keep track the previous output of each input:
 const finalizers = [];
 
+let closeSession = async () => {};
 (async () => {
   await ready;
-  let transport;
-  try {
-    transport = await Transport.create(3000, 3000);
-  } catch (err) {
-    void err;
-    throw new Error(`Error: Ledger device not detected`);
-  }
-  //Throw if not running Bitcoin Test >= 2.1.0
-  await assertLedgerApp({
-    transport,
-    name: 'Bitcoin Test',
-    minVersion: '2.1.0'
+  const ledgerSession = await ledger.connect({
+    driver: {
+      transport: import('@ledgerhq/hw-transport-node-hid'),
+      bitcoinApi: import('@ledgerhq/ledger-bitcoin'),
+      app: { name: 'Bitcoin Test', minVersion: '2.1.0' }
+    },
+    network: NETWORK,
+    store: {}
   });
-
-  const ledgerClient = new AppClient(transport);
-  const ledgerManager = {
-    ledgerClient,
-    ledgerState: {},
-    Output,
-    network: NETWORK
-  };
+  closeSession = ledgerSession.close;
 
   //Build the miniscript-based descriptor.
   //POLICY will be: 'and(and(and(pk(@ledger),pk(@soft)),older(5)),sha256(6c60f404f8167a38fc70eaf8aa17ac351023bef86bcb9d1086a19afe95bd5333))'
@@ -138,8 +123,8 @@ const finalizers = [];
   //Let's create the utxos. First create a descriptor expression using a Ledger.
   //pkhExternalDescriptor will be something like this:
   //pkh([1597be92/44'/1'/0']tpubDCxfn3TkomFUmqNzKq5AEDS6VHA7RupajLi38JkahFrNeX3oBGp2C7SVWi5a1kr69M8GpeqnGkgGLdja5m5Xbe7E87PEwR5kM2PWKcSZMoE/0/0)
-  const pkhExternalDescriptor: string = await pkhLedger({
-    ledgerManager,
+  const pkhExternalDescriptor: string = await ledger.scriptExpressions.pkh({
+    session: ledgerSession,
     account: 0,
     change: 0,
     index: 0
@@ -159,8 +144,8 @@ const finalizers = [];
   finalizers.push(pkhExternalOutput.updatePsbtAsInput({ psbt, txHex, vout }));
 
   //Repeat the same for another pkh change address:
-  const pkhChangeDescriptor = await pkhLedger({
-    ledgerManager,
+  const pkhChangeDescriptor = await ledger.scriptExpressions.pkh({
+    session: ledgerSession,
     account: 0,
     change: 1,
     index: 0
@@ -197,8 +182,8 @@ const finalizers = [];
   //ledgerKeyExpression will be something like this:
   //[1597be92/69420'/1'/0']tpubDCNNkdMMfhdsCFf1uufBVvHeHSEAEMiXydCvxuZKgM2NS3NcRCUP7dxihYVTbyu1H87pWakBynbYugEQcCbpR66xyNRVQRzr1TcTqqsWJsK/0/*
   //Since WSH_ORIGIN_PATH is a non-standard path, the Ledger will warn the user about this.
-  const ledgerKeyExpression: string = await keyExpressionLedger({
-    ledgerManager,
+  const ledgerKeyExpression: string = await ledger.keyExpression({
+    session: ledgerSession,
     originPath: WSH_ORIGIN_PATH,
     change: 0,
     index: '*'
@@ -246,25 +231,25 @@ const finalizers = [];
 
   //=============
   //Register Ledger policies of non-standard descriptors.
-  //Registration is stored in ledgerState and is a necessary step before
+  //Registration is stored in session store and is a necessary step before
   //signing with non-standard policies when using a Ledger wallet.
-  //registerLedgerWallet internally takes all the necessary steps to register
+  //registerPolicy internally takes all the necessary steps to register
   //the generalized Ledger format: a policy template finished with /** and its keyRoots.
   //So, even though this wallet policy is created using a descriptor representing
   //an external address, the policy will be used interchangeably with internal
   //and external addresses.
-  await registerLedgerWallet({
-    ledgerManager,
+  await ledger.registerPolicy({
+    session: ledgerSession,
     descriptor: miniscriptDescriptor,
-    policyName: 'BitcoinerLab'
+    name: 'BitcoinerLab'
   });
 
   //=============
   //Sign the psbt with the Ledger. The relevant wallet policy is automatically
-  //retrieved from state by parsing the descriptors of each input and retrieving
+  //retrieved from store by parsing the descriptors of each input and retrieving
   //the wallet policy that can sign it. Also a Default Policy is automatically
   //constructed when the input is of BIP 44, 49, 84 or 86 type.
-  await signLedger({ psbt, ledgerManager });
+  await ledger.signers.sign({ psbt, session: ledgerSession });
   //Now sign the PSBT with the BIP32 node (the software wallet)
   signBIP32({ psbt, masterNode });
 
@@ -296,4 +281,4 @@ const finalizers = [];
     psbt: psbtToBase64(psbt),
     tx: psbtToHex(psbt)
   });
-})();
+})().finally(() => closeSession());

@@ -502,6 +502,7 @@ export interface BitcoinLib {
 
   // ── Interop hooks ──
   toPsbt(psbt: PsbtLike | ScureTransactionLike): PsbtLike;
+  mergePsbt(psbt: PsbtLike, signedPsbt: string): void;
   toECPairInterface(
     ecpair: ECPairInterfaceLike | Uint8Array
   ): ECPairInterfaceLike;
@@ -511,26 +512,16 @@ export interface BitcoinLib {
 }
 
 let globalBitcoinLib: BitcoinLib | undefined;
-let globalBitcoinLibWarningShown = false;
-
-function warnAboutLockedBitcoinLib(
-  currentKind: 'bitcoinjs' | 'scure',
-  incomingKind: 'bitcoinjs' | 'scure'
-) {
-  if (globalBitcoinLibWarningShown) return;
-  globalBitcoinLibWarningShown = true;
-  console.warn(
-    `Warning: BitcoinLib backend mismatch.
-Replacing the already initialized ${currentKind} backend 
-with the new ${incomingKind} one.
-This should be fine but it's strange you're mixing backends.
-DescriptorsFactory/create*Lib now work as a process-wide singleton in descriptors-core.`
-  );
-}
 
 export function setBitcoinLib(bitcoinLib: BitcoinLib): BitcoinLib {
-  if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind)
-    warnAboutLockedBitcoinLib(globalBitcoinLib.kind, bitcoinLib.kind);
+  if (globalBitcoinLib && globalBitcoinLib.kind !== bitcoinLib.kind) {
+    // Some 3.x helpers read the active backend after a factory has been created.
+    // Switching backend types could make an existing Output or PSBT use the
+    // wrong adapter. Same-type setup remains allowed for custom bitcoinjs ECC.
+    throw new Error(
+      `Cannot use the ${bitcoinLib.kind} backend because this copy of descriptors-core already uses ${globalBitcoinLib.kind}. Loading both backends together is not supported. Use one preset, or isolate each backend in a separate process or worker.`
+    );
+  }
   globalBitcoinLib = bitcoinLib;
 
   return globalBitcoinLib;

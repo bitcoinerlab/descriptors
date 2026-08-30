@@ -3,14 +3,14 @@
  *
  * Bitcoinjs-ready usage:
  * ```ts
- * import { Output, networks } from '@bitcoinerlab/descriptors';
- * import { registerLedgerWallet, type LedgerManager } from '@bitcoinerlab/descriptors/ledger';
+ * import { networks } from '@bitcoinerlab/descriptors';
+ * import { registerPolicy, type Session } from '@bitcoinerlab/descriptors/ledger';
  * ```
  *
  * Scure-ready usage:
  * ```ts
- * import { Output, networks } from '@bitcoinerlab/descriptors-scure';
- * import { registerLedgerWallet, type LedgerManager } from '@bitcoinerlab/descriptors-scure/ledger';
+ * import { networks } from '@bitcoinerlab/descriptors-scure';
+ * import { registerPolicy, type Session } from '@bitcoinerlab/descriptors-scure/ledger';
  * ```
  *
  * @module ledger
@@ -39,73 +39,173 @@
  * 4) Since all originPaths must be the same and originPaths for the Ledger are
  * necessary, a Ledger device can only sign at most 1 key per policy and input.
  *
- * All the conditions above are checked in function ledgerPolicyFromOutput.
+ * Ledger checks these device-specific rules after deriving the shared policy.
  */
 
-import { OutputConstructor } from '../descriptors';
-import type { Network } from '../networks';
-import { importAndValidateLedgerBitcoin } from './client';
+import { getMasterFingerprint, withLedgerManagerSession } from './client';
+import { fromBase64, fromHex, toHex } from 'uint8array-tools';
+// Used only to forward deprecated LedgerManager.Output. Remove in v4.
+import type { OutputConstructor } from '../descriptors';
 import {
-  ledgerPolicyFromOutput,
-  ledgerPolicyFromStandard,
-  ledgerPolicyFromState
-} from './policies';
+  derivePolicyFromOutput,
+  findKnownPolicy,
+  isStandardPolicy,
+  samePolicy
+} from '../hww/policies';
+import {
+  assertDescriptorParams,
+  assertLegacyMessageSignature,
+  messageBytes,
+  originPathFromKeyRoot,
+  outputFromDescriptor,
+  sampleOutputFromPolicyDescriptor
+} from '../hww/helpers';
+import type {
+  LedgerClient,
+  LedgerDefaultDescriptorTemplate,
+  LedgerManager,
+  LedgerPolicy,
+  LedgerSession,
+  LedgerStore
+} from './types';
+import { assertLedgerPolicySupported } from './policies';
 
-/**
- * Ledger devices operate in a state-less manner. Therefore, policy information
- * needs to be maintained in a separate data structure, `ledgerState`. For optimization,
- * `ledgerState` also stores cached xpubs and the masterFingerprint.
- */
-export type LedgerState = {
-  masterFingerprint?: Uint8Array;
-  policies?: {
-    policyName?: string;
-    ledgerTemplate: string;
-    keyRoots: string[];
-    policyId?: Uint8Array;
-    policyHmac?: Uint8Array;
-  }[];
-  xpubs?: { [key: string]: string };
-};
-
-/**
- * State and helpers needed for Ledger integration.
- *
- * Pass the pre-bound `Output` constructor from the package you are using:
- * - `@bitcoinerlab/descriptors`
- * - `@bitcoinerlab/descriptors-scure`
- */
-export type LedgerManager = {
-  /** Ledger Bitcoin app client instance. */
-  ledgerClient: unknown;
-  /** Mutable cache for fingerprints, xpubs and registered policies. */
-  ledgerState: LedgerState;
-  /** Pre-bound `Output` constructor from the package/backend you are using. */
-  Output: OutputConstructor;
-  /** Bitcoin network used for descriptor and policy interpretation. */
-  network: Network;
-};
+export type { LedgerManager, LedgerState } from './types';
 
 export {
   assertLedgerApp,
+  getMasterFingerprint,
+  getVersion,
+  getXpub,
   getLedgerMasterFingerPrint,
   getLedgerXpub
 } from './client';
+export { keyExpression, keyExpressionLedger } from './keyExpressions';
+
+type AddressDisplayParams = {
+  descriptor: string;
+  session: LedgerSession;
+  change?: number;
+  index?: number;
+};
+
+type MessageSigningParams = AddressDisplayParams & {
+  message: string | Uint8Array;
+};
 
 /**
  * Registers a policy based on a provided descriptor.
  *
  * This function will:
- * 1. Store the policy in `ledgerState` inside the `ledgerManager`.
+ * 1. Store the policy in `store` inside the session.
  * 2. Avoid re-registering if the policy was previously registered.
  * 3. Skip registration if the policy is considered "standard".
  *
- * It's important to understand the nature of the Ledger Policy being registered:
- * - While a descriptor might point to a specific output index of a particular change address,
- *   the corresponding Ledger Policy abstracts this and represents potential outputs for
- *   all addresses (both external and internal).
- * - This means that the registered Ledger Policy is a generalized version of the descriptor,
- *   not assuming specific values for the keyPath.
+ * It's important to understand the nature of the Ledger policy being registered:
+ * - While a descriptor might point to a specific output index of a particular
+ *   change branch, the corresponding Ledger policy abstracts this and represents
+ *   potential outputs for all receive and change indexes.
+ * - This means that the registered Ledger policy is a generalized version of
+ *   the descriptor, not assuming specific values for the key path.
+ *
+ * For a ranged descriptor, registration expands one deterministic sample using
+ * index `0`. It also uses branch `0` when the branch is the receive/change range
+ * `/**`. A fixed branch stays unchanged. The sample is used to parse and
+ * validate the descriptor; it is not the policy sent to the device.
+ *
+ * Returns `undefined` because Ledger provides an app-owned registration
+ * receipt, not a query for persistent policy storage on the device.
+ *
+ */
+export async function registerPolicy({
+  descriptor,
+  session,
+  name
+}: {
+  descriptor: string;
+  session: LedgerSession;
+  /** Name shown by the device for this policy. */
+  name: string;
+}): Promise<boolean | undefined> {
+  return registerPolicyWithLegacyOutput({ descriptor, session, name });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into policy parsing.
+ * Inline this body into `registerPolicy(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function registerPolicyWithLegacyOutput({
+  descriptor,
+  session,
+  name,
+  legacyOutput
+}: {
+  descriptor: string;
+  session: LedgerSession;
+  name: string;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
+}): Promise<boolean | undefined> {
+  const { client, store, network } = session;
+  const { WalletPolicy } = session.bitcoinApi;
+  // Parse the policy through one deterministic output. The policy derived
+  // below is generalized back to /** and is not limited to that sample.
+  const sampleOutput = sampleOutputFromPolicyDescriptor({
+    descriptor,
+    network,
+    ...(legacyOutput !== undefined ? { legacyOutput } : {})
+  });
+  const readMasterFingerprint = () => getMasterFingerprint({ session });
+  const derivedPolicy = await derivePolicyFromOutput({
+    output: sampleOutput,
+    getMasterFingerprint: readMasterFingerprint
+  });
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
+  assertLedgerPolicySupported(derivedPolicy);
+  const { descriptorTemplate, keyRoots } = derivedPolicy;
+  if (isStandardPolicy({ descriptorTemplate, keyRoots, network }))
+    return undefined;
+  if (!store.policies) store.policies = [];
+  const policy = findKnownPolicy({
+    derivedPolicy,
+    knownPolicies: store.policies
+  }) as LedgerPolicy | null;
+  if (policy) {
+    if (policy.name && policy.name !== name)
+      throw new Error(
+        `Error: policy was already registered with a different name: ${policy.name}`
+      );
+    if (policy.name === name && policy.policyHmac) return undefined;
+  }
+
+  const walletPolicy = new WalletPolicy(name, descriptorTemplate, keyRoots);
+  const [policyId, policyHmac] = await client.registerWallet(walletPolicy);
+  const registeredPolicy: LedgerPolicy = {
+    name,
+    descriptorTemplate,
+    keyRoots,
+    policyId: toHex(policyId),
+    policyHmac: toHex(policyHmac)
+  };
+  if (!policy) store.policies.push(registeredPolicy);
+  else {
+    const policyIndex = store.policies.findIndex(storedPolicy =>
+      samePolicy(storedPolicy, policy)
+    );
+    if (policyIndex === -1)
+      throw new Error(`Error: stored Ledger policy could not be replaced`);
+    store.policies[policyIndex] = registeredPolicy;
+  }
+  return undefined;
+}
+
+/**
+ * @deprecated Use `registerPolicy(...)` instead. Remove in v4 with
+ * `LedgerManager` compatibility.
  */
 export async function registerLedgerWallet({
   descriptor,
@@ -117,44 +217,146 @@ export async function registerLedgerWallet({
   /** The Name we want to assign to this specific policy */
   policyName: string;
 }): Promise<void> {
-  const { ledgerClient, ledgerState, network, Output } = ledgerManager;
-  const { WalletPolicy, AppClient } = (await importAndValidateLedgerBitcoin(
-    ledgerClient
-  )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-  const output = new Output({
+  await withLedgerManagerSession(ledgerManager, session =>
+    registerPolicyWithLegacyOutput({
+      descriptor,
+      session,
+      name: policyName,
+      legacyOutput: ledgerManager.Output
+    })
+  );
+}
+
+export type Session = LedgerSession;
+export type Store = LedgerStore;
+
+export async function displayAddress({
+  descriptor,
+  session,
+  change,
+  index
+}: AddressDisplayParams): Promise<string> {
+  const { client } = session;
+  const descriptorParams = {
     descriptor,
-    ...(descriptor.includes('*') ? { index: 0 } : {}),
-    network
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
+  const ledgerClient: LedgerClient = client;
+
+  const output = outputFromDescriptor({
+    ...descriptorParams,
+    network: session.network
   });
-  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
-  const result = await ledgerPolicyFromOutput({ output, ledgerManager });
-  if (await ledgerPolicyFromStandard({ output, ledgerManager })) return;
-  if (!result) throw new Error(`Error: output does not have a ledger input`);
-  const { ledgerTemplate, keyRoots } = result;
-  if (!ledgerState.policies) ledgerState.policies = [];
-  let walletPolicy, policyHmac;
-  const policy = await ledgerPolicyFromState({ output, ledgerManager });
-  if (policy) {
-    if (policy.policyName !== policyName)
-      throw new Error(
-        `Error: policy was already registered with a different name: ${policy.policyName}`
-      );
-  } else {
-    walletPolicy = new WalletPolicy(policyName, ledgerTemplate, keyRoots);
-    let policyId;
-    [policyId, policyHmac] = await ledgerClient.registerWallet(walletPolicy);
-    ledgerState.policies.push({
-      policyName,
-      ledgerTemplate,
-      keyRoots,
-      policyId,
-      policyHmac
-    });
+  const derivedPolicy = await derivePolicyFromOutput({
+    output,
+    getMasterFingerprint: () => getMasterFingerprint({ session })
+  });
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
+  assertLedgerPolicySupported(derivedPolicy);
+  if (
+    isStandardPolicy({
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
+      network: session.network
+    })
+  ) {
+    return ledgerClient.getWalletAddress(
+      new DefaultWalletPolicy(
+        derivedPolicy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
+        derivedPolicy.keyRoots[0]!
+      ),
+      null,
+      derivedPolicy.change,
+      derivedPolicy.index,
+      true
+    );
   }
+
+  const policy = findKnownPolicy({
+    derivedPolicy,
+    ...(session.store.policies !== undefined
+      ? { knownPolicies: session.store.policies }
+      : {})
+  }) as (LedgerPolicy & { change: number; index: number }) | null;
+  if (!policy)
+    throw new Error(`Ledger policy not registered; call registerPolicy first`);
+  if (!policy.name || !policy.policyHmac)
+    throw new Error(
+      `Ledger policy missing registration; call registerPolicy first`
+    );
+
+  return ledgerClient.getWalletAddress(
+    new WalletPolicy(policy.name, policy.descriptorTemplate, policy.keyRoots),
+    fromHex(policy.policyHmac),
+    policy.change,
+    policy.index,
+    true
+  );
+}
+
+export async function signMessage({
+  descriptor,
+  session,
+  message,
+  change,
+  index
+}: MessageSigningParams): Promise<Uint8Array> {
+  const { client } = session;
+  const ledgerClient: LedgerClient = client;
+  if (typeof ledgerClient.signMessage !== 'function')
+    throw new Error(`Ledger client does not support message signing`);
+
+  const descriptorParams = {
+    descriptor,
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  };
+  assertDescriptorParams(descriptorParams);
+
+  const output = outputFromDescriptor({
+    ...descriptorParams,
+    network: session.network
+  });
+  const derivedPolicy = await derivePolicyFromOutput({
+    output,
+    getMasterFingerprint: () => getMasterFingerprint({ session })
+  });
+  if (!derivedPolicy)
+    throw new Error(`Error: output does not have a ledger input`);
+  if (
+    !isStandardPolicy({
+      descriptorTemplate: derivedPolicy.descriptorTemplate,
+      keyRoots: derivedPolicy.keyRoots,
+      network: session.network
+    })
+  )
+    throw new Error(
+      `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
+    );
+  if (
+    derivedPolicy.descriptorTemplate !== 'pkh(@0/**)' &&
+    derivedPolicy.descriptorTemplate !== 'sh(wpkh(@0/**))' &&
+    derivedPolicy.descriptorTemplate !== 'wpkh(@0/**)'
+  ) {
+    throw new Error(
+      `Ledger message signing supports only standard single-key pkh, sh(wpkh), and wpkh descriptors`
+    );
+  }
+
+  const originPath = originPathFromKeyRoot(derivedPolicy.keyRoots[0] ?? '');
+  if (!originPath) throw new Error(`Ledger key root missing origin path`);
+  const signature = await ledgerClient.signMessage(
+    messageBytes(message),
+    `m${originPath}/${derivedPolicy.change}/${derivedPolicy.index}`
+  );
+  return assertLegacyMessageSignature(fromBase64(signature), 'Ledger');
 }
 
 export * as signers from './signers';
-export { keyExpressionLedger } from './keyExpressions';
 export * as scriptExpressions from './scriptExpressions';
+export { connect } from './connectors';

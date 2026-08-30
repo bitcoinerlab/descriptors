@@ -1,0 +1,398 @@
+// Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
+// Distributed under the MIT software license
+
+/*
+BitBox real-device integration test.
+
+This test uses the browser-oriented `bitbox-api` package from Node through
+BitBoxBridge. It is intentionally not part of normal CI or `npm test`.
+
+To run:
+
+1. Install dependencies with `npm install`.
+2. Build the project with `npm run build`.
+3. Ensure that you are running a Bitcoin regtest node and have set up this
+   Express-based bitcoind manager: https://github.com/bitcoinjs/regtest-server
+   running on 127.0.0.1:8080.
+4. Install and start BitBoxBridge.
+5. Connect and unlock a BitBox02.
+6. Run `npm run test:bitbox` to test both Bitcoin backends.
+
+The test spends one standard wpkh output, one standard Taproot key-path output,
+one Taproot Miniscript script-path output and one P2WSH Miniscript output
+co-signed with a software wallet. The P2WSH policy mirrors the Ledger two-key +
+CSV flow, but omits Ledger's sha256 hashlock because BitBox firmware does not
+support Miniscript hash fragments in wallet policies.
+
+The local chain is regtest, but BitBox Bitcoin API calls use the testnet
+signing context internally for all non-mainnet Bitcoin networks. This mirrors
+Ledger's use of the Bitcoin Test app for regtest: PSBT scripts are
+network-neutral, while hardware wallets usually expose stable testnet support
+rather than production regtest signing flows.
+*/
+
+import * as ecc from '@bitcoinerlab/secp256k1';
+import { compilePolicy, ready } from '@bitcoinerlab/miniscript-policies';
+import { RegtestUtils } from 'regtest-client';
+import { DescriptorsFactory, keyExpressionBIP32, networks } from '../../dist';
+import { createBitcoinjsLib } from '../../dist/bitcoinjs';
+import { createScureLib } from '../../dist/scure';
+import { signBIP32 } from '../../dist/signers';
+import {
+  connect,
+  getVersion,
+  getXpub,
+  keyExpression,
+  registerPolicy,
+  scriptExpressions,
+  signers
+} from '../../dist/bitbox';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { encode: olderEncode } = require('bip68');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const loadBitBoxApi = require('./loadBitBoxApi.cjs') as () => Promise<
+  typeof import('bitbox-api')
+>;
+import {
+  createPsbt,
+  psbtAddOutput,
+  psbtToBase64,
+  psbtToHex,
+  psbtToTxId
+} from '../helpers/psbt';
+import { createMasterNode } from '../helpers/keys';
+
+const globalWithBrowserBits = globalThis as Record<string, unknown>;
+let localStorageShim = globalWithBrowserBits['localStorage'];
+if (globalWithBrowserBits['localStorage'] === undefined) {
+  const storage = new Map<string, string>();
+  localStorageShim = {
+    get length() {
+      return storage.size;
+    },
+    clear() {
+      storage.clear();
+    },
+    getItem(key: string) {
+      return storage.get(key) ?? null;
+    },
+    key(index: number) {
+      return [...storage.keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      storage.delete(key);
+    },
+    setItem(key: string, value: string) {
+      storage.set(key, String(value));
+    }
+  };
+  globalWithBrowserBits['localStorage'] = localStorageShim;
+}
+if (globalWithBrowserBits['window'] === undefined)
+  globalWithBrowserBits['window'] = globalThis;
+if (globalWithBrowserBits['self'] === undefined)
+  globalWithBrowserBits['self'] = globalThis;
+if (globalWithBrowserBits['Window'] === undefined)
+  globalWithBrowserBits['Window'] = Object;
+(globalWithBrowserBits['window'] as Record<string, unknown>)['localStorage'] =
+  localStorageShim;
+if (globalWithBrowserBits['WebSocket'] === undefined) {
+  // bitbox-api expects a browser WebSocket. For Node + BitBoxBridge, provide one.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  globalWithBrowserBits['WebSocket'] = require('ws');
+}
+
+const regtestUtils = new RegtestUtils();
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
+
+console.log(
+  `BitBox ${isScure ? 'Scure' : 'bitcoinjs'} integration tests: wpkh + Taproot key-path + Taproot script-path + P2WSH Miniscript spends`
+);
+
+const NETWORK = networks.regtest;
+const UTXO_VALUE = 2e4;
+const FEE = 1000;
+const BLOCKS = 5;
+const OLDER = olderEncode({ blocks: BLOCKS });
+
+const POLICY = `and(and(pk(@bitbox),pk(@soft)),older(${OLDER}))`;
+const ORIGIN_PATH = "/84'/1'/0'";
+const POLICY_ORIGIN_PATH = "/48'/1'/0'/2'";
+const POLICY_NAME = 'BitcoinerLab CSV';
+const POLICY_RECEIVE_INDEX = 0;
+const SOFT_MNEMONIC =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+
+let closeSession = async () => {};
+(async () => {
+  await ready;
+  const session = await connect({
+    driver: {
+      module: loadBitBoxApi(),
+      mode: 'bridge',
+      onClose: () => {
+        console.log('BitBox02 connection closed');
+      },
+      onPairingCode: pairingCode => {
+        console.log(`Pairing code:\n${pairingCode}`);
+        console.log('Confirm the pairing code on the BitBox02.');
+      }
+    },
+    network: NETWORK,
+    store: {}
+  });
+  closeSession = session.close;
+
+  const version = await getVersion({ session });
+  const xpub = await getXpub({ session, originPath: ORIGIN_PATH });
+  console.log({ version, originPath: ORIGIN_PATH, xpub });
+
+  const standardPsbt = createPsbt(isScure, NETWORK);
+  const standardFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  const standardDescriptor = await scriptExpressions.wpkh({
+    session,
+    account: 0,
+    change: 0,
+    index: 0
+  });
+  const standardOutput = new Output({
+    descriptor: standardDescriptor,
+    network: NETWORK
+  });
+  let { txId, vout } = await regtestUtils.faucet(
+    standardOutput.getAddress(),
+    UTXO_VALUE
+  );
+  let { txHex } = await regtestUtils.fetch(txId);
+  const finalizeStandard = standardOutput.updatePsbtAsInput({
+    psbt: standardPsbt,
+    txHex,
+    vout
+  });
+  psbtAddOutput(
+    standardPsbt,
+    {
+      address: standardFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Sign and broadcast standard wpkh spend');
+  await signers.sign({ psbt: standardPsbt, session });
+  finalizeStandard({ psbt: standardPsbt });
+  const standardResultSpend = await regtestUtils.broadcast(
+    psbtToHex(standardPsbt)
+  );
+  await regtestUtils.verify({
+    txId: psbtToTxId(standardPsbt),
+    address: standardFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+  console.log({
+    result: standardResultSpend === null ? 'success' : standardResultSpend,
+    descriptor: standardDescriptor,
+    psbt: psbtToBase64(standardPsbt),
+    tx: psbtToHex(standardPsbt)
+  });
+
+  const taprootPsbt = createPsbt(isScure, NETWORK);
+  const taprootFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  const taprootDescriptor = await scriptExpressions.tr({
+    session,
+    account: 0,
+    change: 0,
+    index: 0
+  });
+  const taprootOutput = new Output({
+    descriptor: taprootDescriptor,
+    network: NETWORK
+  });
+  const { txId: taprootTxId, vout: taprootVout } =
+    await regtestUtils.faucetComplex(
+      Buffer.from(taprootOutput.getScriptPubKey()),
+      UTXO_VALUE
+    );
+  const { txHex: taprootTxHex } = await regtestUtils.fetch(taprootTxId);
+  const finalizeTaproot = taprootOutput.updatePsbtAsInput({
+    psbt: taprootPsbt,
+    txHex: taprootTxHex,
+    vout: taprootVout
+  });
+
+  psbtAddOutput(
+    taprootPsbt,
+    {
+      address: taprootFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Sign and broadcast standard Taproot key-path spend');
+  await signers.sign({ psbt: taprootPsbt, session });
+  finalizeTaproot({ psbt: taprootPsbt });
+  const taprootResultSpend = await regtestUtils.broadcast(
+    psbtToHex(taprootPsbt)
+  );
+  await regtestUtils.verify({
+    txId: psbtToTxId(taprootPsbt),
+    address: taprootFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+  console.log({
+    result: taprootResultSpend === null ? 'success' : taprootResultSpend,
+    descriptor: taprootDescriptor,
+    psbt: psbtToBase64(taprootPsbt),
+    tx: psbtToHex(taprootPsbt)
+  });
+
+  const { miniscript, issane }: { miniscript: string; issane: boolean } =
+    compilePolicy(POLICY);
+  if (!issane) throw new Error(`Error: miniscript not sane`);
+  console.log({
+    name: POLICY_NAME,
+    policyOriginPath: POLICY_ORIGIN_PATH,
+    miniscript
+  });
+
+  const masterNode = createMasterNode(SOFT_MNEMONIC, NETWORK, isScure);
+  const softKeyExpression = keyExpressionBIP32({
+    masterNode,
+    originPath: POLICY_ORIGIN_PATH,
+    change: 0,
+    index: '*'
+  });
+  const bitboxKeyExpression = await keyExpression({
+    session,
+    originPath: POLICY_ORIGIN_PATH,
+    change: 0,
+    index: '*'
+  });
+
+  const taprootPolicyName = 'BitcoinerLab Taproot';
+  const taprootMiniscriptLeaf = `pk(${bitboxKeyExpression})`;
+  const taprootMiniscriptDescriptor = `tr(${softKeyExpression},${taprootMiniscriptLeaf})`;
+  const taprootMiniscriptOutput = new Output({
+    descriptor: taprootMiniscriptDescriptor,
+    index: POLICY_RECEIVE_INDEX,
+    network: NETWORK,
+    taprootSpendPath: 'script'
+  });
+  const taprootPolicyPsbt = createPsbt(isScure, NETWORK);
+  const taprootPolicyFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  const { txId: taprootPolicyTxId, vout: taprootPolicyVout } =
+    await regtestUtils.faucetComplex(
+      Buffer.from(taprootMiniscriptOutput.getScriptPubKey()),
+      UTXO_VALUE
+    );
+  const { txHex: taprootPolicyTxHex } =
+    await regtestUtils.fetch(taprootPolicyTxId);
+  const finalizeTaprootPolicy = taprootMiniscriptOutput.updatePsbtAsInput({
+    psbt: taprootPolicyPsbt,
+    txHex: taprootPolicyTxHex,
+    vout: taprootPolicyVout
+  });
+
+  psbtAddOutput(
+    taprootPolicyPsbt,
+    {
+      address: taprootPolicyFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Register Taproot Miniscript policy');
+  await registerPolicy({
+    descriptor: taprootMiniscriptDescriptor,
+    session,
+    name: taprootPolicyName
+  });
+  console.log('Sign and broadcast Taproot Miniscript script-path spend');
+  await signers.sign({ psbt: taprootPolicyPsbt, session });
+  finalizeTaprootPolicy({ psbt: taprootPolicyPsbt });
+  const taprootPolicyResult = await regtestUtils.broadcast(
+    psbtToHex(taprootPolicyPsbt)
+  );
+  await regtestUtils.verify({
+    txId: psbtToTxId(taprootPolicyPsbt),
+    address: taprootPolicyFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+  console.log({
+    result: taprootPolicyResult === null ? 'success' : taprootPolicyResult,
+    descriptor: taprootMiniscriptDescriptor,
+    psbt: psbtToBase64(taprootPolicyPsbt),
+    tx: psbtToHex(taprootPolicyPsbt)
+  });
+
+  const miniscriptDescriptor = `wsh(${miniscript
+    .replace('@bitbox', bitboxKeyExpression)
+    .replace('@soft', softKeyExpression)})`;
+  const miniscriptOutput = new Output({
+    descriptor: miniscriptDescriptor,
+    index: POLICY_RECEIVE_INDEX,
+    network: NETWORK
+  });
+
+  const policyPsbt = createPsbt(isScure, NETWORK);
+  const policyFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  ({ txId, vout } = await regtestUtils.faucet(
+    miniscriptOutput.getAddress(),
+    UTXO_VALUE
+  ));
+  ({ txHex } = await regtestUtils.fetch(txId));
+  const finalizePolicy = miniscriptOutput.updatePsbtAsInput({
+    psbt: policyPsbt,
+    txHex,
+    vout
+  });
+  psbtAddOutput(
+    policyPsbt,
+    {
+      address: policyFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Register Miniscript policy');
+  await registerPolicy({
+    descriptor: miniscriptDescriptor,
+    session,
+    name: POLICY_NAME
+  });
+  console.log('Sign and broadcast Miniscript policy spend');
+  await signers.sign({ psbt: policyPsbt, session });
+  signBIP32({ psbt: policyPsbt, masterNode });
+  finalizePolicy({ psbt: policyPsbt });
+
+  await regtestUtils.mine(BLOCKS);
+  const policyResultSpend = await regtestUtils.broadcast(psbtToHex(policyPsbt));
+  await regtestUtils.mine(1);
+  await regtestUtils.verify({
+    txId: psbtToTxId(policyPsbt),
+    address: policyFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+
+  console.log({
+    result: policyResultSpend === null ? 'success' : policyResultSpend,
+    descriptor: miniscriptDescriptor,
+    psbt: psbtToBase64(policyPsbt),
+    tx: psbtToHex(policyPsbt)
+  });
+})()
+  .finally(() => closeSession())
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });

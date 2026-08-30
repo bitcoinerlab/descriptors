@@ -1,6 +1,6 @@
 {
   "name": "@bitcoinerlab/descriptors-scure",
-  "version": "3.1.7",
+  "version": "3.2.0",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, bundled for the scure/noble family of libraries.",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
@@ -35,7 +35,7 @@
   },
   "scripts": {
     "build": "npm --prefix ../.. run build:src && tsc --project ./tsconfig.json",
-    "prepublishOnly": "cp ../../README.md README.md && rm -rf dist/ && npm run build"
+    "prepublishOnly": "cp ../../README.md README.md && cp ../../HARDWARE_WALLETS.md HARDWARE_WALLETS.md && rm -rf dist/ && npm run build"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -47,18 +47,23 @@
     "./ledger": {
       "types": "./dist/ledger.d.ts",
       "default": "./dist/ledger.js"
+    },
+    "./bitbox": {
+      "types": "./dist/bitbox.d.ts",
+      "default": "./dist/bitbox.js"
     }
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "HARDWARE_WALLETS.md"
   ],
   "dependencies": {
-    "@bitcoinerlab/descriptors-core": "3.1.7",
-    "@noble/hashes": "^2.0.1",
-    "@noble/curves": "^2.0.1",
-    "@scure/base": "^2.0.0",
-    "@scure/bip32": "^2.0.1",
-    "@scure/btc-signer": "^2.0.1"
+    "@bitcoinerlab/descriptors-core": "3.2.0",
+    "@noble/hashes": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@scure/base": "^2.3.0",
+    "@scure/bip32": "^2.3.0",
+    "@scure/btc-signer": "^2.3.0"
   }
 }

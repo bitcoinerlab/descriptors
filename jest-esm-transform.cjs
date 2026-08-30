@@ -6,14 +6,15 @@
 //       "^.+node_modules/(?:@noble|@scure|micro-packed)/.+\\.js$": "<rootDir>/jest-esm-transform.cjs"
 //     },
 //     "transformIgnorePatterns": [
-//       "/node_modules/(?!(@noble|@scure|micro-packed)/)"
+//       "/node_modules/(?!(@bitcoinerlab/secp256k1|@noble|@scure|micro-packed)/)"
 //     ]
 //   }
 //
 // Jest normally skips transforming node_modules and cannot execute these
 // ESM-only dependencies when they are required from the compiled CommonJS dist
-// output. This transformer rewrites only those whitelisted packages to
-// CommonJS for the test runtime.
+// output. The secp256k1 parent path is allowlisted so Jest can reach its nested
+// Noble modules. This transformer rewrites the matched ESM packages to CommonJS
+// for the test runtime.
 
 const ts = require('typescript');
 

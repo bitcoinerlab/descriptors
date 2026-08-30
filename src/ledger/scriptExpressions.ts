@@ -3,52 +3,89 @@
 
 import { assertStandardKeyPath } from '../scriptExpressions';
 import { coinTypeFromNetwork } from '../networkUtils';
-import { type LedgerManager } from './index';
-import { keyExpressionLedger } from './keyExpressions';
+import { keyExpression } from './keyExpressions';
+import { withLedgerManagerSession } from './client';
+import type { LedgerManager, LedgerSession } from './types';
 
-function standardExpressionsLedgerMaker(
-  purpose: number,
-  scriptTemplate: string
-) {
-  async function standardScriptExpressionLedger({
-    ledgerManager,
+type StandardScriptExpressionParams = {
+  session: LedgerSession;
+  account: number;
+  keyPath?: string;
+  change?: number;
+  index?: number | '*';
+};
+
+/** @deprecated 3.x LedgerManager adapter type. Remove in v4. */
+type DeprecatedLedgerStandardScriptExpressionParams = Omit<
+  StandardScriptExpressionParams,
+  'session'
+> & {
+  ledgerManager: LedgerManager;
+};
+
+function makeStandardExpression(purpose: number, scriptTemplate: string) {
+  async function standardScriptExpression({
+    session,
     account,
     keyPath,
     change,
     index
-  }: {
-    ledgerManager: LedgerManager;
-    account: number;
-    keyPath?: string;
-    change?: number | undefined;
-    index?: number | undefined | '*';
-  }) {
-    const { network } = ledgerManager;
+  }: StandardScriptExpressionParams) {
+    const { network } = session;
     const originPath = `/${purpose}'/${coinTypeFromNetwork(network)}'/${account}'`;
     if (keyPath !== undefined) assertStandardKeyPath(keyPath);
-    const keyExpression = await keyExpressionLedger({
-      ledgerManager,
+    const key = await keyExpression({
+      session,
       originPath,
-      keyPath,
-      change,
-      index
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {})
     });
 
-    return scriptTemplate.replace('KEYEXPRESSION', keyExpression);
+    return scriptTemplate.replace('KEYEXPRESSION', key);
   }
-  return standardScriptExpressionLedger;
+  return standardScriptExpression;
 }
 
-export const pkhLedger = standardExpressionsLedgerMaker(
-  44,
-  'pkh(KEYEXPRESSION)'
-);
-export const shWpkhLedger = standardExpressionsLedgerMaker(
+export const pkh = makeStandardExpression(44, 'pkh(KEYEXPRESSION)');
+export const shWpkh = makeStandardExpression(49, 'sh(wpkh(KEYEXPRESSION))');
+export const wpkh = makeStandardExpression(84, 'wpkh(KEYEXPRESSION)');
+export const tr = makeStandardExpression(86, 'tr(KEYEXPRESSION)');
+
+/**
+ * @deprecated 3.x LedgerManager adapter. Remove with all functions created by
+ * this helper in v4.
+ */
+function makeStandardExpressionLedger(purpose: number, scriptTemplate: string) {
+  const standardScriptExpression = makeStandardExpression(
+    purpose,
+    scriptTemplate
+  );
+
+  return async function standardScriptExpressionLedger({
+    ledgerManager,
+    ...params
+  }: DeprecatedLedgerStandardScriptExpressionParams) {
+    return withLedgerManagerSession(ledgerManager, session =>
+      standardScriptExpression({ ...params, session })
+    );
+  };
+}
+
+/** @deprecated Use `pkh(...)` instead. Remove in v4. */
+export const pkhLedger = makeStandardExpressionLedger(44, 'pkh(KEYEXPRESSION)');
+
+/** @deprecated Use `shWpkh(...)` instead. Remove in v4. */
+export const shWpkhLedger = makeStandardExpressionLedger(
   49,
   'sh(wpkh(KEYEXPRESSION))'
 );
-export const wpkhLedger = standardExpressionsLedgerMaker(
+
+/** @deprecated Use `wpkh(...)` instead. Remove in v4. */
+export const wpkhLedger = makeStandardExpressionLedger(
   84,
   'wpkh(KEYEXPRESSION)'
 );
-export const trLedger = standardExpressionsLedgerMaker(86, 'tr(KEYEXPRESSION)');
+
+/** @deprecated Use `tr(...)` instead. Remove in v4. */
+export const trLedger = makeStandardExpressionLedger(86, 'tr(KEYEXPRESSION)');

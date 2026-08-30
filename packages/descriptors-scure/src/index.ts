@@ -1,5 +1,4 @@
-import * as core from '@bitcoinerlab/descriptors-core';
-import { createScureLib } from '@bitcoinerlab/descriptors-core/scure';
+import { bound } from './backend';
 import * as btc from '@scure/btc-signer';
 import { HDKey } from '@scure/bip32';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
@@ -29,5 +28,4 @@ export {
 } from '@bitcoinerlab/descriptors-core';
 export { btc, HDKey, secp256k1 };
 
-const bound = core.DescriptorsFactory(createScureLib());
 export const { Output, parseKeyExpression, expand } = bound;

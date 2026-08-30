@@ -2047,7 +2047,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
      * potential fee attacks -
      * [See this issue](https://github.com/bitcoinjs/bitcoinjs-lib/issues/1625).
      *
-     * Note: Hardware wallets need the [full `txHex` for Segwit](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
+     * For supported hardware-wallet signing, always pass the full `txHex`,
+     * including for Segwit inputs. See
+     * [Trezor's explanation of why hardware wallets need the previous transaction](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
      *
      * When unsure, always use `txHex`, and skip `txId` and `value` for safety.
      *
@@ -2157,9 +2159,9 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
         ...(txHex !== undefined ? { txHex } : {}),
         ...(txId !== undefined ? { txId } : {}),
         ...(value !== undefined ? { value } : {}),
-        tapInternalKey,
-        tapLeafScript,
-        tapBip32Derivation,
+        ...(tapInternalKey !== undefined ? { tapInternalKey } : {}),
+        ...(tapLeafScript !== undefined ? { tapLeafScript } : {}),
+        ...(tapBip32Derivation !== undefined ? { tapBip32Derivation } : {}),
         sequence: this.getSequence(),
         locktime: this.getLockTime(),
         keysInfo: this.#expansionMap ? Object.values(this.#expansionMap) : [],
@@ -2181,7 +2183,7 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
          * It speeds down the finalization process but makes sure the psbt will
          * be valid.
          * @default true */
-        validate?: boolean | undefined;
+        validate?: boolean;
       }) => {
         // Normalize to Psbt interface for finalization
         psbt = toPsbt(psbt);
@@ -2382,6 +2384,8 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 
   const nativeKeys = isBitcoinJsLib(bitcoinLib);
 
+  activeOutput = Output;
+
   return {
     Output,
     parseKeyExpression,
@@ -2401,6 +2405,17 @@ expansion=${expansion}, isPKH=${isPKH}, isWPKH=${isWPKH}, isSH=${isSH}, isTR=${i
 }
 
 type OutputConstructor = ReturnType<typeof DescriptorsFactory>['Output'];
+let activeOutput: OutputConstructor | undefined;
+
+/** Returns the process-wide `Output` constructor used by internal HWW helpers. */
+export function getOutputConstructorOrThrow(): OutputConstructor {
+  if (!activeOutput)
+    throw new Error(
+      `Error: Output constructor not initialized. Initialize descriptors-core first with DescriptorsFactory(...), or import through a preset package such as @bitcoinerlab/descriptors or @bitcoinerlab/descriptors-scure.`
+    );
+  return activeOutput;
+}
+
 /**
  * The {@link DescriptorsFactory | `DescriptorsFactory`} function internally
  * creates and returns the `Output` class.

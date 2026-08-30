@@ -2,32 +2,31 @@
 // Distributed under the MIT software license
 
 import { type ScureTransactionLike, type PsbtLike } from '../bitcoinLib';
+// Used only to forward deprecated LedgerManager.Output. Remove in v4.
+import type { OutputConstructor } from '../descriptors';
 import { toPsbt } from '../psbt';
 import { isTaprootInput } from '../bitcoinjs-lib-internals';
-import { importAndValidateLedgerBitcoin } from './client';
 import {
-  comparePolicies,
-  type LedgerPolicy,
-  ledgerPolicyFromPsbtInput
-} from './policies';
-import type { LedgerManager } from './index';
+  isStandardPolicy,
+  policyForPsbtInput,
+  samePolicy
+} from '../hww/policies';
+import {
+  getMasterFingerprint,
+  getXpub,
+  withLedgerManagerSession
+} from './client';
+import { fromHex } from 'uint8array-tools';
+import type {
+  LedgerManager,
+  LedgerDefaultDescriptorTemplate,
+  LedgerPolicy,
+  LedgerPartialSignature,
+  LedgerSession
+} from './types';
+import { assertLedgerPolicySupported } from './policies';
 
-type DefaultDescriptorTemplate =
-  | 'pkh(@0/**)'
-  | 'sh(wpkh(@0/**))'
-  | 'wpkh(@0/**)'
-  | 'tr(@0/**)';
-
-declare class PartialSignature {
-  readonly pubkey: Uint8Array;
-  readonly signature: Uint8Array;
-  readonly tapleafHash?: Uint8Array;
-  constructor(
-    pubkey: Uint8Array,
-    signature: Uint8Array,
-    tapleafHash?: Uint8Array
-  );
-}
+type PartialSignature = LedgerPartialSignature;
 
 const ledgerSignaturesForInputIndex = (
   index: number,
@@ -93,6 +92,102 @@ function addLedgerSignaturesToInput({
   }
 }
 
+async function signPsbtWithPolicy({
+  psbt,
+  policy,
+  session
+}: {
+  psbt: PsbtLike;
+  policy: LedgerPolicy;
+  session: LedgerSession;
+}) {
+  assertLedgerPolicySupported(policy);
+  const { client } = session;
+  const { DefaultWalletPolicy, WalletPolicy } = session.bitcoinApi;
+
+  if (policy.name && policy.policyHmac) {
+    return client.signPsbt(
+      psbt.toBase64(),
+      new WalletPolicy(policy.name, policy.descriptorTemplate, policy.keyRoots),
+      fromHex(policy.policyHmac)
+    );
+  }
+  if (
+    isStandardPolicy({
+      descriptorTemplate: policy.descriptorTemplate,
+      keyRoots: policy.keyRoots,
+      network: session.network
+    })
+  ) {
+    return client.signPsbt(
+      psbt.toBase64(),
+      new DefaultWalletPolicy(
+        policy.descriptorTemplate as LedgerDefaultDescriptorTemplate,
+        policy.keyRoots[0]!
+      ),
+      null
+    );
+  }
+  throw new Error(
+    `Stored Ledger policy registration is incomplete; call registerPolicy again`
+  );
+}
+
+export async function signInput({
+  psbt,
+  index,
+  session
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  index: number;
+  session: LedgerSession;
+}): Promise<void> {
+  return signInputWithLegacyOutput({ psbt, index, session });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into input matching.
+ * Inline this body into `signInput(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function signInputWithLegacyOutput({
+  psbt,
+  index,
+  session,
+  legacyOutput
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  index: number;
+  session: LedgerSession;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
+}): Promise<void> {
+  psbt = toPsbt(psbt);
+
+  const policy = (await policyForPsbtInput({
+    psbt,
+    index,
+    network: session.network,
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session }),
+    ...(session.store.policies !== undefined
+      ? { knownPolicies: session.store.policies }
+      : {}),
+    ...(legacyOutput !== undefined ? { legacyOutput } : {})
+  })) as LedgerPolicy | undefined;
+  if (!policy) throw new Error(`Error: the Ledger cannot sign this PSBT input`);
+
+  const ledgerSignatures = await signPsbtWithPolicy({ psbt, policy, session });
+
+  addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
+}
+
+/**
+ * @deprecated Use `signInput(...)` instead. Remove in v4 with `LedgerManager`
+ * compatibility.
+ */
 export async function signInputLedger({
   psbt,
   index,
@@ -102,75 +197,58 @@ export async function signInputLedger({
   index: number;
   ledgerManager: LedgerManager;
 }): Promise<void> {
-  psbt = toPsbt(psbt);
-  const { ledgerClient } = ledgerManager;
-  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      ledgerClient
-    )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
-
-  const policy = await ledgerPolicyFromPsbtInput({
-    psbt,
-    index,
-    ledgerManager
-  });
-  if (!policy) throw new Error(`Error: the ledger cannot sign this pstb input`);
-
-  let ledgerSignatures;
-  if (policy.policyName && policy.policyHmac && policy.policyId) {
-    const walletPolicy = new WalletPolicy(
-      policy.policyName,
-      policy.ledgerTemplate,
-      policy.keyRoots
-    );
-
-    const walletHmac = policy.policyHmac as unknown as Parameters<
-      typeof ledgerClient.signPsbt
-    >[2];
-    ledgerSignatures = await ledgerClient.signPsbt(
-      psbt.toBase64(),
-      walletPolicy,
-      walletHmac
-    );
-  } else {
-    ledgerSignatures = await ledgerClient.signPsbt(
-      psbt.toBase64(),
-      new DefaultWalletPolicy(
-        policy.ledgerTemplate as DefaultDescriptorTemplate,
-        policy.keyRoots[0]!
-      ),
-      null
-    );
-  }
-
-  addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
+  return withLedgerManagerSession(ledgerManager, session =>
+    signInputWithLegacyOutput({
+      psbt,
+      index,
+      session,
+      legacyOutput: ledgerManager.Output
+    })
+  );
 }
 
-export async function signLedger({
+export async function sign({
   psbt,
-  ledgerManager
+  session
 }: {
   psbt: PsbtLike | ScureTransactionLike;
-  ledgerManager: LedgerManager;
+  session: LedgerSession;
+}): Promise<void> {
+  return signWithLegacyOutput({ psbt, session });
+}
+
+/**
+ * Threads the released `LedgerManager.Output` override into input matching.
+ * Inline this body into `sign(...)` and remove the override in v4.
+ *
+ * @deprecated 3.x LedgerManager compatibility only.
+ * @internal
+ */
+async function signWithLegacyOutput({
+  psbt,
+  session,
+  legacyOutput
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  session: LedgerSession;
+  /** @deprecated 3.x LedgerManager compatibility only. Remove in v4. */
+  legacyOutput?: OutputConstructor;
 }): Promise<void> {
   psbt = toPsbt(psbt);
-  const { ledgerClient } = ledgerManager;
-  const { DefaultWalletPolicy, WalletPolicy, AppClient } =
-    (await importAndValidateLedgerBitcoin(
-      ledgerClient
-    )) as typeof import('@ledgerhq/ledger-bitcoin');
-  if (!(ledgerClient instanceof AppClient))
-    throw new Error(`Error: pass a valid ledgerClient`);
 
   const ledgerPolicies = [];
   for (let index = 0; index < psbt.data.inputs.length; index++) {
-    const policy = await ledgerPolicyFromPsbtInput({
+    const policy = (await policyForPsbtInput({
       psbt,
       index,
-      ledgerManager
-    });
+      network: session.network,
+      getMasterFingerprint: () => getMasterFingerprint({ session }),
+      getAccountXpub: originPath => getXpub({ originPath, session }),
+      ...(session.store.policies !== undefined
+        ? { knownPolicies: session.store.policies }
+        : {}),
+      ...(legacyOutput !== undefined ? { legacyOutput } : {})
+    })) as LedgerPolicy | undefined;
     if (policy) ledgerPolicies.push(policy);
   }
   if (ledgerPolicies.length === 0)
@@ -180,43 +258,18 @@ export async function signLedger({
   for (const policy of ledgerPolicies) {
     if (
       !uniquePolicies.find((uniquePolicy: LedgerPolicy) =>
-        comparePolicies(uniquePolicy, policy)
+        samePolicy(uniquePolicy, policy)
       )
     )
       uniquePolicies.push(policy);
   }
 
   for (const uniquePolicy of uniquePolicies) {
-    let ledgerSignatures;
-    if (
-      uniquePolicy.policyName &&
-      uniquePolicy.policyHmac &&
-      uniquePolicy.policyId
-    ) {
-      const walletPolicy = new WalletPolicy(
-        uniquePolicy.policyName,
-        uniquePolicy.ledgerTemplate,
-        uniquePolicy.keyRoots
-      );
-
-      const walletHmac = uniquePolicy.policyHmac as unknown as Parameters<
-        typeof ledgerClient.signPsbt
-      >[2];
-      ledgerSignatures = await ledgerClient.signPsbt(
-        psbt.toBase64(),
-        walletPolicy,
-        walletHmac
-      );
-    } else {
-      ledgerSignatures = await ledgerClient.signPsbt(
-        psbt.toBase64(),
-        new DefaultWalletPolicy(
-          uniquePolicy.ledgerTemplate as DefaultDescriptorTemplate,
-          uniquePolicy.keyRoots[0]!
-        ),
-        null
-      );
-    }
+    const ledgerSignatures = await signPsbtWithPolicy({
+      psbt,
+      policy: uniquePolicy,
+      session
+    });
 
     const signedIndexes = [
       ...new Set(ledgerSignatures.map(([index]) => index))
@@ -225,4 +278,24 @@ export async function signLedger({
       addLedgerSignaturesToInput({ psbt, index, ledgerSignatures });
     }
   }
+}
+
+/**
+ * @deprecated Use `sign(...)` instead. Remove in v4 with `LedgerManager`
+ * compatibility.
+ */
+export async function signLedger({
+  psbt,
+  ledgerManager
+}: {
+  psbt: PsbtLike | ScureTransactionLike;
+  ledgerManager: LedgerManager;
+}): Promise<void> {
+  return withLedgerManagerSession(ledgerManager, session =>
+    signWithLegacyOutput({
+      psbt,
+      session,
+      legacyOutput: ledgerManager.Output
+    })
+  );
 }

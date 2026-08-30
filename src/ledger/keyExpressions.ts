@@ -1,14 +1,41 @@
 // Copyright (c) 2026 Jose-Luis Landabaso - https://bitcoinerlab.com
 // Distributed under the MIT software license
 
-import { toHex } from 'uint8array-tools';
-import { assertChangeIndexKeyPath } from '../keyExpressions';
+import { keyExpressionHWW } from '../hww/helpers';
 import {
-  type LedgerManager,
-  getLedgerMasterFingerPrint,
-  getLedgerXpub
-} from './index';
+  getMasterFingerprint,
+  getXpub,
+  withLedgerManagerSession
+} from './client';
+import type { LedgerManager, LedgerSession } from './types';
 
+export async function keyExpression({
+  session,
+  originPath,
+  keyPath,
+  change,
+  index
+}: {
+  session: LedgerSession;
+  originPath: string;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
+}): Promise<string> {
+  return keyExpressionHWW({
+    getMasterFingerprint: () => getMasterFingerprint({ session }),
+    getAccountXpub: originPath => getXpub({ originPath, session }),
+    originPath,
+    ...(keyPath !== undefined ? { keyPath } : {}),
+    ...(change !== undefined ? { change } : {}),
+    ...(index !== undefined ? { index } : {})
+  });
+}
+
+/**
+ * @deprecated Use `keyExpression(...)` from the Ledger entrypoint instead.
+ * Remove in v4 with `LedgerManager` compatibility.
+ */
 export async function keyExpressionLedger({
   ledgerManager,
   originPath,
@@ -18,19 +45,17 @@ export async function keyExpressionLedger({
 }: {
   ledgerManager: LedgerManager;
   originPath: string;
-  change?: number | undefined;
-  index?: number | undefined | '*';
-  keyPath?: string | undefined;
+  change?: number;
+  index?: number | '*';
+  keyPath?: string;
 }): Promise<string> {
-  assertChangeIndexKeyPath({ change, index, keyPath });
-
-  const masterFingerprint = await getLedgerMasterFingerPrint({
-    ledgerManager
-  });
-  const origin = `[${toHex(masterFingerprint)}${originPath}]`;
-  const xpub = await getLedgerXpub({ originPath, ledgerManager });
-
-  const keyRoot = `${origin}${xpub}`;
-  if (keyPath !== undefined) return `${keyRoot}${keyPath}`;
-  else return `${keyRoot}/${change}/${index}`;
+  return withLedgerManagerSession(ledgerManager, session =>
+    keyExpression({
+      session,
+      originPath,
+      ...(keyPath !== undefined ? { keyPath } : {}),
+      ...(change !== undefined ? { change } : {}),
+      ...(index !== undefined ? { index } : {})
+    })
+  );
 }

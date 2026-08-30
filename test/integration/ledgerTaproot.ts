@@ -2,25 +2,24 @@
 
 console.log('Ledger taproot integration tests');
 
-// This test inspects bitcoinjs-lib's BIP174 PSBT internals which are not
-// available in @scure/btc-signer. Exit early if running with scure backend.
-if (process.env['BITCOIN_LIB'] === 'scure') {
-  console.log('SKIP: This test requires bitcoinjs-lib PSBT internals');
-  process.exit(0);
-}
-
-import Transport from '@ledgerhq/hw-transport-node-hid';
-import { AppClient } from '@ledgerhq/ledger-bitcoin';
-import { mnemonicToSeedSync } from 'bip39';
-import { networks, Psbt } from 'bitcoinjs-lib';
 import { RegtestUtils } from 'regtest-client';
 
 import * as ecc from '@bitcoinerlab/secp256k1';
-import { DescriptorsFactory } from '../../dist/';
+import { DescriptorsFactory, keyExpressionBIP32, networks } from '../../dist/';
 import * as ledger from '../../dist/ledger/index';
 import { createBitcoinjsLib } from '../../dist/bitcoinjs';
+import { createScureLib } from '../../dist/scure';
+import { createMasterNode } from '../helpers/keys';
+import {
+  createPsbt,
+  isScurePsbt,
+  psbtAddOutput,
+  psbtToHex,
+  psbtToTxId
+} from '../helpers/psbt';
 
 const regtestUtils = new RegtestUtils();
+const isScure = process.env['BITCOIN_LIB'] === 'scure';
 
 const NETWORK = networks.regtest;
 const UTXO_VALUE = 20_000;
@@ -28,10 +27,9 @@ const FEE = 1_000;
 const SOFT_MNEMONIC =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
-const { Output, BIP32 } = DescriptorsFactory(createBitcoinjsLib(ecc));
-const { keyExpressionLedger, registerLedgerWallet, assertLedgerApp } = ledger;
-const { signLedger } = ledger.signers;
-const { trLedger } = ledger.scriptExpressions;
+const { Output } = DescriptorsFactory(
+  isScure ? createScureLib() : createBitcoinjsLib(ecc)
+);
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -40,17 +38,12 @@ function assert(condition: boolean, message: string): void {
 async function runSpendScenario({
   name,
   output,
-  ledgerManager,
+  ledgerSession,
   expectScriptPath
 }: {
   name: string;
   output: InstanceType<typeof Output>;
-  ledgerManager: {
-    ledgerClient: AppClient;
-    ledgerState: Record<string, unknown>;
-    Output: typeof Output;
-    network: typeof NETWORK;
-  };
+  ledgerSession: ledger.Session;
   expectScriptPath: boolean;
 }) {
   const destinationAddress = regtestUtils.RANDOM_ADDRESS;
@@ -60,10 +53,12 @@ async function runSpendScenario({
   );
   const { txHex } = await regtestUtils.fetch(txId);
 
-  const psbt = new Psbt({ network: NETWORK });
+  const psbt = createPsbt(isScure, NETWORK);
   const finalize = output.updatePsbtAsInput({ psbt, txHex, vout });
 
-  const beforeSignInput = psbt.data.inputs[0];
+  const beforeSignInput = isScurePsbt(psbt)
+    ? psbt.getInput(0)
+    : psbt.data.inputs[0];
   if (!beforeSignInput) throw new Error(`Error: ${name} input not found`);
 
   if (expectScriptPath) {
@@ -77,14 +72,20 @@ async function runSpendScenario({
     );
   }
 
-  psbt.addOutput({
-    address: destinationAddress,
-    value: BigInt(UTXO_VALUE - FEE)
-  });
+  psbtAddOutput(
+    psbt,
+    {
+      address: destinationAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
 
-  await signLedger({ psbt, ledgerManager });
+  await ledger.signers.sign({ psbt, session: ledgerSession });
 
-  const afterSignInput = psbt.data.inputs[0];
+  const afterSignInput = isScurePsbt(psbt)
+    ? psbt.getInput(0)
+    : psbt.data.inputs[0];
   if (!afterSignInput)
     throw new Error(`Error: ${name} input not found after signing`);
 
@@ -106,11 +107,10 @@ async function runSpendScenario({
 
   finalize({ psbt });
 
-  const spendTx = psbt.extractTransaction();
-  await regtestUtils.broadcast(spendTx.toHex());
+  await regtestUtils.broadcast(psbtToHex(psbt));
   await regtestUtils.mine(1);
   await regtestUtils.verify({
-    txId: spendTx.getId(),
+    txId: psbtToTxId(psbt),
     address: destinationAddress,
     vout: 0,
     value: UTXO_VALUE - FEE
@@ -119,32 +119,22 @@ async function runSpendScenario({
   console.log(`${name}: OK`);
 }
 
+let closeSession = async () => {};
 (async () => {
-  let transport;
-  try {
-    transport = await Transport.create(3000, 3000);
-  } catch (err) {
-    void err;
-    throw new Error(`Error: Ledger device not detected`);
-  }
-
-  await assertLedgerApp({
-    transport,
-    name: 'Bitcoin Test',
-    minVersion: '2.1.0'
+  const ledgerSession = await ledger.connect({
+    driver: {
+      transport: import('@ledgerhq/hw-transport-node-hid'),
+      bitcoinApi: import('@ledgerhq/ledger-bitcoin'),
+      app: { name: 'Bitcoin Test', minVersion: '2.1.0' }
+    },
+    network: NETWORK,
+    store: {}
   });
-
-  const ledgerClient = new AppClient(transport);
-  const ledgerManager = {
-    ledgerClient,
-    ledgerState: {},
-    Output,
-    network: NETWORK
-  };
+  closeSession = ledgerSession.close;
 
   // Scenario 1: Taproot key-path using standard Ledger BIP86 descriptor
-  const trKeyPathDescriptor = await trLedger({
-    ledgerManager,
+  const trKeyPathDescriptor = await ledger.scriptExpressions.tr({
+    session: ledgerSession,
     account: 0,
     change: 0,
     index: 0
@@ -153,33 +143,30 @@ async function runSpendScenario({
   await runSpendScenario({
     name: 'ledger taproot key-path spend',
     output: new Output({ descriptor: trKeyPathDescriptor, network: NETWORK }),
-    ledgerManager,
+    ledgerSession,
     expectScriptPath: false
   });
 
   // Scenario 2: Taproot script-path (tapscript) with Ledger leaf key
   const originPath = `/86'/1'/0'`;
-  const softMasterNode = BIP32.fromSeed(
-    mnemonicToSeedSync(SOFT_MNEMONIC),
-    NETWORK
-  );
-  const softXpub = softMasterNode
-    .derivePath(`m${originPath}`)
-    .neutered()
-    .toBase58();
-  const internalKeyExpression = `${softXpub}/0/0`;
-  const ledgerLeafExpression = await keyExpressionLedger({
-    ledgerManager,
+  const internalKeyExpression = keyExpressionBIP32({
+    masterNode: createMasterNode(SOFT_MNEMONIC, NETWORK, isScure),
+    originPath,
+    change: 0,
+    index: 0
+  });
+  const ledgerLeafExpression = await ledger.keyExpression({
+    session: ledgerSession,
     originPath,
     change: 0,
     index: 0
   });
   const scriptPathDescriptor = `tr(${internalKeyExpression},pk(${ledgerLeafExpression}))`;
 
-  await registerLedgerWallet({
-    ledgerManager,
+  await ledger.registerPolicy({
+    session: ledgerSession,
     descriptor: scriptPathDescriptor,
-    policyName: 'Taproot ScriptPath'
+    name: 'Taproot ScriptPath'
   });
 
   try {
@@ -190,7 +177,7 @@ async function runSpendScenario({
         network: NETWORK,
         taprootSpendPath: 'script'
       }),
-      ledgerManager,
+      ledgerSession,
       expectScriptPath: true
     });
   } catch (err) {
@@ -200,4 +187,4 @@ async function runSpendScenario({
       )}`
     );
   }
-})();
+})().finally(() => closeSession());

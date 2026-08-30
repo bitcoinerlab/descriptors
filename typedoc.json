@@ -6,7 +6,11 @@
   "displayBasePath": "./src",
   "internalModule": "_Internal_",
   "hideGenerator": true,
-  "entryPoints": ["./src/index.ts", "./src/ledger/index.ts"],
+  "entryPoints": [
+    "./src/index.ts",
+    "./src/ledger/index.ts",
+    "./src/bitbox/index.ts"
+  ],
   "plugin": ["typedoc-plugin-missing-exports"],
   "excludeExternals": true,
   "includeVersion": true,
