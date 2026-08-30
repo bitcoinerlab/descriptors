@@ -18,10 +18,11 @@ To run:
 5. Connect and unlock a BitBox02.
 6. Run `npm run test:bitbox` to test both Bitcoin backends.
 
-The test spends one standard wpkh output and one P2WSH Miniscript output
-co-signed with a software wallet. The Miniscript policy mirrors the Ledger
-two-key + CSV flow, but omits Ledger's sha256 hashlock because BitBox firmware
-does not support Miniscript hash fragments in wallet policies.
+The test spends one standard wpkh output, one standard Taproot key-path output,
+one Taproot Miniscript script-path output and one P2WSH Miniscript output
+co-signed with a software wallet. The P2WSH policy mirrors the Ledger two-key +
+CSV flow, but omits Ledger's sha256 hashlock because BitBox firmware does not
+support Miniscript hash fragments in wallet policies.
 
 The local chain is regtest, but BitBox Bitcoin API calls use the testnet
 signing context internally for all non-mainnet Bitcoin networks. This mirrors
@@ -108,7 +109,7 @@ const { Output } = DescriptorsFactory(
 );
 
 console.log(
-  `BitBox ${isScure ? 'Scure' : 'bitcoinjs'} integration tests: 1 wpkh input + 1 miniscript input (co-signed with a software wallet) -> regtest spends`
+  `BitBox ${isScure ? 'Scure' : 'bitcoinjs'} integration tests: wpkh + Taproot key-path + Taproot script-path + P2WSH Miniscript spends`
 );
 
 const NETWORK = networks.regtest;
@@ -199,6 +200,58 @@ let closeSession = async () => {};
     tx: psbtToHex(standardPsbt)
   });
 
+  const taprootPsbt = createPsbt(isScure, NETWORK);
+  const taprootFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  const taprootDescriptor = await scriptExpressions.tr({
+    session,
+    account: 0,
+    change: 0,
+    index: 0
+  });
+  const taprootOutput = new Output({
+    descriptor: taprootDescriptor,
+    network: NETWORK
+  });
+  const { txId: taprootTxId, vout: taprootVout } =
+    await regtestUtils.faucetComplex(
+      Buffer.from(taprootOutput.getScriptPubKey()),
+      UTXO_VALUE
+    );
+  const { txHex: taprootTxHex } = await regtestUtils.fetch(taprootTxId);
+  const finalizeTaproot = taprootOutput.updatePsbtAsInput({
+    psbt: taprootPsbt,
+    txHex: taprootTxHex,
+    vout: taprootVout
+  });
+
+  psbtAddOutput(
+    taprootPsbt,
+    {
+      address: taprootFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Sign and broadcast standard Taproot key-path spend');
+  await signers.sign({ psbt: taprootPsbt, session });
+  finalizeTaproot({ psbt: taprootPsbt });
+  const taprootResultSpend = await regtestUtils.broadcast(
+    psbtToHex(taprootPsbt)
+  );
+  await regtestUtils.verify({
+    txId: psbtToTxId(taprootPsbt),
+    address: taprootFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+  console.log({
+    result: taprootResultSpend === null ? 'success' : taprootResultSpend,
+    descriptor: taprootDescriptor,
+    psbt: psbtToBase64(taprootPsbt),
+    tx: psbtToHex(taprootPsbt)
+  });
+
   const { miniscript, issane }: { miniscript: string; issane: boolean } =
     compilePolicy(POLICY);
   if (!issane) throw new Error(`Error: miniscript not sane`);
@@ -221,6 +274,65 @@ let closeSession = async () => {};
     change: 0,
     index: '*'
   });
+
+  const taprootPolicyName = 'BitcoinerLab Taproot';
+  const taprootMiniscriptLeaf = `pk(${bitboxKeyExpression})`;
+  const taprootMiniscriptDescriptor = `tr(${softKeyExpression},${taprootMiniscriptLeaf})`;
+  const taprootMiniscriptOutput = new Output({
+    descriptor: taprootMiniscriptDescriptor,
+    index: POLICY_RECEIVE_INDEX,
+    network: NETWORK,
+    taprootSpendPath: 'script'
+  });
+  const taprootPolicyPsbt = createPsbt(isScure, NETWORK);
+  const taprootPolicyFinalAddress = regtestUtils.RANDOM_ADDRESS;
+  const { txId: taprootPolicyTxId, vout: taprootPolicyVout } =
+    await regtestUtils.faucetComplex(
+      Buffer.from(taprootMiniscriptOutput.getScriptPubKey()),
+      UTXO_VALUE
+    );
+  const { txHex: taprootPolicyTxHex } =
+    await regtestUtils.fetch(taprootPolicyTxId);
+  const finalizeTaprootPolicy = taprootMiniscriptOutput.updatePsbtAsInput({
+    psbt: taprootPolicyPsbt,
+    txHex: taprootPolicyTxHex,
+    vout: taprootPolicyVout
+  });
+
+  psbtAddOutput(
+    taprootPolicyPsbt,
+    {
+      address: taprootPolicyFinalAddress,
+      value: BigInt(UTXO_VALUE - FEE)
+    },
+    NETWORK
+  );
+
+  console.log('Register Taproot Miniscript policy');
+  await registerPolicy({
+    descriptor: taprootMiniscriptDescriptor,
+    session,
+    name: taprootPolicyName
+  });
+  console.log('Sign and broadcast Taproot Miniscript script-path spend');
+  await signers.sign({ psbt: taprootPolicyPsbt, session });
+  finalizeTaprootPolicy({ psbt: taprootPolicyPsbt });
+  const taprootPolicyResult = await regtestUtils.broadcast(
+    psbtToHex(taprootPolicyPsbt)
+  );
+  await regtestUtils.verify({
+    txId: psbtToTxId(taprootPolicyPsbt),
+    address: taprootPolicyFinalAddress,
+    vout: 0,
+    value: UTXO_VALUE - FEE
+  });
+  console.log({
+    result: taprootPolicyResult === null ? 'success' : taprootPolicyResult,
+    descriptor: taprootMiniscriptDescriptor,
+    psbt: psbtToBase64(taprootPolicyPsbt),
+    tx: psbtToHex(taprootPolicyPsbt)
+  });
+
   const miniscriptDescriptor = `wsh(${miniscript
     .replace('@bitbox', bitboxKeyExpression)
     .replace('@soft', softKeyExpression)})`;

@@ -761,4 +761,5 @@ npm run test:bitbox
 
 Unit tests use fake clients and do not need hardware. The commands above run
 lint and build first, then test the physical device with the bitcoinjs and Scure
-backends.
+backends. Each device performs Taproot key-path and script-path spends with each
+backend.
