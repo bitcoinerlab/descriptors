@@ -96,14 +96,14 @@
   ],
   "peerDependencies": {
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
-    "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^2.0.1",
-    "@scure/base": "^2.0.0",
-    "@scure/bip32": "^2.0.1",
-    "@scure/btc-signer": "^2.0.1",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1",
     "bip32": "^5.0.1",
-    "bitcoinjs-lib": "^7.0.1",
-    "ecpair": "^3.0.1"
+    "bitcoinjs-lib": "^7.0.5",
+    "ecpair": "^3.0.2"
   },
   "peerDependenciesMeta": {
     "@ledgerhq/ledger-bitcoin": {
@@ -146,18 +146,18 @@
     "@ledgerhq/ledger-bitcoin": "^0.3.1",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
-    "@scure/base": "^2.3.0",
-    "@scure/bip32": "^2.3.0",
-    "@scure/bip39": "^2.3.0",
-    "@scure/btc-signer": "^2.3.0",
+    "@scure/base": "^2.4.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1",
     "@types/lodash.memoize": "^4.1.9",
     "babel-jest": "^30.5.0",
     "bip32": "^5.0.1",
-    "bip39": "^3.1.0",
+    "bip39": "^3.1.2",
     "bip65": "^1.0.3",
     "bip68": "^1.0.4",
     "bitbox-api": "^0.13.0",
-    "bitcoinjs-lib": "^7.0.1",
+    "bitcoinjs-lib": "^7.0.5",
     "cross-env": "^10.1.0",
     "ecpair": "^3.0.2",
     "jest": "^30.5.0",
@@ -168,7 +168,7 @@
   "dependencies": {
     "@bitcoinerlab/miniscript": "^2.0.0",
     "lodash.memoize": "^4.1.2",
-    "uint8array-tools": "^0.0.9",
-    "varuint-bitcoin": "^2.0.0"
+    "uint8array-tools": "^0.0.10",
+    "varuint-bitcoin": "^2.0.1"
   }
 }
