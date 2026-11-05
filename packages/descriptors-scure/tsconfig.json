@@ -8,9 +8,8 @@
     "baseUrl": ".",
     "paths": {
       "@bitcoinerlab/descriptors-core": ["../../dist/index.d.ts"],
-      "@bitcoinerlab/descriptors-core/bitbox": [
-        "../../dist/bitbox/index.d.ts"
-      ],
+      "@bitcoinerlab/descriptors-core/bitbox": ["../../dist/bitbox/index.d.ts"],
+      "@bitcoinerlab/descriptors-core/jade": ["../../dist/jade/index.d.ts"],
       "@bitcoinerlab/descriptors-core/ledger": ["../../dist/ledger/index.d.ts"],
       "@bitcoinerlab/descriptors-core/scure": ["../../dist/scure.d.ts"]
     }

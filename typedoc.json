@@ -9,7 +9,8 @@
   "entryPoints": [
     "./src/index.ts",
     "./src/ledger/index.ts",
-    "./src/bitbox/index.ts"
+    "./src/bitbox/index.ts",
+    "./src/jade/index.ts"
   ],
   "plugin": ["typedoc-plugin-missing-exports"],
   "excludeExternals": true,

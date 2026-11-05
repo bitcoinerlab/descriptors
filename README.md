@@ -100,7 +100,7 @@ console.log('Push this: ' + psbt.hex);
 - Supports Taproot descriptors with trees: `tr(KEY,TREE)` (tapscript).
 - Generates Partially Signed Bitcoin Transactions (PSBTs).
 - Provides PSBT finalizers and signers for single-signature, BIP32 and hardware-wallet flows.
-- Provides optional Ledger and BitBox integrations for both bitcoinjs and Scure.
+- Provides optional Ledger, BitBox and Blockstream Jade integrations for both bitcoinjs and Scure.
 
 ### Version Compatibility
 
@@ -572,12 +572,12 @@ Read [Bitcoin Core descriptors documentation](https://github.com/bitcoin/bitcoin
 
 ### Hardware Wallet Integration
 
-Ledger and BitBox support is available through separate entrypoints:
+Ledger, BitBox and Blockstream Jade support is available through separate entrypoints:
 
-| Backend | Ledger | BitBox |
-| --- | --- | --- |
-| bitcoinjs | `@bitcoinerlab/descriptors/ledger` | `@bitcoinerlab/descriptors/bitbox` |
-| Scure | `@bitcoinerlab/descriptors-scure/ledger` | `@bitcoinerlab/descriptors-scure/bitbox` |
+| Backend   | Ledger                                   | BitBox                                   | Jade                                   |
+| --------- | ---------------------------------------- | ---------------------------------------- | -------------------------------------- |
+| bitcoinjs | `@bitcoinerlab/descriptors/ledger`       | `@bitcoinerlab/descriptors/bitbox`       | `@bitcoinerlab/descriptors/jade`       |
+| Scure     | `@bitcoinerlab/descriptors-scure/ledger` | `@bitcoinerlab/descriptors-scure/bitbox` | `@bitcoinerlab/descriptors-scure/jade` |
 
 Applications import only the device support they use, so unused hardware-wallet
 code and vendor packages are not loaded with the main package.

@@ -3,7 +3,8 @@
  *
  * Most bitcoinjs users should import from `@bitcoinerlab/descriptors`.
  * Scure users should import from `@bitcoinerlab/descriptors-scure`.
- * Ledger helpers are documented under the dedicated `ledger` module.
+ * Hardware-wallet helpers are documented under the `ledger`, `bitbox`, and
+ * `jade` modules.
  *
  * @module
  * @mergeModuleWith <project>

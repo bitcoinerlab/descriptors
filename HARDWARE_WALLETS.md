@@ -53,8 +53,8 @@ That is the basic shape of a hardware-wallet integration in this library:
 4. Build a PSBT with the normal `Output` APIs.
 5. Ask the device to sign.
 
-The same idea is used for Ledger and BitBox. The imports and connection method
-change, but the high-level flow stays the same.
+The same idea is used for Ledger, BitBox and Jade. The imports and connection
+method change, but the high-level flow stays the same.
 
 The examples in this guide use `@bitcoinerlab/descriptors`, the bitcoinjs-ready
 package. The same hardware-wallet entrypoints are also available from
@@ -65,10 +65,11 @@ package. The same hardware-wallet entrypoints are also available from
 ```ts
 import * as ledger from '@bitcoinerlab/descriptors/ledger';
 import * as bitbox from '@bitcoinerlab/descriptors/bitbox';
+import * as jade from '@bitcoinerlab/descriptors/jade';
 ```
 
 Hardware-wallet code lives behind device-specific entrypoints. This keeps the
-main package usable without installing Ledger or BitBox transport libraries.
+main package usable without installing hardware-wallet transport libraries.
 
 Use either the bitcoinjs preset or the Scure preset in one application. Do not
 load both together. The core rejects backend switching because existing Outputs
@@ -79,12 +80,14 @@ Use these entrypoints:
 
 - `@bitcoinerlab/descriptors/ledger`
 - `@bitcoinerlab/descriptors/bitbox`
+- `@bitcoinerlab/descriptors/jade`
 - `@bitcoinerlab/descriptors-scure/ledger`
 - `@bitcoinerlab/descriptors-scure/bitbox`
+- `@bitcoinerlab/descriptors-scure/jade`
 
 ## Common Hardware-Wallet API
 
-Ledger and BitBox entrypoints expose the same common API shape:
+Ledger, BitBox and Jade entrypoints expose the same common API shape:
 
 | API | Purpose |
 | --- | --- |
@@ -96,12 +99,12 @@ Ledger and BitBox entrypoints expose the same common API shape:
 | `getXpub({ session, originPath })` | Read and cache an account xpub. |
 | `keyExpression(...)` | Build a descriptor key expression from device keys. |
 | `scriptExpressions.*(...)` | Build standard account descriptors. |
-| `registerPolicy(...)` | Register or locally remember a policy and report whether BitBox already stored it. |
+| `registerPolicy(...)` | Register or locally remember a policy and report whether BitBox or Jade already stored it. |
 | `displayAddress(...)` | Ask the device to display an address for verification. |
 | `signers.sign(...)` | Ask the device to sign a PSBT. |
 | `signMessage(...)` | Ask the device to sign a legacy/Electrum Bitcoin message for a descriptor address. |
 
-`signMessage(...)` has the same public shape for Ledger and BitBox:
+`signMessage(...)` has the same public shape for Ledger, BitBox and Jade:
 `signMessage({ session, message, descriptor, change?, index? })`. It returns a
 65-byte `Uint8Array` legacy/Electrum Bitcoin message signature. It does not
 produce BIP322 signatures.
@@ -109,9 +112,8 @@ produce BIP322 signatures.
 `signers.sign(...)` mutates the supplied PSBT or Scure transaction and resolves
 without a return value.
 
-Ledger also exposes `signers.signInput(...)` for selecting one input. BitBox
-does not expose it because the BitBox API signs a complete PSBT and cannot sign
-one selected input from a multi-input PSBT.
+Ledger also exposes `signers.signInput(...)` for selecting one input. BitBox and
+Jade do not expose it because their APIs sign a complete PSBT.
 
 ## Address Position Params
 
@@ -160,10 +162,22 @@ npm install bitbox-api
 
 This installs support for BitBox browser WebHID and BitBoxBridge connections.
 
+Install the live Jade provider for the application's platform:
+
+| Jade platform | Install |
+| --- | --- |
+| Browser Web Serial | `npm install @bitcoinerlab/jade` |
+| Node.js USB serial/TCP | `npm install @bitcoinerlab/jade serialport` |
+| React Native BLE/Android USB | `npm install @bitcoinerlab/jade-react-native react-native-ble-plx expo-modules-core` |
+
+Jade communicates over USB serial or BLE. TCP is also useful with Jade's QEMU
+and libjade development tools. The Jade entrypoint keeps these transports
+optional and accepts one of the provider modules above.
+
 Pass each selected package as a literal import in the driver. This keeps the
 dependency visible to Metro and other bundlers. Ledger receives separate
 `driver.transport` and `driver.bitcoinApi` modules. BitBox receives one
-`driver.module` provider.
+`driver.module` provider. Jade also receives one `driver.module` provider.
 
 ## Connect To A Ledger
 
@@ -464,6 +478,50 @@ already carry the script type, so BitBox xpub requests use only `xpub` on
 mainnet and `tpub` on non-mainnet networks. Formats such as `ypub`, `zpub`,
 `upub` or `vpub` are not part of this library's BitBox descriptor flow.
 
+## Connect To Jade
+
+```ts
+import { networks } from '@bitcoinerlab/descriptors';
+import { connect } from '@bitcoinerlab/descriptors/jade';
+
+const session = await connect({
+  driver: {
+    module: import('@bitcoinerlab/jade/webserial'),
+    mode: 'usb'
+  },
+  network: networks.bitcoin,
+  store: {}
+});
+```
+
+Jade modes are:
+
+- `usb` for desktop or browser USB serial.
+- `ble` for Bluetooth Low Energy.
+- `tcp` for QEMU, libjade or another development bridge.
+
+The driver opens the selected connection and returns a `JadeClient`. The
+connector authenticates the wallet, checks the master fingerprint and owns the
+connection until `session.close()` is called. If the driver does not handle
+Jade's blind-pinserver HTTP request itself, pass `driver.httpRequest`.
+
+For Node.js USB or QEMU TCP, use `module: import('@bitcoinerlab/jade/node')`.
+For React Native BLE or Android USB, use
+`module: import('@bitcoinerlab/jade-react-native')`. React Native requires a
+custom native/development build and the provider's Expo config plugin.
+
+USB serial is the broadest normal connection. Browser USB uses Web Serial and
+must start from a user action so the browser can show its port picker. BLE is
+common on battery-powered Jade models. Jade Core has no radio and uses USB.
+
+The provider owns CBOR framing, fragmented `sign_psbt` replies, PIN HTTP
+continuation and platform permissions.
+
+Browser PIN-server requests also depend on the server's CORS policy. If direct
+requests are blocked, inject an application-controlled `driver.httpRequest`
+callback. Physical BLE/USB and browser PIN-server CORS still need validation;
+passing mocked transport tests does not establish hardware support.
+
 ## Persist Store
 
 Do not store a `session` itself. A session contains a live device client. Store
@@ -493,6 +551,10 @@ The details are slightly different by device:
   no id or HMAC. The device can tell whether one exact script config is already
   registered, but it does not give this library a list of wallet policies to
   rebuild that mapping later.
+- Jade store keeps the app-side descriptor mapping. Jade stores the BIP388
+  descriptor itself and can return it later. `registerPolicy(...)` checks the
+  named record before using it and will not overwrite a different wallet with
+  the same name.
 
 If you drop BitBox store, you can call `registerPolicy(...)` again for each
 wallet descriptor after reconnecting. The helper checks the device first, avoids
@@ -573,6 +635,10 @@ return `undefined`. Ledger always returns `undefined` because its reusable
 policy ID/HMAC is an app-owned receipt, not a query of persistent device state;
 a locally cached Ledger receipt is not reported as `true`.
 
+Jade has the same return meaning as BitBox. It returns `true` when the exact
+named descriptor is already on the device and `false` when the device needs to
+store it. Jade names contain 1 to 15 printable ASCII characters without spaces.
+
 ## Sign And Finalize
 
 ```ts
@@ -599,14 +665,14 @@ Hardware-wallet signing uses the same PSBT that normal descriptor spending uses.
 Prepare inputs with `Output.updatePsbtAsInput(...)`, add outputs, ask the device
 to sign, then finalize with the function returned by `updatePsbtAsInput(...)`.
 
-Ledger can skip unrelated inputs and sign only the inputs it owns. The current
-BitBox API requires every PSBT input to include a key owned by that BitBox. A
-BitBox can sign multisig inputs, but it cannot sign a PSBT that also contains an
-input owned only by another wallet.
+Ledger and Jade can skip unrelated inputs and sign only the inputs they own. The
+current BitBox API requires every PSBT input to include a key owned by that
+BitBox. A BitBox can sign multisig inputs, but it cannot sign a PSBT that also
+contains an input owned only by another wallet.
 
 Always pass the full previous transaction as `txHex`, including for Segwit
-inputs. The supported Ledger and BitBox signing flows rely on it to give the
-device the information it needs to verify what is being spent. See [Trezor's
+inputs. The supported Ledger, BitBox and Jade signing flows rely on it to give
+the device the information it needs to verify what is being spent. See [Trezor's
 explanation of the security reason for providing the previous
 transaction](https://blog.trezor.io/details-of-firmware-updates-for-trezor-one-version-1-9-1-and-trezor-model-t-version-2-3-1-1eba8f60f2dd).
 
@@ -631,6 +697,7 @@ Message signing is intentionally limited to single-key account descriptors:
 
 - Ledger supports `pkh(KEY)`, `sh(wpkh(KEY))` and `wpkh(KEY)`.
 - BitBox supports `sh(wpkh(KEY))` and `wpkh(KEY)`.
+- Jade supports `pkh(KEY)`, `sh(wpkh(KEY))` and `wpkh(KEY)`.
 
 Taproot message signing is not exposed. Multisig, Miniscript and other
 non-standard policies are also not supported by this helper.
@@ -719,6 +786,27 @@ const session = await bitbox.connect({
 does not change the descriptor, PSBT, policy or signatures. If omitted, the
 signer uses `default`.
 
+## Jade Details
+
+Jade supports standard `pkh(KEY)`, `sh(wpkh(KEY))`, `wpkh(KEY)` and `tr(KEY)`
+accounts. Non-standard policies use Jade's registered BIP388 descriptor wallet
+format. This includes P2WSH Miniscript and ordered or sorted multisig policies.
+Jade can store up to 16 descriptor wallets.
+
+Jade firmware currently supports Taproot key-path signing only. This entrypoint
+rejects `tr(KEY,TREE)` during registration and rejects Jade-owned Taproot inputs
+that contain a tree, leaf script or merkle root before signing. Unrelated
+Taproot script-path inputs are left for their own signer. It does not claim
+Taproot Miniscript support.
+
+Jade signs the full PSBT and returns an updated PSBT. The entrypoint merges those
+signatures into the supplied bitcoinjs PSBT or Scure transaction. It does not
+expose `signInput(...)`.
+
+For a non-standard descriptor, call `registerPolicy(...)` before address display
+or signing. Address display uses the descriptor stored on Jade, so the address
+is rebuilt and confirmed on the device.
+
 ## Ledger Details
 
 Ledger adds these device-specific extensions on top of the common API:
@@ -760,6 +848,10 @@ npm run test:bitbox
 ```
 
 Unit tests use fake clients and do not need hardware. The commands above run
-lint and build first, then test the physical device with the bitcoinjs and Scure
-backends. Each device performs Taproot key-path and script-path spends with each
-backend.
+lint and build first, then test Ledger and BitBox with the bitcoinjs and Scure
+backends. Those devices perform Taproot key-path and script-path spends.
+
+Jade's descriptor integration has fake-client tests for both backends. Transport
+tests live in the separate `bitcoinerlab/jade` repository. The sibling
+`descriptors-rn-integration` app provides the physical-device workflow and
+validation checklist for iOS/Android BLE and Android USB serial.
