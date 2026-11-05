@@ -8,6 +8,7 @@ const isScure = process.env['BITCOIN_LIB'] === 'scure';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { PsbtInput } from 'bip174';
+import { Psbt, Transaction } from 'bitcoinjs-lib';
 import * as ecc from '@bitcoinerlab/secp256k1';
 import { fromHex, toHex } from 'uint8array-tools';
 import {
@@ -120,5 +121,44 @@ describeIfNotScure('bitcoinjs-lib internals compatibility', () => {
     expect(internals).not.toMatch(/from\s+['"]bitcoinjs-lib\/src\//);
     expect(internals.includes('require.resolve')).toBe(false);
     expect(internals.includes('require(modulePath)')).toBe(false);
+  });
+
+  test('finalized inputs without UTXOs cannot bypass fee checks', () => {
+    const psbt = new Psbt();
+    psbt.addInput({
+      hash: '11'.repeat(32),
+      index: 0,
+      finalScriptWitness: Uint8Array.from([0])
+    });
+    psbt.addOutput({ script: fromHex('51'), value: 0n });
+
+    expect(() => psbt.getFee()).toThrow('Need a Utxo input item');
+    expect(() => psbt.getFeeRate()).toThrow('Need a Utxo input item');
+    expect(() => psbt.extractTransaction()).toThrow('Need a Utxo input item');
+  });
+
+  test('conflicting UTXO amounts cannot understate fees', () => {
+    const script = fromHex('51');
+    const fundingTx = new Transaction();
+    fundingTx.addInput(new Uint8Array(32), 0xffffffff);
+    fundingTx.addOutput(script, 10000n);
+
+    const psbt = new Psbt();
+    psbt.addInput({
+      hash: fundingTx.getHash(),
+      index: 0,
+      nonWitnessUtxo: fundingTx.toBuffer(),
+      witnessUtxo: { script, value: 1000n },
+      finalScriptWitness: Uint8Array.from([0])
+    });
+    psbt.addOutput({ script, value: 500n });
+
+    expect(() => psbt.getFee()).toThrow("doesn't match the non-witness UTXO");
+    expect(() => psbt.getFeeRate()).toThrow(
+      "doesn't match the non-witness UTXO"
+    );
+    expect(() => psbt.extractTransaction()).toThrow(
+      "doesn't match the non-witness UTXO"
+    );
   });
 });

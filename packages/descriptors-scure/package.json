@@ -1,6 +1,6 @@
 {
   "name": "@bitcoinerlab/descriptors-scure",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "This library parses and creates Bitcoin Miniscript Descriptors and generates Partially Signed Bitcoin Transactions (PSBTs). It provides PSBT finalizers and signers for single-signature, BIP32 and Hardware Wallets, bundled for the scure/noble family of libraries.",
   "author": "Jose-Luis Landabaso",
   "license": "MIT",
@@ -59,11 +59,11 @@
     "HARDWARE_WALLETS.md"
   ],
   "dependencies": {
-    "@bitcoinerlab/descriptors-core": "3.2.0",
+    "@bitcoinerlab/descriptors-core": "3.2.1",
     "@noble/hashes": "^2.4.0",
     "@noble/curves": "^2.4.0",
-    "@scure/base": "^2.3.0",
-    "@scure/bip32": "^2.3.0",
-    "@scure/btc-signer": "^2.3.0"
+    "@scure/base": "^2.4.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1"
   }
 }
