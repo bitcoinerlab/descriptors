@@ -138,7 +138,7 @@
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
     "@bitcoinerlab/configs": "^2.0.0",
-    "@bitcoinerlab/miniscript-policies": "^1.1.0",
+    "@bitcoinerlab/miniscript-policies": "^1.1.1",
     "@bitcoinerlab/secp256k1": "^2.0.0",
     "@ledgerhq/hw-transport-node-hid": "^6.33.5",
     "@ledgerhq/hw-transport-webhid": "^6.36.0",
@@ -166,7 +166,7 @@
     "yargs": "^17.7.3"
   },
   "dependencies": {
-    "@bitcoinerlab/miniscript": "^2.0.0",
+    "@bitcoinerlab/miniscript": "^2.0.1",
     "lodash.memoize": "^4.1.2",
     "uint8array-tools": "^0.0.10",
     "varuint-bitcoin": "^2.0.1"
